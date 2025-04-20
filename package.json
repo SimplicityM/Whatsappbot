@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-web",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "mongodb": "^6.15.0",
+    "mongoose": "^8.13.2",
+    "pkg-dir": "^8.0.0",
+    "punycode": "^2.3.1",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "readline-sync": "^1.4.10",
+    "something-else": "^0.1.0",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}

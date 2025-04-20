@@ -1,0 +1,69 @@
+[1224/211832.688:INFO:CONSOLE(155)] "Event handler of 'x-storagemutated-1' event must be added on the initial evaluation of worker script.", source: https://static.whatsapp.net/rsrc.php/v4/ys/r/BTH6I8HLJPO.js (155)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Feature xr-spatial-tracking's parameters are ignored.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'attribution-reporting'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'compute-pressure'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'interest-cohort'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-issuance'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'shared-storage'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'shared-storage-select-url'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-redemption'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'unload'.", source:  (0)
+[1224/211833.397:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'window-management'.", source:  (0)
+[1224/211841.374:INFO:CONSOLE(155)] "Event handler of 'x-storagemutated-1' event must be added on the initial evaluation of worker script.", source: https://static.whatsapp.net/rsrc.php/v4/ys/r/BTH6I8HLJPO.js (155)
+[1224/211919.457:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/211919.494:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/211919.494:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/211919.496:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/211919.497:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/211919.497:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/211921.656:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/211921.656:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Feature xr-spatial-tracking's parameters are ignored.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'attribution-reporting'.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'compute-pressure'.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'interest-cohort'.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-issuance'.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'shared-storage'.", source:  (0)
+[1224/211922.366:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'shared-storage-select-url'.", source:  (0)
+[1224/211922.401:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-redemption'.", source:  (0)
+[1224/211922.401:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'unload'.", source:  (0)
+[1224/211922.401:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'window-management'.", source:  (0)
+[1224/211922.637:ERROR:service_worker_storage.cc(1933)] Failed to delete the database: Database IO error
+[1224/211930.092:ERROR:quota_database.cc(929)] Could not open the quota database, resetting.
+[1224/211935.385:ERROR:quota_database.cc(929)] Could not open the quota database, resetting.
+[1224/211938.360:ERROR:quota_database.cc(931)] Failed to reset the quota database.
+[1224/211938.360:ERROR:quota_database.cc(931)] Failed to reset the quota database.
+[1224/212127.647:INFO:CONSOLE(4)] "Uncaught (in promise) Error: window is not defined", source: https://web.whatsapp.com/ (4)
+[1224/212129.217:INFO:CONSOLE(155)] "Event handler of 'x-storagemutated-1' event must be added on the initial evaluation of worker script.", source: https://static.whatsapp.net/rsrc.php/v4/ys/r/BTH6I8HLJPO.js (155)
+[1224/212213.982:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/212213.982:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/212213.982:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/212213.982:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/212213.982:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/212213.982:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/212216.000:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/212216.000:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/212216.406:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/212216.407:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/212216.407:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/212216.408:ERROR:cache_util_win.cc(20)] Unable to move the cache: Access is denied. (0x5)
+[1224/212216.408:ERROR:disk_cache.cc(205)] Unable to create cache
+[1224/212216.408:ERROR:gpu_disk_cache.cc(673)] Gpu Cache Creation failed: -2
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Feature xr-spatial-tracking's parameters are ignored.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'attribution-reporting'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'compute-pressure'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'interest-cohort'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-issuance'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Origin trial controlled feature not enabled: 'shared-storage'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'shared-storage-select-url'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'private-state-token-redemption'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'unload'.", source:  (0)
+[1224/212216.504:INFO:CONSOLE(0)] "Error with Permissions-Policy header: Unrecognized feature: 'window-management'.", source:  (0)
+[1224/212217.024:ERROR:service_worker_storage.cc(1933)] Failed to delete the database: Database IO error
+[1224/212218.091:INFO:CONSOLE(155)] "Event handler of 'x-storagemutated-1' event must be added on the initial evaluation of worker script.", source: https://static.whatsapp.net/rsrc.php/v4/ys/r/BTH6I8HLJPO.js (155)
+[1224/212223.590:ERROR:quota_database.cc(929)] Could not open the quota database, resetting.
+[1224/212228.609:ERROR:quota_database.cc(929)] Could not open the quota database, resetting.
+[1224/212231.522:ERROR:quota_database.cc(931)] Failed to reset the quota database.
+[1224/212231.522:ERROR:quota_database.cc(931)] Failed to reset the quota database.
+[1224/212459.802:INFO:CONSOLE(4)] "Uncaught (in promise) Error: window is not defined", source: https://web.whatsapp.com/ (4)
+[1224/212550.251:INFO:CONSOLE(155)] "Event handler of 'x-storagemutated-1' event must be added on the initial evaluation of worker script.", source: https://static.whatsapp.net/rsrc.php/v4/ys/r/BTH6I8HLJPO.js (155)
