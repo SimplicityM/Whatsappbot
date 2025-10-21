@@ -202,6 +202,7 @@ img {
   list-style: none;
   gap: var(--space-8);
   align-items: center;
+  transition: left 0.3s ease-in-out;
 }
 
 .nav-menu a {
@@ -338,6 +339,23 @@ img {
   animation: slideInUp 0.6s ease-out;
 }
 
+.form-group:nth-child(1) { animation-delay: 0.1s; }
+.form-group:nth-child(2) { animation-delay: 0.2s; }
+.form-group:nth-child(3) { animation-delay: 0.3s; }
+.form-group:nth-child(4) { animation-delay: 0.4s; }
+
+.form-group:focus-within label {
+  color: var(--primary-color);
+}
+
+.form-group.error label {
+  color: var(--error-color);
+}
+
+.form-group.success label {
+  color: var(--success-color);
+}
+
 .form-group label {
   font-weight: 600;
   color: var(--gray-700);
@@ -355,6 +373,15 @@ img {
   left: 1rem;
   color: var(--gray-400);
   z-index: 1;
+  transition: var(--transition);
+}
+
+.form-group.success .input-icon {
+  color: var(--success-color);
+}
+
+.form-group.error .input-icon {
+  color: var(--error-color);
 }
 
 input[type="text"],
@@ -381,12 +408,14 @@ input[type="text"].error,
 input[type="email"].error,
 input[type="password"].error {
   border-color: var(--error-color);
+  background-color: rgba(245, 101, 101, 0.05);
 }
 
 input[type="text"].success,
 input[type="email"].success,
 input[type="password"].success {
   border-color: var(--success-color);
+  background-color: rgba(72, 187, 120, 0.05);
 }
 
 .toggle-password {
@@ -406,12 +435,21 @@ input[type="password"].success {
   background: var(--gray-100);
 }
 
+.toggle-password:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .error-message {
   color: var(--error-color);
   font-size: 0.75rem;
   font-weight: 500;
   display: none;
   margin-top: 0.25rem;
+}
+
+.form-group.error .error-message {
+  display: block;
 }
 
 /* Password Strength */
@@ -436,11 +474,30 @@ input[type="password"].success {
   border-radius: 2px;
 }
 
+.strength-fill.weak {
+  background: var(--error-color);
+  width: 33%;
+}
+
+.strength-fill.medium {
+  background: var(--warning-color);
+  width: 66%;
+}
+
+.strength-fill.strong {
+  background: var(--success-color);
+  width: 100%;
+}
+
 .strength-text {
   font-size: 0.75rem;
   color: var(--gray-500);
   font-weight: 500;
 }
+
+.strength-text.weak { color: var(--error-color); }
+.strength-text.medium { color: var(--warning-color); }
+.strength-text.strong { color: var(--success-color); }
 
 /* Checkbox Styles */
 .checkbox-group {
@@ -471,6 +528,11 @@ input[type="password"].success {
   transition: var(--transition);
   flex-shrink: 0;
   margin-top: 0.125rem;
+}
+
+.checkbox-label:focus-within .checkmark {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkmark {
@@ -554,6 +616,14 @@ input[type="password"].success {
   border-top: 2px solid var(--white);
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.btn-primary.loading .btn-text {
+  opacity: 0;
+}
+
+.btn-primary.loading .btn-loader {
+  display: block;
 }
 
 .btn-secondary {
@@ -952,6 +1022,10 @@ input[type="password"].success {
   opacity: 0;
   transform: translateY(30px);
 }
+
+.feature-card:nth-child(1) { animation-delay: 0.1s; }
+.feature-card:nth-child(2) { animation-delay: 0.2s; }
+.feature-card:nth-child(3) { animation-delay: 0.3s; }
 
 .feature-card.animate-in {
   opacity: 1;
@@ -1586,6 +1660,14 @@ input:checked + .slider:before {
   overflow: hidden;
 }
 
+.faq-item.active .faq-question i {
+  transform: rotate(180deg);
+}
+
+.faq-item.active .faq-answer {
+  max-height: 500px;
+}
+
 .faq-question {
   padding: var(--space-6);
   cursor: pointer;
@@ -1943,6 +2025,16 @@ input:checked + .slider:before {
     left: 0;
   }
 
+  .nav-menu a {
+    width: 100%;
+    text-align: left;
+    padding: var(--space-4);
+  }
+
+  .nav-menu a.active::after {
+    display: none;
+  }
+
   .hamburger.active .bar:nth-child(2) {
     opacity: 0;
   }
@@ -2182,6 +2274,16 @@ input:checked + .slider:before {
   display: grid;
 }
 
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.flex-1 { flex: 1; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: var(--space-2); }
+.gap-4 { gap: var(--space-4); }
+.relative { position: relative; }
+.absolute { position: absolute; }
+
 /* Focus States for Accessibility */
 .nav-menu a:focus {
   outline: 2px solid var(--primary-color);
@@ -2227,6 +2329,20 @@ input:checked + .slider:before {
   .section-header h2 {
     color: var(--black);
     page-break-after: avoid;
+  }
+
+  .gradient-text {
+    background: none;
+    -webkit-text-fill-color: var(--black);
+    color: var(--black);
+  }
+  
+  .feature-card,
+  .pricing-card,
+  .testimonial {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid var(--gray-300);
   }
 }
 
@@ -2343,4 +2459,184 @@ input:checked + .slider:before {
 
 .notification.warning {
   border-left-color: var(--warning-color);
+}
+
+
+/* Bot Commands Section - Missing grid gap   */
+.commands-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-8); /* This was missing */
+}
+
+/* Video placeholder hover state */
+.video-placeholder {
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.video-placeholder:hover {
+    border-color: var(--primary-color);
+    background: var(--gray-50);
+    transform: translateY(-2px);
+}
+
+/* Testimonial stars alignment */
+.stars {
+    display: flex;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+}
+
+/* FAQ active state transitions */
+.faq-item.active .faq-question {
+    background: var(--gray-50);
+}
+
+.faq-item.active .faq-question h3 {
+    color: var(--primary-color);
+}
+
+/* CTA section button specific styles */
+.cta-section .btn-primary,
+.cta-section .btn-secondary {
+    min-width: 180px;
+    justify-content: center;
+}
+
+/* Social links hover states */
+.social-links a:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* Hero buttons specific styles */
+.hero-buttons .btn-primary,
+.hero-buttons .btn-secondary {
+    min-width: 200px;
+    justify-content: center;
+}
+
+/* Navbar scroll effect */
+.navbar {
+    transition: var(--transition);
+}
+
+.navbar.scrolled {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Animation classes for scroll-triggered animations */
+.feature-card,
+.pricing-card,
+.step,
+.testimonial {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.6s ease-out;
+}
+
+.feature-card.animate-in,
+.pricing-card.animate-in,
+.step.animate-in,
+.testimonial.animate-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Staggered animations for features */
+.feature-card:nth-child(1) { transition-delay: 0.1s; }
+.feature-card:nth-child(2) { transition-delay: 0.2s; }
+.feature-card:nth-child(3) { transition-delay: 0.3s; }
+.feature-card:nth-child(4) { transition-delay: 0.4s; }
+.feature-card:nth-child(5) { transition-delay: 0.5s; }
+.feature-card:nth-child(6) { transition-delay: 0.6s; }
+
+
+
+/* Add to existing media queries */
+
+@media (max-width: 768px) {
+    /* Hero section mobile fixes */
+    .hero-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .hero-buttons .btn-primary,
+    .hero-buttons .btn-secondary {
+        width: 100%;
+        text-align: center;
+    }
+    
+    /* Commands grid mobile */
+    .commands-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Testimonials mobile */
+    .testimonial-author {
+        flex-direction: column;
+        text-align: center;
+        gap: var(--space-3);
+    }
+    
+    /* CTA buttons mobile */
+    .cta-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .cta-buttons .btn-primary,
+    .cta-buttons .btn-secondary {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Smaller mobile adjustments */
+    .phone-mockup {
+        transform: scale(0.9);
+    }
+    
+    .hero-stats {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .stat {
+        min-width: 100px;
+    }
+}
+
+* Utility classes for JavaScript */
+.active {
+    display: block !important;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.visible {
+    display: block !important;
+}
+
+/* Loading state for buttons */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
