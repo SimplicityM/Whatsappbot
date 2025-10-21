@@ -493,3 +493,199 @@ function updateSessionStats() {
 function filterSessions() {
     // Implementation for filtering sessions
 }
+
+// Add these missing functions to your dashboard.js
+
+function switchTab(tabName) {
+    // Update active tab button
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Update active tab content
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Activate selected tab
+    const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+    const activeTab = document.getElementById(`${tabName}-settings`);
+    
+    if (activeBtn) activeBtn.classList.add('active');
+    if (activeTab) activeTab.classList.add('active');
+}
+
+function viewSessions() {
+    switchSection('sessions');
+}
+
+function updateStatisticsDisplay() {
+    // Update statistics with actual data
+    const activeSessions = userSessions.filter(s => s.status === 'connected').length;
+    const totalMessages = userSessions.reduce((sum, session) => sum + (session.messageCount || 0), 0);
+    
+    document.getElementById('totalMessages').textContent = totalMessages.toLocaleString();
+    document.getElementById('totalGroups').textContent = userSessions.length;
+    document.getElementById('commandsUsed').textContent = (totalMessages * 0.1).toFixed(0); // Estimate
+    
+    document.getElementById('messagesToday').textContent = Math.floor(totalMessages * 0.05); // Estimate
+    document.getElementById('groupsManaged').textContent = userSessions.length;
+}
+
+function loadAvailablePlans() {
+    // This would load plans from your API
+    const plans = [
+        {
+            id: 'starter',
+            name: 'Starter Plan',
+            amount: 29,
+            features: [
+                'Basic group tagging (tagall)',
+                'Contact auto-save',
+                'Basic media sharing',
+                '5 active sessions',
+                'Standard support'
+            ]
+        },
+        {
+            id: 'professional', 
+            name: 'Professional Plan',
+            amount: 79,
+            features: [
+                'All Starter features',
+                'Advanced tagging (tagallexcept)',
+                'Event & meeting scheduling',
+                'Reminder management',
+                '25 active sessions',
+                'Priority support'
+            ]
+        },
+        {
+            id: 'business',
+            name: 'Business Plan', 
+            amount: 149,
+            features: [
+                'All Professional features',
+                'Advanced admin controls',
+                'Sudo user management',
+                'System monitoring',
+                '100 active sessions',
+                'Broadcast messaging'
+            ]
+        },
+        {
+            id: 'enterprise',
+            name: 'Enterprise Plan',
+            amount: 279,
+            features: [
+                'All Business features',
+                'Unlimited active sessions',
+                'Advanced automation workflows',
+                'Custom bot commands',
+                'API access',
+                'White-label solution'
+            ]
+        }
+    ];
+    
+    renderAvailablePlans(plans);
+}
+
+function renderAvailablePlans(plans) {
+    const container = document.getElementById('availablePlansGrid');
+    if (!container) return;
+    
+    container.innerHTML = plans.map(plan => `
+        <div class="plan-card-upgrade">
+            <div class="plan-header">
+                <h4>${plan.name}</h4>
+                <span class="plan-price">₦${plan.amount}/month</span>
+            </div>
+            <div class="plan-features">
+                ${plan.features.map(feature => `
+                    <div class="feature-item">
+                        <i class="fas fa-check"></i>
+                        <span>${feature}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <button class="btn-primary" onclick="selectPlan('${plan.id}')">
+                Select Plan
+            </button>
+        </div>
+    `).join('');
+}
+
+function loadCurrentPlan() {
+    // This would load current plan from user data
+    const currentPlan = {
+        name: currentUser.user.subscription || 'Free Plan',
+        price: 0,
+        features: [
+            'Basic group tagging',
+            '1 active session', 
+            'Standard support'
+        ]
+    };
+    
+    renderCurrentPlan(currentPlan);
+}
+
+function renderCurrentPlan(plan) {
+    document.getElementById('currentPlanName').textContent = plan.name;
+    document.getElementById('currentPlanPrice').textContent = `₦${plan.price}`;
+    
+    const featuresContainer = document.getElementById('currentPlanFeatures');
+    featuresContainer.innerHTML = plan.features.map(feature => `
+        <div class="feature-item">
+            <i class="fas fa-check"></i>
+            <span>${feature}</span>
+        </div>
+    `).join('');
+}
+
+function loadAvailableCommands() {
+    const commands = [
+        { name: '!tagall', description: 'Tag all group members', enabled: true },
+        { name: '!tagallexcept', description: 'Tag all except specific members', enabled: currentUser.user.subscription !== 'free' },
+        { name: '!meeting', description: 'Schedule meetings', enabled: currentUser.user.subscription !== 'free' },
+        { name: '!savecontact', description: 'Save contacts automatically', enabled: true },
+        { name: '!broadcast', description: 'Send broadcast messages', enabled: currentUser.user.subscription === 'business' || currentUser.user.subscription === 'enterprise' }
+    ];
+    
+    renderAvailableCommands(commands);
+}
+
+function renderAvailableCommands(commands) {
+    const container = document.getElementById('availableCommandsList');
+    if (!container) return;
+    
+    container.innerHTML = commands.map(cmd => `
+        <div class="setting-item">
+            <label for="cmd-${cmd.name}">
+                <strong>${cmd.name}</strong> - ${cmd.description}
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="cmd-${cmd.name}" ${cmd.enabled ? 'checked' : ''} ${!cmd.enabled ? 'disabled' : ''}>
+                <span class="slider ${!cmd.enabled ? 'disabled' : ''}"></span>
+            </label>
+        </div>
+    `).join('');
+}
+
+// Initialize all sections when dashboard loads
+function initializeAllSections() {
+    loadCurrentPlan();
+    loadAvailablePlans();
+    loadAvailableCommands();
+    updateStatisticsDisplay();
+}
+
+// Update the DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', function() {
+    initializeDashboard();
+    loadUserData();
+    setupEventListeners();
+    connectToServer();
+    initializeAllSections(); // Add this line
+});
