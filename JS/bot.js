@@ -916,6 +916,52 @@ module.exports = {
   clients
 };
 
+
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ port: 8080 });
+
+wss.on('connection', (ws) => {
+    // Send real-time bot status to admin
+    ws.send(JSON.stringify({
+        type: 'status',
+        data: { sessions: activeSessions, connected: true }
+    }));
+    
+    // Receive commands from admin
+    ws.on('message', (data) => {
+        const command = JSON.parse(data);
+        handleAdminCommand(command);
+    });
+});
+
+// In bot.js - Add Express server
+const express = require('express');
+const app = express();
+
+app.get('/api/sessions', (req, res) => {
+    res.json({ sessions: activeSessions });
+});
+
+app.post('/api/broadcast', (req, res) => {
+    // Send broadcast message
+    sendBroadcast(req.body.message, req.body.recipients);
+    res.json({ success: true });
+});
+
+// bot.js
+const io = require('socket.io')(3000);
+
+io.on('connection', (socket) => {
+    console.log('Admin connected');
+    
+    // Send real-time updates
+    socket.emit('sessionUpdate', activeSessions);
+    
+    // Listen for admin commands
+    socket.on('sendMessage', (data) => {
+        client.sendMessage(data.to, data.message);
+    });
+});
   
     module.exports = {
       start: () => {
