@@ -1,35 +1,102 @@
-const express = require('express'); const crypto = require('crypto'); const axios = require('axios'); const User = require('../models/User'); const { authenticate } = require('../middleware/auth'); const router = express.Router();
+const express = require('express');
+const crypto = require('crypto');
+const axios = require('axios');
+const User = require('../models/User');
+const { authenticate } = require('../middleware/auth');
+const router = express.Router();
 
-// Paystack configuration const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY; const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY; const PAYSTACK_BASE_URL = 'https://api.paystack.co';
+// Paystack configuration
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY;
+const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 
-// Subscription plans const SUBSCRIPTION_PLANS = { starter: { amount: 2900, name: 'Starter Plan' }, // Amount in kobo (₦29) professional: { amount: 7900, name: 'Professional Plan' }, // ₦79 business: { amount: 14900, name: 'Business Plan' }, // ₦149 enterprise: { amount: 27900, name: 'Enterprise Plan' } // ₦279 };
+// Subscription plans
+const SUBSCRIPTION_PLANS = {
+    starter: { amount: 2900, name: 'Starter Plan' }, // Amount in kobo (₦29)
+    professional: { amount: 7900, name: 'Professional Plan' }, // ₦79
+    business: { amount: 14900, name: 'Business Plan' }, // ₦149
+    enterprise: { amount: 27900, name: 'Enterprise Plan' } // ₦279
+};
 
-// Initialize payment router.post('/initialize', authenticate, async (req, res) => { try { const { subscription, duration = 1 } = req.body; // duration in months const user = req.user;
+// Initialize payment
+router.post('/initialize', authenticate, async (req, res) => {
+    try {
+        const { subscription, duration = 1 } = req.body; // duration in months
+        const user = req.user;
 
-    if (!SUBSCRIPTION_PLANS[subscription]) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid subscription plan.'
-        });
-    }
+        if (!SUBSCRIPTION_PLANS[subscription]) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid subscription plan.'
+            });
+        }
 
-    const plan = SUBSCRIPTION_PLANS[subscription];
-    const amount = plan.amount * duration;
+        const plan = SUBSCRIPTION_PLANS[subscription];
+        const amount = plan.amount * duration;
 
-    // Create Paystack customer if not exists
-    let customerCode = user.paystackCustomerCode;
-    
-    if (!customerCode) {
+        // Create Paystack customer if not exists
+        let customerCode = user.paystackCustomerCode;
+        
+        if (!customerCode) {
+            try {
+                const customerResponse = await axios.post(
+                    `${PAYSTACK_BASE_URL}/customer`,
+                    {
+                        email: user.email,
+                        first_name: user.fullName.split(' ')[0],
+                        last_name: user.fullName.split(' ').slice(1).join(' '),
+                        metadata: {
+                            userId: user._id.toString()
+                        }
+                    },
+                    {
+                        headers: {
+                            Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                customerCode = customerResponse.data.data.customer_code;
+                user.paystackCustomerCode = customerCode;
+                await user.save();
+            } catch (error) {
+                console.error('Error creating Paystack customer:', error.response?.data);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error creating payment customer.'
+                });
+            }
+        }
+
+        // Initialize transaction
         try {
-            const customerResponse = await axios.post(
-                `${PAYSTACK_BASE_URL}/customer`,
+            const response = await axios.post(
+                `${PAYSTACK_BASE_URL}/transaction/initialize`,
                 {
                     email: user.email,
-                    first_name: user.fullName.split(' ')[0],
-                    last_name: user.fullName.split(' ').slice(1).join(' '),
+                    amount: amount,
+                    currency: 'NGN',
+                    customer: customerCode,
                     metadata: {
-                        userId: user._id.toString()
-                    }
+                        userId: user._id.toString(),
+                        subscription: subscription,
+                        duration: duration,
+                        custom_fields: [
+                            {
+                                display_name: 'Subscription Plan',
+                                variable_name: 'subscription_plan',
+                                value: plan.name
+                            },
+                            {
+                                display_name: 'Duration',
+                                variable_name: 'duration',
+                                value: `${duration} month(s)`
+                            }
+                        ]
+                    },
+                    callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
+                    channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer']
                 },
                 {
                     headers: {
@@ -39,163 +106,121 @@ const express = require('express'); const crypto = require('crypto'); const axio
                 }
             );
 
-            customerCode = customerResponse.data.data.customer_code;
-            user.paystackCustomerCode = customerCode;
-            await user.save();
+            const { authorization_url, access_code, reference } = response.data.data;
+
+            res.json({
+                success: true,
+                message: 'Payment initialized successfully.',
+                data: {
+                    authorization_url,
+                    access_code,
+                    reference,
+                    amount: amount / 100, // Convert back to naira
+                    plan: plan.name,
+                    duration
+                }
+            });
+
         } catch (error) {
-            console.error('Error creating Paystack customer:', error.response?.data);
-            return res.status(500).json({
+            console.error('Error initializing payment:', error.response?.data);
+            res.status(500).json({
                 success: false,
-                message: 'Error creating payment customer.'
+                message: 'Error initializing payment.'
             });
         }
-    }
 
-    // Initialize transaction
+    } catch (error) {
+        console.error('Payment initialization error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error processing payment request.'
+        });
+    }
+});
+
+// Verify payment
+router.get('/verify/:reference', authenticate, async (req, res) => {
     try {
-        const response = await axios.post(
-            `${PAYSTACK_BASE_URL}/transaction/initialize`,
-            {
-                email: user.email,
-                amount: amount,
-                currency: 'NGN',
-                customer: customerCode,
-                metadata: {
-                    userId: user._id.toString(),
-                    subscription: subscription,
-                    duration: duration,
-                    custom_fields: [
-                        {
-                            display_name: 'Subscription Plan',
-                            variable_name: 'subscription_plan',
-                            value: plan.name
-                        },
-                        {
-                            display_name: 'Duration',
-                            variable_name: 'duration',
-                            value: `${duration} month(s)`
-                        }
-                    ]
-                },
-                callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
-                channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer']
-            },
+        const { reference } = req.params;
+
+        const response = await axios.get(
+            `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
             {
                 headers: {
-                    Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-                    'Content-Type': 'application/json'
+                    Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`
                 }
             }
         );
 
-        const { authorization_url, access_code, reference } = response.data.data;
+        const { data } = response.data;
 
-        res.json({
-            success: true,
-            message: 'Payment initialized successfully.',
-            data: {
-                authorization_url,
-                access_code,
-                reference,
-                amount: amount / 100, // Convert back to naira
-                plan: plan.name,
-                duration
+        if (data.status === 'success') {
+            const { metadata, amount, customer } = data;
+            const userId = metadata.userId;
+            const subscription = metadata.subscription;
+            const duration = metadata.duration;
+
+            // Update user subscription
+            const user = await User.findById(userId);
+            if (user) {
+                user.subscription = subscription;
+                user.paymentStatus = 'paid';
+                user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
+                user.status = 'approved'; // Auto-approve paid users
+                await user.save();
+
+                res.json({
+                    success: true,
+                    message: 'Payment verified successfully.',
+                    data: {
+                        reference,
+                        amount: amount / 100,
+                        subscription,
+                        duration,
+                        subscriptionExpiry: user.subscriptionExpiry
+                    }
+                });
+            } else {
+                res.status(404).json({
+                    success: false,
+                    message: 'User not found.'
+                });
             }
-        });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: 'Payment verification failed.',
+                data: { status: data.status }
+            });
+        }
 
     } catch (error) {
-        console.error('Error initializing payment:', error.response?.data);
+        console.error('Payment verification error:', error.response?.data || error);
         res.status(500).json({
             success: false,
-            message: 'Error initializing payment.'
+            message: 'Error verifying payment.'
         });
     }
-
-} catch (error) {
-    console.error('Payment initialization error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Error processing payment request.'
-    });
-}
 });
 
-// Verify payment router.get('/verify/:reference', authenticate, async (req, res) => { try { const { reference } = req.params;
+// Paystack webhook
+router.post('/webhook', (req, res) => {
+    try {
+        const hash = crypto
+            .createHmac('sha512', PAYSTACK_SECRET_KEY)
+            .update(JSON.stringify(req.body))
+            .digest('hex');
 
-    const response = await axios.get(
-        `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
-        {
-            headers: {
-                Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`
-            }
-        }
-    );
-
-    const { data } = response.data;
-
-    if (data.status === 'success') {
-        const { metadata, amount, customer } = data;
-        const userId = metadata.userId;
-        const subscription = metadata.subscription;
-        const duration = metadata.duration;
-
-        // Update user subscription
-        const user = await User.findById(userId);
-        if (user) {
-            user.subscription = subscription;
-            user.paymentStatus = 'paid';
-            user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
-            user.status = 'approved'; // Auto-approve paid users
-            await user.save();
-
-            res.json({
-                success: true,
-                message: 'Payment verified successfully.',
-                data: {
-                    reference,
-                    amount: amount / 100,
-                    subscription,
-                    duration,
-                    subscriptionExpiry: user.subscriptionExpiry
-                }
-            });
-        } else {
-            res.status(404).json({
+        if (hash !== req.headers['x-paystack-signature']) {
+            return res.status(400).json({
                 success: false,
-                message: 'User not found.'
+                message: 'Invalid signature.'
             });
         }
-    } else {
-        res.status(400).json({
-            success: false,
-            message: 'Payment verification failed.',
-            data: { status: data.status }
-        });
-    }
 
-} catch (error) {
-    console.error('Payment verification error:', error.response?.data || error);
-    res.status(500).json({
-        success: false,
-        message: 'Error verifying payment.'
-    });
-}
-});
+        const event = req.body;
 
-// Paystack webhook router.post('/webhook', (req, res) => { try { const hash = crypto .createHmac('sha512', PAYSTACK_SECRET_KEY) .update(JSON.stringify(req.body)) .digest('hex');
-
-    if (hash !== req.headers['x-paystack-signature']) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid signature.'
-        });
-    }
-
-    const event = req.body;
-
-    switch (event.event)
-
-    switch (event.event) {
+        switch (event.event) {
             case 'charge.success':
                 handleSuccessfulPayment(event.data);
                 break;

@@ -1,146 +1,181 @@
-const express = require('express'); const User = require('../models/User'); const Session = require('../models/Session'); const { authenticateAdmin } = require('../middleware/auth'); const router = express.Router();
+const express = require('express');
+const User = require('../models/User');
+const Session = require('../models/Session');
+const { authenticateAdmin } = require('../middleware/auth');
+const router = express.Router();
 
-// Get admin dashboard stats router.get('/dashboard', authenticateAdmin, async (req, res) => { try { const totalUsers = await User.countDocuments(); const activeUsers = await User.countDocuments({ status: 'approved' }); const pendingUsers = await User.countDocuments({ status: 'pending' }); const totalSessions = await Session.countDocuments(); const activeSessions = await Session.countDocuments({ status: 'connected' }); const connectingSessions = await Session.countDocuments({ status: 'connecting' });
+// Get admin dashboard stats
+router.get('/dashboard', authenticateAdmin, async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeUsers = await User.countDocuments({ status: 'approved' });
+        const pendingUsers = await User.countDocuments({ status: 'pending' });
+        const totalSessions = await Session.countDocuments();
+        const activeSessions = await Session.countDocuments({ status: 'connected' });
+        const connectingSessions = await Session.countDocuments({ status: 'waiting_qr' });
 
-    // Get subscription breakdown
-    const subscriptionStats = await User.aggregate([
-        {
-            $group: {
-                _id: '$subscription',
-                count: { $sum: 1 }
+        // Get subscription breakdown
+        const subscriptionStats = await User.aggregate([
+            {
+                $group: {
+                    _id: '$subscription',
+                    count: { $sum: 1 }
+                }
             }
-        }
-    ]);
+        ]);
 
-    // Get recent activity
-    const recentUsers = await User.find()
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .select('fullName email status subscription createdAt');
+        // Get recent activity
+        const recentUsers = await User.find()
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .select('fullName email status subscription createdAt');
 
-    const recentSessions = await Session.find()
-        .populate('userId', 'fullName email')
-        .sort({ createdAt: -1 })
-        .limit(10);
+        const recentSessions = await Session.find()
+            .populate('userId', 'fullName email')
+            .sort({ createdAt: -1 })
+            .limit(10);
 
-    // Calculate total usage
-    const totalUsage = await Session.aggregate([
-        {
-            $group: {
-                _id: null,
-                totalCommands: { $sum: '$usage.commandsExecuted' },
-                totalMessages: { $sum: '$usage.messagesProcessed' },
-                totalGroups: { $sum: '$usage.groupsTagged' }
+        // Calculate total usage
+        const totalUsage = await Session.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalCommands: { $sum: '$usage.commandsExecuted' },
+                    totalMessages: { $sum: '$usage.messagesProcessed' },
+                    totalGroups: { $sum: '$usage.groupsTagged' }
+                }
             }
-        }
-    ]);
+        ]);
 
-    res.json({
-        success: true,
-        data: {
-            stats: {
-                users: {
-                    total: totalUsers,
-                    active: activeUsers,
-                    pending: pendingUsers
+        res.json({
+            success: true,
+            data: {
+                stats: {
+                    users: {
+                        total: totalUsers,
+                        active: activeUsers,
+                        pending: pendingUsers
+                    },
+                    sessions: {
+                        total: totalSessions,
+                        active: activeSessions,
+                        connecting: connectingSessions
+                    },
+                    usage: totalUsage[0] || { totalCommands: 0, totalMessages: 0, totalGroups: 0 }
                 },
-                sessions: {
-                    total: totalSessions,
-                    active: activeSessions,
-                    connecting: connectingSessions
-                },
-                usage: totalUsage[0] || { totalCommands: 0, totalMessages: 0, totalGroups: 0 }
-            },
-            subscriptionStats,
-            recentUsers,
-            recentSessions
-        }
-    });
+                subscriptionStats,
+                recentUsers,
+                recentSessions
+            }
+        });
 
-} catch (error) {
-    console.error('Admin dashboard error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Error fetching admin dashboard data.'
-    });
-}
-});
-
-// Get all users with pagination router.get('/users', authenticateAdmin, async (req, res) => { try { const page = parseInt(req.query.page) || 1; const limit = parseInt(req.query.limit) || 20; const status = req.query.status; const subscription = req.query.subscription; const search = req.query.search;
-
-    // Build filter
-    const filter = {};
-    if (status) filter.status = status;
-    if (subscription) filter.subscription = subscription;
-    if (search) {
-        filter.$or = [
-            { fullName: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
-        ];
+    } catch (error) {
+        console.error('Admin dashboard error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching admin dashboard data.'
+        });
     }
+});
 
-    const users = await User.find(filter)
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .skip((page - 1) * limit);
+// Get all users with pagination
+router.get('/users', authenticateAdmin, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const status = req.query.status;
+        const subscription = req.query.subscription;
+        const search = req.query.search;
 
-    const totalUsers = await User.countDocuments(filter);
+        // Build filter
+        const filter = {};
+        if (status) filter.status = status;
+        if (subscription) filter.subscription = subscription;
+        if (search) {
+            filter.$or = [
+                { fullName: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
 
-    res.json({
-        success: true,
-        data: {
-            users,
-            pagination: {
-                currentPage: page,
-                totalPages: Math.ceil(totalUsers / limit),
-                totalUsers,
-                hasNextPage: page < Math.ceil(totalUsers / limit),
-                hasPrevPage: page > 1
+        const users = await User.find(filter)
+            .select('-password')
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .skip((page - 1) * limit);
+
+        const totalUsers = await User.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: {
+                users,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(totalUsers / limit),
+                    totalUsers,
+                    hasNextPage: page < Math.ceil(totalUsers / limit),
+                    hasPrevPage: page > 1
+                }
             }
-        }
-    });
+        });
 
-} catch (error) {
-    console.error('Get users error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Error fetching users.'
-    });
-}
+    } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching users.'
+        });
+    }
 });
 
-// Get user details router.get('/users/:userId', authenticateAdmin, async (req, res) => { try { const user = await User.findById(req.params.userId).select('-password'); if (!user) { return res.status(404).json({ success: false, message: 'User not found.' }); }
-
-    const sessions = await Session.find({ userId: user._id }).sort({ createdAt: -1 });
-
-    res.json({
-        success: true,
-        data: {
-            user,
-            sessions
+// Get user details
+router.get('/users/:userId', authenticateAdmin, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found.' 
+            });
         }
-    });
 
-} catch (error) {
-    console.error('Get user details error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Error fetching user details.'
-    });
-}
+        const sessions = await Session.find({ userId: user._id }).sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: {
+                user,
+                sessions
+            }
+        });
+
+    } catch (error) {
+        console.error('Get user details error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user details.'
+        });
+    }
 });
 
-// Approve user router.put('/users/:userId/approve', authenticateAdmin, async (req, res) => { try { const user = await User.findById(req.params.userId); if (!user) { return res.status(404).json({ success: false, message: 'User not found.' }); }
+// Approve user
+router.put('/users/:userId/approve', authenticateAdmin, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId);
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found.' 
+            });
+        }
 
-    user.status = 'approved';
-    await user.save();
+        user.status = 'approved';
+        await user.save();
 
-    // Also approve their session if exists
-    await Session.updateMany(
-        { userId: user._id, status: 'pending_approval'
-
-             { userId: user._id, status: 'pending_approval' },
+        // Also approve their session if exists
+        await Session.updateMany(
+            { userId: user._id, status: 'pending_approval' },
             { 
                 status: 'connected',
                 approvedBy: req.user._id,
@@ -181,7 +216,7 @@ router.put('/users/:userId/suspend', authenticateAdmin, async (req, res) => {
 
         // Disconnect all user sessions
         await Session.updateMany(
-            { userId: user._id, status: { $in: ['connected', 'connecting'] } },
+            { userId: user._id, status: { $in: ['connected', 'waiting_qr'] } },
             { 
                 status: 'disconnected',
                 errorMessage: reason || 'Account suspended by admin'
@@ -207,7 +242,7 @@ router.put('/users/:userId/suspend', authenticateAdmin, async (req, res) => {
 router.put('/users/:userId/subscription', authenticateAdmin, async (req, res) => {
     try {
         const { subscription, expiryDate } = req.body;
-        const validSubscriptions = ['starter', 'professional', 'business', 'enterprise'];
+        const validSubscriptions = ['starter', 'professional', 'business', 'enterprise']; // Updated to match your index page
 
         if (!validSubscriptions.includes(subscription)) {
             return res.status(400).json({
@@ -301,7 +336,10 @@ router.put('/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res
             });
         }
 
-        await session.markDisconnected(reason || 'Disconnected by admin');
+        session.status = 'disconnected';
+        session.errorMessage = reason || 'Disconnected by admin';
+        session.disconnectedAt = new Date();
+        await session.save();
 
         res.json({
             success: true,
@@ -338,7 +376,7 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
                 break;
             case 'active':
                 const activeSessions = await Session.find({ status: 'connected' });
-                const activeUserIds = activeSessions.map(s => s.userId);
+                const activeUserIds = [...new Set(activeSessions.map(s => s.userId.toString()))];
                 targetUsers = await User.find({ _id: { $in: activeUserIds } });
                 break;
             case 'subscription':
@@ -493,7 +531,7 @@ router.get('/export/users', authenticateAdmin, async (req, res) => {
 
         if (format === 'csv') {
             // Convert to CSV format
-            const csv = users.map(user => ({
+            const csvData = users.map(user => ({
                 'Full Name': user.fullName,
                 'Email': user.email,
                 'Subscription': user.subscription,
@@ -501,18 +539,21 @@ router.get('/export/users', authenticateAdmin, async (req, res) => {
                 'Payment Status': user.paymentStatus,
                 'Created At': user.createdAt,
                 'Last Login': user.lastLogin,
-                'Commands Used': user.usage.commandsUsed,
-                'Groups Tagged': user.usage.groupsTagged
+                'Commands Used': user.usage?.commandsUsed || 0,
+                'Groups Tagged': user.usage?.groupsTagged || 0
             }));
 
             res.setHeader('Content-Type', 'text/csv');
             res.setHeader('Content-Disposition', 'attachment; filename=users.csv');
             
-            // Simple CSV conversion (in production, use a proper CSV library)
-            const csvString = [
-                Object.keys(csv[0]).join(','),
-                ...csv.map(row => Object.values(row).join(','))
-            ].join('\n');
+            // Simple CSV conversion
+            const headers = Object.keys(csvData[0]).join(',');
+            const rows = csvData.map(row => 
+                Object.values(row).map(field => 
+                    `"${String(field || '').replace(/"/g, '""')}"`
+                ).join(',')
+            );
+            const csvString = [headers, ...rows].join('\n');
             
             res.send(csvString);
         } else {
