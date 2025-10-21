@@ -1,34 +1,300 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up | AutoPay</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://accounts.google.com/gsi/client"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-    <nav>
-        <!-- Same navigation as index.html -->
-    </nav>
-    <main>
-        <div class="signup-form">
-            <h2>Create Account</h2>
-            <form id="signupForm">
-                <input type="text" placeholder="Full Name" required>
-                <input type="email" placeholder="Email" required>
-                <input type="password" placeholder="Password" required>
-                <button type="submit">Sign Up</button>
-            </form>
-            <div class="google-signin">
-                <div id="g_id_onload"
-                     data-client_id="YOUR_GOOGLE_CLIENT_ID"
-                     data-callback="handleCredentialResponse">
-                </div>
-                <div class="g_id_signin"></div>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                AutoPay
             </div>
-            <div class="payment-link">
-                <a href="https://your-payment-gateway.com" class="btn">Set Up Payment</a>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="signup.html" class="active">Sign Up</a></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="signup-container">
+            <div class="signup-card">
+                <div class="card-header">
+                    <h1>Create Your Account</h1>
+                    <p>Join AutoPay and streamline your WhatsApp business</p>
+                </div>
+
+                <form id="signupForm" class="signup-form" novalidate>
+                    <div class="form-group">
+                        <label for="fullName">Full Name</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-user input-icon"></i>
+                            <input type="text" id="fullName" name="fullName" placeholder="Enter your full name" required>
+                        </div>
+                        <span class="error-message" id="nameError"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                        </div>
+                        <span class="error-message" id="emailError"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" id="password" name="password" placeholder="Create a strong password" required>
+                            <button type="button" class="toggle-password" id="togglePassword">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <span class="error-message" id="passwordError"></span>
+                        <div class="password-strength">
+                            <div class="strength-bar">
+                                <div class="strength-fill" id="strengthFill"></div>
+                            </div>
+                            <span class="strength-text" id="strengthText">Password strength</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your password" required>
+                        </div>
+                        <span class="error-message" id="confirmPasswordError"></span>
+                    </div>
+
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="terms" name="terms" required>
+                            <span class="checkmark"></span>
+                            I agree to the <a href="#" class="link">Terms of Service</a> and <a href="#" class="link">Privacy Policy</a>
+                        </label>
+                        <span class="error-message" id="termsError"></span>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="submitBtn">
+                        <span class="btn-text">Create Account</span>
+                        <div class="btn-loader" id="btnLoader">
+                            <div class="spinner"></div>
+                        </div>
+                    </button>
+                </form>
+
+                <div class="divider">
+                    <span>or continue with</span>
+                </div>
+
+                <div class="social-login">
+                    <div id="g_id_onload"
+                         data-client_id="YOUR_GOOGLE_CLIENT_ID"
+                         data-callback="handleCredentialResponse"
+                         data-auto_prompt="false">
+                    </div>
+                    <div class="g_id_signin google-btn" 
+                         data-type="standard" 
+                         data-size="large" 
+                         data-theme="outline" 
+                         data-text="continue_with"
+                         data-shape="rectangular"
+                         data-logo_alignment="left">
+                    </div>
+                </div>
+
+                <div class="payment-section">
+                    <div class="payment-info">
+                        <i class="fas fa-credit-card"></i>
+                        <div>
+                            <h3>Set Up Payment Method</h3>
+                            <p>Secure payment processing for your business</p>
+                        </div>
+                    </div>
+                    <a href="https://your-payment-gateway.com" class="btn-secondary">
+                        <i class="fas fa-arrow-right"></i>
+                        Configure Payment
+                    </a>
+                </div>
+
+                <div class="login-link">
+                    Already have an account? <a href="#" class="link">Sign in here</a>
+                </div>
             </div>
         </div>
     </main>
+
+    <script>
+        // Form validation and interactions
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('signupForm');
+            const togglePassword = document.getElementById('togglePassword');
+            const password = document.getElementById('password');
+            const confirmPassword = document.getElementById('confirmPassword');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnLoader = document.getElementById('btnLoader');
+            const btnText = document.querySelector('.btn-text');
+
+            // Mobile menu toggle
+            const hamburger = document.querySelector('.hamburger');
+            const navMenu = document.querySelector('.nav-menu');
+
+            hamburger.addEventListener('click', () => {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+
+            // Password toggle
+            togglePassword.addEventListener('click', function() {
+                const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+                password.setAttribute('type', type);
+                this.querySelector('i').classList.toggle('fa-eye');
+                this.querySelector('i').classList.toggle('fa-eye-slash');
+            });
+
+            // Password strength checker
+            password.addEventListener('input', function() {
+                const strength = checkPasswordStrength(this.value);
+                updatePasswordStrength(strength);
+            });
+
+            // Form validation
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (validateForm()) {
+                    submitForm();
+                }
+            });
+
+            function validateForm() {
+                let isValid = true;
+                const formData = new FormData(form);
+
+                // Name validation
+                const name = formData.get('fullName').trim();
+                if (name.length < 2) {
+                    showError('nameError', 'Name must be at least 2 characters long');
+                    isValid = false;
+                } else {
+                    clearError('nameError');
+                }
+
+                // Email validation
+                const email = formData.get('email').trim();
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    showError('emailError', 'Please enter a valid email address');
+                    isValid = false;
+                } else {
+                    clearError('emailError');
+                }
+
+                // Password validation
+                const pwd = formData.get('password');
+                if (pwd.length < 8) {
+                    showError('passwordError', 'Password must be at least 8 characters long');
+                    isValid = false;
+                } else {
+                    clearError('passwordError');
+                }
+
+                // Confirm password validation
+                const confirmPwd = formData.get('confirmPassword');
+                if (pwd !== confirmPwd) {
+                    showError('confirmPasswordError', 'Passwords do not match');
+                    isValid = false;
+                } else {
+                    clearError('confirmPasswordError');
+                }
+
+                // Terms validation
+                const terms = formData.get('terms');
+                if (!terms) {
+                    showError('termsError', 'You must accept the terms and conditions');
+                    isValid = false;
+                } else {
+                    clearError('termsError');
+                }
+
+                return isValid;
+            }
+
+            function showError(elementId, message) {
+                const errorElement = document.getElementById(elementId);
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            }
+
+            function clearError(elementId) {
+                const errorElement = document.getElementById(elementId);
+                errorElement.style.display = 'none';
+            }
+
+            function checkPasswordStrength(password) {
+                let strength = 0;
+                if (password.length >= 8) strength++;
+                if (/[a-z]/.test(password)) strength++;
+                if (/[A-Z]/.test(password)) strength++;
+                if (/[0-9]/.test(password)) strength++;
+                if (/[^A-Za-z0-9]/.test(password)) strength++;
+                return strength;
+            }
+
+            function updatePasswordStrength(strength) {
+                const strengthFill = document.getElementById('strengthFill');
+                const strengthText = document.getElementById('strengthText');
+                const colors = ['#ff4757', '#ff6b7a', '#ffa502', '#2ed573', '#20bf6b'];
+                const texts = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+                
+                strengthFill.style.width = (strength * 20) + '%';
+                strengthFill.style.backgroundColor = colors[strength - 1] || '#ddd';
+                strengthText.textContent = strength > 0 ? texts[strength - 1] : 'Password strength';
+            }
+
+            async function submitForm() {
+                submitBtn.disabled = true;
+                btnText.style.opacity = '0';
+                btnLoader.style.display = 'block';
+
+                try {
+                    // Simulate API call
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    // Success handling
+                    alert('Account created successfully!');
+                    form.reset();
+                } catch (error) {
+                    alert('Error creating account. Please try again.');
+                } finally {
+                    submitBtn.disabled = false;
+                    btnText.style.opacity = '1';
+                    btnLoader.style.display = 'none';
+                }
+            }
+        });
+
+        // Google Sign-in callback
+        function handleCredentialResponse(response) {
+            console.log("Encoded JWT ID token: " + response.credential);
+            // Handle the Google sign-in response here
+        }
+    </script>
 </body>
 </html>
