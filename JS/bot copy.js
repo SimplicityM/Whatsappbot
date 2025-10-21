@@ -27,7 +27,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 // User session storage
-const userSessions = new Map();
+const userSessions = new Map();:
 const userSubscriptions = {
     'free': ['ping', 'help'],
     'basic': ['ping', 'help', 'broadcast', 'auto-reply'],
