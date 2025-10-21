@@ -933,3 +933,20 @@ window.editReminder = editReminder;
 window.deleteReminder = deleteReminder;
 window.saveSettings = saveSettings;
 window.addAdmin = addAdmin;
+
+// In admin.js - User-specific dashboard
+const userSession = JSON.parse(localStorage.getItem('userSession'));
+
+if (!userSession) {
+    window.location.href = '/index.html';
+    return;
+}
+
+// Connect to user's specific namespace
+const socket = io('/user-' + userSession.user.id);
+
+// User can only see their own sessions
+socket.on('userSessions', (sessions) => {
+    // Only show this user's sessions
+    renderUserSessions(sessions);
+});

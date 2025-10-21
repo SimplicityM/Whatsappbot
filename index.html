@@ -812,6 +812,30 @@
                 observer.observe(el);
             });
         });
+
+        // Update your Google Sign-In callback
+function handleGoogleSignIn(response) {
+    fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Store user session
+            localStorage.setItem('userSession', JSON.stringify({
+                token: data.sessionToken,
+                user: data.user
+            }));
+            
+            // Redirect to admin
+            window.location.href = '/admin.html';
+        } else {
+            alert('Login failed: ' + data.error);
+        }
+    });
+}
     </script>
 </body>
 </html>

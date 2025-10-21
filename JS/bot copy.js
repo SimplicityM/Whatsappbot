@@ -156,3 +156,103 @@ io.on('connection', (socket) => {
 server.listen(3000, () => {
     console.log('Multi-User WhatsApp Bot running on port 3000');
 });
+
+// In bot.js - User management
+const users = new Map(); // In production, use MongoDB/PostgreSQL
+
+// User structure
+const userTemplate = {
+    id: 'google-user-id',
+    email: 'user@example.com',
+    name: 'User Name',
+    subscription: 'free', // free, basic, premium
+    whatsappSessions: [], // Array of WhatsApp sessions
+    createdAt: new Date(),
+    allowedCommands: ['ping', 'help']
+};
+
+// In bot.js - Add these routes
+app.post('/auth/google', async (req, res) => {
+    try {
+        const { token } = req.body;
+        
+        // Verify Google token
+        const ticket = await client.verifyIdToken({
+            idToken: token,
+            audience: 'YOUR_GOOGLE_CLIENT_ID'
+        });
+        
+        const payload = ticket.getPayload();
+        const userId = payload['sub'];
+        
+        // Create or get user
+        let user = users.get(userId);
+        if (!user) {
+            user = {
+                id: userId,
+                email: payload.email,
+                name: payload.name,
+                subscription: 'free',
+                whatsappSessions: [],
+                createdAt: new Date(),
+                allowedCommands: userSubscriptions.free
+            };
+            users.set(userId, user);
+        }
+        
+        // Create session and redirect
+        const sessionToken = generateSessionToken();
+        res.json({ 
+            success: true, 
+            sessionToken, 
+            user: {
+                id: user.id,
+                name: user.name,
+                subscription: user.subscription,
+                allowedCommands: user.allowedCommands
+            }
+        });
+        
+    } catch (error) {
+        res.status(401).json({ success: false, error: 'Authentication failed' });
+    }
+});
+
+
+// In bot.js - User-specific WhatsApp sessions
+function createUserWhatsAppSession(userId) {
+    const user = users.get(userId);
+    if (!user) throw new Error('User not found');
+    
+    const sessionId = `${userId}-${Date.now()}`;
+    
+    const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionId }),
+        puppeteer: { headless: true }
+    });
+    
+    const userSession = {
+        sessionId,
+        client,
+        userId,
+        subscription: user.subscription,
+        allowedCommands: user.allowedCommands,
+        status: 'initializing'
+    };
+    
+    user.whatsappSessions.push(sessionId);
+    userSessions.set(sessionId, userSession);
+    
+    // Setup client events...
+    client.on('qr', (qr) => {
+        io.to(userId).emit('qrCode', { sessionId, qr });
+    });
+    
+    client.on('ready', () => {
+        userSession.status = 'connected';
+        io.to(userId).emit('sessionReady', { sessionId });
+    });
+    
+    client.initialize();
+    return sessionId;
+}
