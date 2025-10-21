@@ -341,6 +341,16 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../index.html'));
 });
 
+// Serve user dashboard
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, '../user-dashboard.html'));
+});
+
+// Serve admin dashboard (only for you)
+app.get('/admin', adminAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, '../admin.html'));
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
