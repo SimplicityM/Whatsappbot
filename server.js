@@ -27,9 +27,14 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); // Serve from public folder
 
 // Database connection with environment variables
+// In your server.js - make sure it uses MONGODB_URI (not MONGO_URI)
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot';
+        const mongoURI = process.env.MONGODB_URI;
+        
+        if (!mongoURI) {
+            throw new Error('MONGODB_URI environment variable is not defined');
+        }
         
         await mongoose.connect(mongoURI, {
             useNewUrlParser: true,
@@ -38,11 +43,10 @@ const connectDB = async () => {
         
         console.log('✅ Connected to MongoDB');
         console.log(`📊 Database: ${mongoose.connection.name}`);
-        console.log(`🏠 Host: ${mongoose.connection.host}`);
         
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
-        process.exit(1); // Exit process with failure
+        process.exit(1);
     }
 };
 
