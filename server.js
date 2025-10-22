@@ -9,6 +9,9 @@ const qrcode = require('qrcode');
 // Import models and routes
 const User = require('./models/User');
 const Session = require('./models/Session');
+// ADD THIS LINE:
+// const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const { authenticate } = require('./middleware/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -347,20 +350,20 @@ app.get('/dashboard', (req, res) => {
 });
 
 // Serve admin dashboard (only for you)
-app.get('/admin', adminAuth, (req, res) => {
+app.get('/admin', authenticateAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, '../admin.html'));
 });
 
 // User endpoints
-app.get('/api/users/profile', authenticateToken, async (req, res) => {
+app.get('/api/users/profile', authenticate, async (req, res) => {
     // Return user profile data
 });
 
-app.get('/api/users/settings', authenticateToken, async (req, res) => {
+app.get('/api/users/settings', authenticate, async (req, res) => {
     // Return user settings
 });
 
-app.put('/api/users/settings', authenticateToken, async (req, res) => {
+app.put('/api/users/settings', authenticate, async (req, res) => {
     // Save user settings
 });
 
@@ -377,12 +380,12 @@ app.post('/api/sessions/:sessionId/restart', authenticateToken, async (req, res)
     // Restart session
 });
 
-app.delete('/api/sessions/:sessionId', authenticateToken, async (req, res) => {
+app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
     // Delete session
 });
 
 // Payment endpoints
-app.get('/api/payments/subscription-status', authenticateToken, async (req, res) => {
+app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
     // Return subscription status
 });
 
@@ -390,7 +393,7 @@ app.get('/api/payments/plans', async (req, res) => {
     // Return available plans
 });
 
-app.get('/api/payments/history', authenticateToken, async (req, res) => {
+app.get('/api/payments/history', authenticate, async (req, res) => {
     // Return payment history
 });
 
