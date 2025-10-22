@@ -197,7 +197,7 @@ async function getGroupsWhereSenderIsAdmin(client, senderId) {
                     const participantUser = p.id.user;
                     
                  // Clean all numbers to just digits for comparison
-const clean = n => (n || '').replace(/\\D/g, '');
+const clean = n => (n || '').replace(/\D/g, '');
 const senderDigits = clean(senderId);
 const participantDigits = clean(participantId);
 
