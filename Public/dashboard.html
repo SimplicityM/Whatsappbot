@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="CSS/admin.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="/js/qrcode.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/lib/browser.min.js"></script>
     
 </head>
 <body class="admin-body">
@@ -487,34 +487,33 @@
         </div>
     </main>
 
-    <!-- QR Code Modal -->
-    <div id="qrModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Scan QR Code</h3>
-                <button class="modal-close" onclick="closeQRModal()">
-                    <i class="fas fa-times"></i>
-                </button>
+    <!-- Add this to your dashboard.html -->
+<div id="qrModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Scan QR Code</h3>
+            <button class="close-btn" onclick="closeQRModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="qrCodeDisplay" class="qr-code-display">
+                <i class="fas fa-qrcode"></i>
+                <p>Generating QR Code...</p>
             </div>
-            <div class="modal-body">
-                <div class="qr-container">
-                    <div class="qr-placeholder" id="qrCodeDisplay">
-                        <i class="fas fa-qrcode"></i>
-                        <p>Generating QR Code...</p>
-                    </div>
-                    <div class="qr-instructions">
-                        <h4>How to connect:</h4>
-                        <ol>
-                            <li>Open WhatsApp on your phone</li>
-                            <li>Go to Settings > Linked Devices</li>
-                            <li>Tap "Link a Device"</li>
-                            <li>Scan this QR code</li>
-                        </ol>
-                    </div>
-                </div>
+            <div class="qr-instructions">
+                <h4>How to Connect:</h4>
+                <ol>
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                    <li>Tap <strong>"Link a Device"</strong></li>
+                    <li>Point your camera at the QR code</li>
+                </ol>
             </div>
         </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeQRModal()">Cancel</button>
+        </div>
     </div>
+</div>
 
     <!-- Upgrade Modal -->
     <div id="upgradeModal" class="modal">

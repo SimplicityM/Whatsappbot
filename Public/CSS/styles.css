@@ -3028,3 +3028,133 @@ input:checked + .slider:before {
     justify-content: center;
     gap: 0.5rem;
 }
+
+/* QR Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+}
+
+.modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #2d3748;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #718096;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    color: #2d3748;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.qr-code-display {
+    text-align: center;
+    padding: 20px;
+    background: #f7fafc;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.qr-code-display i {
+    font-size: 48px;
+    color: #667eea;
+    margin-bottom: 10px;
+}
+
+.qr-code-active {
+    background: white;
+    padding: 0;
+}
+
+.qr-code-canvas {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 256px;
+}
+
+.qr-instructions {
+    background: #f7fafc;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.qr-instructions h4 {
+    margin: 0 0 10px 0;
+    color: #2d3748;
+}
+
+.qr-instructions ol {
+    margin: 0;
+    padding-left: 20px;
+    color: #4a5568;
+}
+
+.qr-instructions li {
+    margin-bottom: 8px;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In | AutoPay</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                AutoPay
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="signup.html">Sign Up</a></li>
+                <li><a href="signin.html" class="active">Sign In</a></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="signup-container">
+            <div class="signup-card">
+                <div class="card-header">
+                    <h1>Welcome Back</h1>
+                    <p>Sign in to your AutoPay account</p>
+                </div>
+
+                <form id="signinForm" class="signup-form" novalidate>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                        </div>
+                        <span class="error-message" id="emailError"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                            <button type="button" class="toggle-password" id="togglePassword">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <span class="error-message" id="passwordError"></span>
+                    </div>
+
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="rememberMe" name="rememberMe">
+                            <span class="checkmark"></span>
+                            Remember me
+                        </label>
+                        <a href="#" class="link forgot-password-link" id="forgotPasswordLink">Forgot password?</a>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="submitBtn">
+                        <span class="btn-text">Sign In</span>
+                        <div class="btn-loader" id="btnLoader">
+                            <div class="spinner"></div>
+                        </div>
+                    </button>
+                </form>
+
+                <div class="divider">
+                    <span>or continue with</span>
+                </div>
+
+                <div class="social-login">
+                    <div id="g_id_onload"
+                         data-client_id="YOUR_GOOGLE_CLIENT_ID"
+                         data-callback="handleCredentialResponse"
+                         data-auto_prompt="false">
+                    </div>
+                    <div class="g_id_signin google-btn" 
+                         data-type="standard" 
+                         data-size="large" 
+                         data-theme="outline" 
+                         data-text="signin_with"
+                         data-shape="rectangular"
+                         data-logo_alignment="left">
+                    </div>
+                </div>
+
+                <div class="login-link">
+                    Don't have an account? <a href="signup.html" class="link">Sign up here</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotPasswordModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Reset Password</h2>
+                <button type="button" class="modal-close" id="modalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="forgotPasswordForm" class="modal-form">
+                <div class="form-group">
+                    <label for="resetEmail">Email Address</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-envelope input-icon"></i>
+                        <input type="email" id="resetEmail" name="resetEmail" placeholder="Enter your email" required>
+                    </div>
+                    <span class="error-message" id="resetEmailError"></span>
+                </div>
+                <button type="submit" class="btn-primary" id="resetSubmitBtn">
+                    <span class="btn-text">Send Reset Link</span>
+                    <div class="btn-loader" id="resetBtnLoader">
+                        <div class="spinner"></div>
+                    </div>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    // Form validation and interactions
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('signinForm');
+        const togglePassword = document.getElementById('togglePassword');
+        const password = document.getElementById('password');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnLoader = document.getElementById('btnLoader');
+        const btnText = document.querySelector('.btn-text');
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+        const modalClose = document.getElementById('modalClose');
+        const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+
+        // Mobile menu toggle
+        const hamburger = document.querySelector('.hamburger');
+        const navMenu = document.querySelector('.nav-menu');
+
+        if (hamburger && navMenu) {
+            hamburger.addEventListener('click', () => {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+        }
+
+        // Password toggle
+        if (togglePassword && password) {
+            togglePassword.addEventListener('click', function() {
+                const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+                password.setAttribute('type', type);
+                const icon = this.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-eye');
+                    icon.classList.toggle('fa-eye-slash');
+                }
+            });
+        }
+
+        // Forgot password modal
+        if (forgotPasswordLink && forgotPasswordModal) {
+            forgotPasswordLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                forgotPasswordModal.style.display = 'flex';
+            });
+        }
+
+        if (modalClose && forgotPasswordModal) {
+            modalClose.addEventListener('click', function() {
+                forgotPasswordModal.style.display = 'none';
+            });
+        }
+
+        // Close modal when clicking outside
+        if (forgotPasswordModal) {
+            forgotPasswordModal.addEventListener('click', function(e) {
+                if (e.target === forgotPasswordModal) {
+                    forgotPasswordModal.style.display = 'none';
+                }
+            });
+        }
+
+        // Form validation
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (validateForm()) {
+                    submitForm();
+                }
+            });
+        }
+
+        // Forgot password form
+        if (forgotPasswordForm) {
+            forgotPasswordForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitForgotPassword();
+            });
+        }
+
+        function validateForm() {
+            let isValid = true;
+            const formData = new FormData(form);
+
+            // Email validation
+            const email = formData.get('email')?.trim() || '';
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showError('emailError', 'Please enter a valid email address');
+                isValid = false;
+            } else {
+                clearError('emailError');
+            }
+
+            // Password validation
+            const pwd = formData.get('password') || '';
+            if (pwd.length < 1) {
+                showError('passwordError', 'Password is required');
+                isValid = false;
+            } else {
+                clearError('passwordError');
+            }
+
+            return isValid;
+        }
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            }
+        }
+
+        function clearError(elementId) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.style.display = 'none';
+            }
+        }
+
+        async function submitForm() {
+            if (!submitBtn || !btnText || !btnLoader) return;
+            
+            submitBtn.disabled = true;
+            btnText.style.opacity = '0';
+            btnLoader.style.display = 'block';
+
+            try {
+                const formData = new FormData(form);
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: formData.get('email'),
+                        password: formData.get('password')
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store user session data
+                    const userSession = {
+                        token: data.data.token,
+                        user: data.data.user
+                    };
+                    localStorage.setItem('userSession', JSON.stringify(userSession));
+                    
+                    // Show success message
+                    showNotification('Login successful! Redirecting to dashboard...', 'success');
+                    
+                    // Redirect to dashboard after a short delay
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1500);
+                } else {
+                    showNotification(data.message || 'Invalid email or password. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showNotification('Network error. Please check your connection and try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.style.opacity = '1';
+                btnLoader.style.display = 'none';
+            }
+        }
+
+        async function submitForgotPassword() {
+            const resetSubmitBtn = document.getElementById('resetSubmitBtn');
+            const resetBtnLoader = document.getElementById('resetBtnLoader');
+            const resetBtnText = resetSubmitBtn.querySelector('.btn-text');
+            
+            if (!resetSubmitBtn) return;
+            
+            resetSubmitBtn.disabled = true;
+            resetBtnText.style.opacity = '0';
+            resetBtnLoader.style.display = 'block';
+
+            try {
+                const formData = new FormData(forgotPasswordForm);
+                const email = formData.get('resetEmail')?.trim();
+
+                if (!email) {
+                    showError('resetEmailError', 'Email is required');
+                    return;
+                }
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    showError('resetEmailError', 'Please enter a valid email address');
+                    return;
+                }
+
+                clearError('resetEmailError');
+                
+                const response = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('Password reset instructions sent to your email!', 'success');
+                    forgotPasswordModal.style.display = 'none';
+                    forgotPasswordForm.reset();
+                } else {
+                    showNotification(data.message || 'Error sending reset email. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                showNotification('Network error. Please check your connection and try again.', 'error');
+            } finally {
+                resetSubmitBtn.disabled = false;
+                resetBtnText.style.opacity = '1';
+                resetBtnLoader.style.display = 'none';
+            }
+        }
+
+        // Notification function (same as signup page)
+        function showNotification(message, type = 'info') {
+            // Remove existing notifications
+            const existingNotifications = document.querySelectorAll('.custom-notification');
+            existingNotifications.forEach(notification => notification.remove());
+
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `custom-notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            // Add styles if not already present
+            if (!document.querySelector('#notification-styles')) {
+                const style = document.createElement('style');
+                style.id = 'notification-styles';
+                style.textContent = `
+                    .custom-notification {
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: white;
+                        border-radius: 8px;
+                        padding: 16px;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        border-left: 4px solid #667eea;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        animation: slideInRight 0.3s ease;
+                        z-index: 10000;
+                        max-width: 400px;
+                    }
+                    .custom-notification.success {
+                        border-left-color: #48bb78;
+                    }
+                    .custom-notification.error {
+                        border-left-color: #f56565;
+                    }
+                    .notification-content {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .notification-close {
+                        background: none;
+                        border: none;
+                        cursor: pointer;
+                        color: #718096;
+                        padding: 4px;
+                    }
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    .modal {
+                        display: none;
+                        position: fixed;
+                        z-index: 10000;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        height: 100%;
+                        background-color: rgba(0,0,0,0.5);
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .modal-content {
+                        background: white;
+                        border-radius: 12px;
+                        padding: 2rem;
+                        max-width: 400px;
+                        width: 90%;
+                        position: relative;
+                        animation: slideInDown 0.3s ease;
+                    }
+                    .modal-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 1.5rem;
+                    }
+                    .modal-header h2 {
+                        margin: 0;
+                        color: var(--gray-800);
+                    }
+                    .modal-close {
+                        background: none;
+                        border: none;
+                        font-size: 1.5rem;
+                        cursor: pointer;
+                        color: var(--gray-500);
+                        padding: 0;
+                        width: 24px;
+                        height: 24px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .modal-form .form-group {
+                        margin-bottom: 1.5rem;
+                    }
+                    .forgot-password-link {
+                        margin-left: auto;
+                        font-size: 0.875rem;
+                    }
+                    .checkbox-group {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+                    @keyframes slideInDown {
+                        from {
+                            transform: translateY(-50px);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateY(0);
+                            opacity: 1;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(notification);
+
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
+        // Google Sign-in callback
+        function handleCredentialResponse(response) {
+            console.log("Encoded JWT ID token: " + response.credential);
+            // Handle the Google sign-in response here
+            // You can send this token to your backend for verification
+            showNotification('Google sign-in successful!', 'success');
+        }
+    });
+</script>
+</body>
+</html>

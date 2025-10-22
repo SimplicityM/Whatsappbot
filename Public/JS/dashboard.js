@@ -548,7 +548,9 @@ async function createNewSession() {
         showLoading(false);
     }
 }
-// FINAL WORKING VERSION: QR Code display
+
+
+// FIXED: QR Code display function
 function displayQRCode(qrData, sessionId) {
     console.log('🎯 displayQRCode called with:', { sessionId, qrDataLength: qrData?.length });
     
@@ -559,7 +561,7 @@ function displayQRCode(qrData, sessionId) {
         return;
     }
 
-    // Clear previous content
+    // Clear previous content and set active state
     qrCodeDisplay.innerHTML = '';
     qrCodeDisplay.className = 'qr-code-active';
     
@@ -574,27 +576,15 @@ function displayQRCode(qrData, sessionId) {
     try {
         // Generate the QR code
         const qr = new QRCode(qrCodeContainer, {
-            text: qrData || 'https://web.whatsapp.com/',
+            text: qrData,
             width: 256,
             height: 256,
             colorDark: "#000000",
-            colorLight: "#ffffff"
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
         });
         
         console.log('✅ QR code generated successfully');
-        
-        // Verify the canvas was created
-        setTimeout(() => {
-            const canvas = qrCodeContainer.querySelector('canvas');
-            if (canvas) {
-                console.log('🎨 Canvas verified:', canvas.width, 'x', canvas.height);
-                // Add some styling to the canvas
-                canvas.style.borderRadius = '8px';
-                canvas.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
-            } else {
-                console.warn('⚠️ No canvas element found in container');
-            }
-        }, 100);
         
     } catch (error) {
         console.error('❌ QR code generation failed:', error);
@@ -605,16 +595,7 @@ function displayQRCode(qrData, sessionId) {
                 <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 1rem;"></i>
                 <h4 style="margin: 0 0 1rem 0; color: #2d3748;">QR Code Ready</h4>
                 <p style="color: #718096; margin-bottom: 1.5rem;">Session: <strong>${sessionId}</strong></p>
-                
-                <div class="qr-instructions" style="background: #f7fafc; padding: 1rem; border-radius: 8px; text-align: left;">
-                    <p style="margin: 0 0 0.5rem 0; font-weight: 500;">How to connect:</p>
-                    <ol style="margin: 0; padding-left: 1.2rem;">
-                        <li>Open WhatsApp on your phone</li>
-                        <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
-                        <li>Tap <strong>"Link a Device"</strong></li>
-                        <li>Point your camera at the QR code</li>
-                    </ol>
-                </div>
+                <p style="color: #718096; margin-bottom: 1.5rem;">QR Data: ${qrData}</p>
             </div>
         `;
     }
@@ -623,6 +604,39 @@ function displayQRCode(qrData, sessionId) {
     showQRModal();
 }
 
+// FIXED: Show QR Modal function
+function showQRModal() {
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal) {
+        qrModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        console.log('✅ QR modal opened');
+    } else {
+        console.error('❌ QR modal element not found');
+        showNotification('QR modal not found - check HTML structure', 'error');
+    }
+}
+
+// FIXED: Close QR Modal function (single implementation)
+function closeQRModal() {
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal) {
+        qrModal.classList.remove('active');
+        document.body.style.overflow = 'auto';
+        
+        // Reset QR code display
+        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+        if (qrCodeDisplay) {
+            qrCodeDisplay.innerHTML = `
+                <i class="fas fa-qrcode"></i>
+                <p>Generating QR Code...</p>
+            `;
+            qrCodeDisplay.className = 'qr-code-display';
+        }
+        
+        console.log('✅ QR modal closed');
+    }
+}
 
 
 
