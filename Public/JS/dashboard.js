@@ -1312,3 +1312,7 @@ if (!document.querySelector('#notification-styles')) {
     `;
     document.head.appendChild(style);
 }
+socket.on('qrCode', (data) => {
+    console.log('🎯 Received QR code event:', data);
+    displayQRCode(data.qr, data.sessionId);
+});

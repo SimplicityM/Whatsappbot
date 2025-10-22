@@ -119,26 +119,29 @@ async function createWhatsAppSession(userId, sessionId) {
         });
         await session.save();
 
-        // QR Code event
-        client.on('qr', async (qr) => {
-            console.log(`QR received for session ${sessionId}`);
-            
-            // Update session status
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { 
-                    status: 'waiting_qr',
-                    qrCode: qr
-                }
-            );
+       // QR Code event
+client.on('qr', async (qr) => {
+    console.log(`🔥 QR received for session ${sessionId}`);
+    console.log(`📱 QR length: ${qr.length}`);
+    
+    // Update session status
+    await Session.findOneAndUpdate(
+        { sessionId },
+        { 
+            status: 'waiting_qr',
+            qrCode: qr
+        }
+    );
 
-            // Emit to specific user
-            io.to(`user-${userId}`).emit('qrCode', {
-                sessionId,
-                qr,
-                message: 'Scan this QR code with WhatsApp'
-            });
-        });
+    console.log(`📡 Emitting QR to user-${userId}`);
+    // Emit to specific user
+    io.to(`user-${userId}`).emit('qrCode', {
+        sessionId,
+        qr,
+        message: 'Scan this QR code with WhatsApp'
+    });
+    console.log(`✅ QR emitted successfully`);
+});
 
         // Ready event
         client.on('ready', async () => {
@@ -442,8 +445,12 @@ app.get('/api/sessions/my-sessions', authenticate, async (req, res) => {
 
 app.post('/api/sessions/create', authenticate, async (req, res) => {
     try {
+        console.log('🔄 Creating session for user:', req.user.id);
         const sessionId = `session-${req.user.id}-${Date.now()}`;
+        console.log('📝 Generated sessionId:', sessionId);
+        
         await createWhatsAppSession(req.user.id, sessionId);
+        console.log('✅ WhatsApp session created successfully');
         
         res.json({
             success: true,
@@ -451,6 +458,7 @@ app.post('/api/sessions/create', authenticate, async (req, res) => {
             message: 'Session created successfully'
         });
     } catch (error) {
+        console.error('❌ Session creation error:', error);
         res.status(400).json({
             success: false,
             message: error.message
