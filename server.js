@@ -23,7 +23,7 @@ const io = socketIo(server, {
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '.'))); // Serve from current directory
+app.use(express.static(path.join(__dirname, 'public'))); // Serve from public folder
 
 // Database connection
 mongoose.connect('mongodb://localhost:27017/whatsappbot', {
@@ -334,27 +334,27 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
 app.use('/api/sessions', require('./routes/sessions'));
 
-// Serve static files from root directory
-app.use(express.static(path.join(__dirname, '.')));
+// Serve static files from public folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve home page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Serve user dashboard
 app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
 // Serve admin dashboard
 app.get('/admin-dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
 });
 
 // Serve payment page
 app.get('/payment', (req, res) => {
-    res.sendFile(path.join(__dirname, 'payment.html'));
+    res.sendFile(path.join(__dirname, 'public', 'payment.html'));
 });
 
 // User endpoints
@@ -614,6 +614,7 @@ server.listen(PORT, () => {
     console.log(`📱 Home Page: http://localhost:${PORT}`);
     console.log(`👤 User Dashboard: http://localhost:${PORT}/dashboard`);
     console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
+    console.log(`💳 Payment Page: http://localhost:${PORT}/payment`);
 });
 
 // Graceful shutdown
