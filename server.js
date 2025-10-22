@@ -9,9 +9,8 @@ const qrcode = require('qrcode');
 // Import models and routes
 const User = require('./models/User');
 const Session = require('./models/Session');
-// ADD THIS LINE:
-// const { authenticate, authenticateAdmin } = require('./middleware/auth');
-const { authenticate } = require('./middleware/auth');
+// Authentication middleware
+const { authenticate, authenticateAdmin } = require('./middleware/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -335,11 +334,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
 app.use('/api/sessions', require('./routes/sessions'));
 
-// Serve admin dashboard
-app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, '../admin.html'));
-});
-
+// Serve home page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../index.html'));
 });
@@ -349,7 +344,7 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, '../user-dashboard.html'));
 });
 
-// Serve admin dashboard (only for you)
+// Serve admin dashboard (protected route)
 app.get('/admin', authenticateAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, '../admin.html'));
 });
@@ -368,15 +363,15 @@ app.put('/api/users/settings', authenticate, async (req, res) => {
 });
 
 // Session endpoints
-app.get('/api/sessions/my-sessions', authenticateToken, async (req, res) => {
+app.get('/api/sessions/my-sessions', authenticate, async (req, res) => {
     // Return user's WhatsApp sessions
 });
 
-app.post('/api/sessions/create', authenticateToken, async (req, res) => {
+app.post('/api/sessions/create', authenticate, async (req, res) => {
     // Create new WhatsApp session
 });
 
-app.post('/api/sessions/:sessionId/restart', authenticateToken, async (req, res) => {
+app.post('/api/sessions/:sessionId/restart', authenticate, async (req, res) => {
     // Restart session
 });
 
@@ -398,7 +393,7 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
 });
 
 // Statistics endpoint
-app.get('/api/statistics/user', authenticateToken, async (req, res) => {
+app.get('/api/statistics/user', authenticate, async (req, res) => {
     // Return user statistics
 });
 
