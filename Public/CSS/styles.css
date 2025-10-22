@@ -3014,3 +3014,17 @@ input:checked + .slider:before {
         transform: translateY(0);
     }
 }
+
+.qr-fallback-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.qr-fallback-actions button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}

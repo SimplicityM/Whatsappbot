@@ -413,62 +413,88 @@ async function createNewSession() {
 }
 
 // IMPROVED: QR Code display with proper error handling
+// SIMPLIFIED: QR Code display with local library
 function displayQRCode(qrData, sessionId) {
+    console.log('🔄 QR Code function called');
+    
     const qrCodeDisplay = document.getElementById('qrCodeDisplay');
     if (!qrCodeDisplay) {
-        console.error('QR code display element not found');
+        console.error('❌ QR code display element not found');
         return;
     }
 
-    // Clear previous content and update structure
+    // Clear and prepare
     qrCodeDisplay.innerHTML = '';
     qrCodeDisplay.className = 'qr-code-active';
     
-    // Create QR code container
     const qrCodeContainer = document.createElement('div');
     qrCodeContainer.id = `qrcode-${sessionId}`;
     qrCodeContainer.className = 'qr-code-canvas';
-    
     qrCodeDisplay.appendChild(qrCodeContainer);
 
-    // Generate QR code
-    try {
-        if (typeof QRCode !== 'undefined') {
+    console.log('📦 Checking QRCode library...');
+    
+    // Check if our QRCode library is available
+    if (typeof QRCode === 'undefined') {
+        console.error('❌ QRCode library not loaded - using image fallback');
+        showImageFallback(qrData, sessionId, qrCodeContainer);
+    } else {
+        try {
+            console.log('✅ QRCode library found, generating code...');
             new QRCode(qrCodeContainer, {
                 text: qrData,
                 width: 256,
                 height: 256,
                 colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
+                colorLight: "#ffffff"
             });
-            
             console.log('✅ QR code generated successfully');
-        } else {
-            // Fallback display
-            qrCodeContainer.innerHTML = `
-                <div class="qr-fallback">
-                    <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 16px;"></i>
-                    <h4>QR Code Ready</h4>
-                    <p style="color: #666; margin: 10px 0;">QR Code library not loaded.</p>
-                    <p style="font-size: 12px; color: #999;">Please check browser console</p>
-                </div>
-            `;
-            console.error('QRCode library not loaded. Add: <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>');
+        } catch (error) {
+            console.error('❌ QR code generation failed:', error);
+            showImageFallback(qrData, sessionId, qrCodeContainer);
         }
-    } catch (error) {
-        console.error('Error generating QR code:', error);
-        qrCodeContainer.innerHTML = `
-            <div class="qr-error">
-                <i class="fas fa-exclamation-triangle" style="font-size: 64px; color: #f56565; margin-bottom: 16px;"></i>
-                <h4>QR Code Error</h4>
-                <p style="color: #666;">Failed to generate QR code</p>
-            </div>
-        `;
     }
     
-    // Show the modal
     showQRModal();
+}
+
+// Fallback using QR code image service
+function showImageFallback(qrData, sessionId, container) {
+    console.log('🔄 Using image fallback for QR code');
+    
+    const encodedData = encodeURIComponent(qrData);
+    container.innerHTML = `
+        <div class="qr-fallback">
+            <i class="fas fa-qrcode"></i>
+            <h4>Scan QR Code</h4>
+            <p>Click the button below to generate QR code</p>
+            <div class="qr-fallback-actions">
+                <button class="btn-primary" onclick="openQRImage('${encodedData}')">
+                    <i class="fas fa-external-link-alt"></i>
+                    Generate QR Code
+                </button>
+                <button class="btn-secondary" onclick="copyQRData('${encodedData}')">
+                    <i class="fas fa-copy"></i>
+                    Copy QR Data
+                </button>
+            </div>
+            <p class="small-text">Session: ${sessionId}</p>
+        </div>
+    `;
+}
+
+function openQRImage(encodedData) {
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodedData}`;
+    window.open(url, '_blank');
+}
+
+function copyQRData(encodedData) {
+    const decodedData = decodeURIComponent(encodedData);
+    navigator.clipboard.writeText(decodedData).then(() => {
+        showNotification('QR data copied to clipboard', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy QR data', 'error');
+    });
 }
 
 // IMPROVED: Subscription management
@@ -758,7 +784,7 @@ function closeQRModal() {
         
         console.log('✅ QR modal closed');
     }
-}s
+}
 
 function closeQRModal() {
     const qrModal = document.getElementById('qrModal');
