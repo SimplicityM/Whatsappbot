@@ -19,32 +19,32 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // FIXED: Authentication check function
-function initializeDashboard() {
-    showLoading(true);
+// function initializeDashboard() {
+//     showLoading(true);
 
-    const userSession = localStorage.getItem('userSession');
-    if (!userSession) {
-        window.location.href = '/index.html';
-        return;
-    }
+//     const userSession = localStorage.getItem('userSession');
+//     if (!userSession) {
+//         window.location.href = '/index.html';
+//         return;
+//     }
 
-    try {
-        currentUser = JSON.parse(userSession);
-        if (!currentUser || !currentUser.token) {
-            throw new Error('Invalid session data');
-        }
+//     try {
+//         currentUser = JSON.parse(userSession);
+//         if (!currentUser || !currentUser.token) {
+//             throw new Error('Invalid session data');
+//         }
         
-        updateUserInfo();
-        loadUserData();
-        initializeAllSections();
-    } catch (error) {
-        console.error('Invalid user session:', error);
-        localStorage.removeItem('userSession');
-        window.location.href = '/index.html';
-    } finally {
-        showLoading(false);
-    }
-}
+//         updateUserInfo();
+//         loadUserData();
+//         initializeAllSections();
+//     } catch (error) {
+//         console.error('Invalid user session:', error);
+//         localStorage.removeItem('userSession');
+//         window.location.href = '/index.html';
+//     } finally {
+//         showLoading(false);
+//     }
+// }
 
 function updateUserInfo() {
     if (!currentUser || !currentUser.user) return;

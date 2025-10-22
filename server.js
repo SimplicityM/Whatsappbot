@@ -351,6 +351,54 @@ app.get('/admin', adminAuth, (req, res) => {
     res.sendFile(path.join(__dirname, '../admin.html'));
 });
 
+// User endpoints
+app.get('/api/users/profile', authenticateToken, async (req, res) => {
+    // Return user profile data
+});
+
+app.get('/api/users/settings', authenticateToken, async (req, res) => {
+    // Return user settings
+});
+
+app.put('/api/users/settings', authenticateToken, async (req, res) => {
+    // Save user settings
+});
+
+// Session endpoints
+app.get('/api/sessions/my-sessions', authenticateToken, async (req, res) => {
+    // Return user's WhatsApp sessions
+});
+
+app.post('/api/sessions/create', authenticateToken, async (req, res) => {
+    // Create new WhatsApp session
+});
+
+app.post('/api/sessions/:sessionId/restart', authenticateToken, async (req, res) => {
+    // Restart session
+});
+
+app.delete('/api/sessions/:sessionId', authenticateToken, async (req, res) => {
+    // Delete session
+});
+
+// Payment endpoints
+app.get('/api/payments/subscription-status', authenticateToken, async (req, res) => {
+    // Return subscription status
+});
+
+app.get('/api/payments/plans', async (req, res) => {
+    // Return available plans
+});
+
+app.get('/api/payments/history', authenticateToken, async (req, res) => {
+    // Return payment history
+});
+
+// Statistics endpoint
+app.get('/api/statistics/user', authenticateToken, async (req, res) => {
+    // Return user statistics
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

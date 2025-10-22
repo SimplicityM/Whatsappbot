@@ -1910,3 +1910,127 @@ input:checked + .slider:before {
         text-align: center;
     }
 }
+
+/* Notifications */
+.notifications-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 400px;
+}
+
+.notification {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-bottom: 10px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: slideIn 0.3s ease-out;
+    border-left: 4px solid #667eea;
+}
+
+.notification.success {
+    border-left-color: #48bb78;
+}
+
+.notification.error {
+    border-left-color: #f56565;
+}
+
+.notification.warning {
+    border-left-color: #ed8936;
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+}
+
+.notification-close:hover {
+    color: #333;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+}
+
+.loading-spinner {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.loading-spinner i {
+    font-size: 24px;
+    color: #667eea;
+    margin-bottom: 10px;
+}
+
+/* Status indicators */
+.status-indicator.offline {
+    background-color: #f56565;
+}
+
+.upgrade-required {
+    color: #ed8936;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.slider.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Animations */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Empty states */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.empty-state h3 {
+    margin: 16px 0 8px 0;
+    color: #333;
+}
+
+.empty-state p {
+    margin-bottom: 24px;
+    color: #666;
+}
