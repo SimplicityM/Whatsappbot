@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+require('dotenv').config(); // Load environment variables
 
 // Import models and routes
 const User = require('./models/User');
@@ -25,13 +26,28 @@ const io = socketIo(server, {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); // Serve from public folder
 
-// Database connection
-mongoose.connect('mongodb://localhost:27017/whatsappbot', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+// Database connection with environment variables
+const connectDB = async () => {
+    try {
+        const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot';
+        
+        await mongoose.connect(mongoURI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+        
+        console.log('✅ Connected to MongoDB');
+        console.log(`📊 Database: ${mongoose.connection.name}`);
+        console.log(`🏠 Host: ${mongoose.connection.host}`);
+        
+    } catch (error) {
+        console.error('❌ MongoDB connection error:', error.message);
+        process.exit(1); // Exit process with failure
+    }
+};
+
+// Initialize database connection
+connectDB();
 
 // Store active WhatsApp clients
 const activeClients = new Map();
