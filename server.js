@@ -329,7 +329,7 @@ io.on('connection', (socket) => {
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
+app.use('/api/users', require('./routes/user'));
 app.use('/api/sessions', require('./routes/sessions'));
 
 // Serve admin dashboard
