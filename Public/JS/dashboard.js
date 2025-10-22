@@ -146,9 +146,13 @@ function loadSectionData(section) {
 
 // FIXED: Socket.io connection with proper error handling
 function connectToServer() {
-    if (!currentUser) return;
+    if (!currentUser) {
+        console.error('No current user found');
+        return;
+    }
 
     try {
+        console.log('Connecting to server...');
         socket = io(CONFIG.SOCKET_URL, {
             auth: {
                 token: currentUser.token
@@ -156,40 +160,41 @@ function connectToServer() {
             transports: ['websocket', 'polling']
         });
         
-        socket.emit('join-user-room', currentUser.user.id);
-        
         socket.on('connect', () => {
+            console.log('✅ Connected to server');
             updateConnectionStatus(true);
-            console.log('Connected to server');
+            
+            // Join user room after connection
+            if (currentUser && currentUser.user) {
+                socket.emit('join-user-room', currentUser.user.id);
+            }
         });
         
-        socket.on('disconnect', () => {
+        socket.on('disconnect', (reason) => {
+            console.log('❌ Disconnected from server:', reason);
             updateConnectionStatus(false);
-            console.log('Disconnected from server');
         });
         
         socket.on('qrCode', (data) => {
+            console.log('📱 QR Code received for session:', data.sessionId);
             displayQRCode(data.qr, data.sessionId);
         });
         
         socket.on('sessionReady', (data) => {
+            console.log('✅ Session ready:', data.sessionId);
             showNotification('WhatsApp session connected successfully!', 'success');
             loadUserSessions();
             closeQRModal();
         });
         
         socket.on('sessionDisconnected', (data) => {
+            console.log('⚠️ Session disconnected:', data.sessionId);
             showNotification(`Session ${data.sessionId} disconnected`, 'warning');
             loadUserSessions();
         });
         
-        socket.on('newMessage', (data) => {
-            addToActivityLog(`New message from ${data.from}: ${data.body}`);
-            updateMessageStats();
-        });
-        
-        socket.on('error', (error) => {
-            console.error('Socket error:', error);
+        socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
             showNotification('Connection error occurred', 'error');
         });
         
@@ -198,7 +203,6 @@ function connectToServer() {
         updateConnectionStatus(false);
     }
 }
-
 function updateConnectionStatus(isConnected) {
     const statusElement = document.getElementById('connectionStatus');
     if (!statusElement) return;
@@ -408,39 +412,63 @@ async function createNewSession() {
     }
 }
 
-// IMPROVED: QR Code display
+// IMPROVED: QR Code display with proper error handling
 function displayQRCode(qrData, sessionId) {
-    const qrContainer = document.getElementById('qrCodeDisplay');
-    if (!qrContainer) return;
+    const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+    if (!qrCodeDisplay) {
+        console.error('QR code display element not found');
+        return;
+    }
 
-    qrContainer.innerHTML = `
-        <div class="qr-code-container">
-            <div id="qrcode-${sessionId}" class="qr-code"></div>
-            <p>Scan this code with WhatsApp</p>
-            <p class="session-id">Session: ${sessionId}</p>
-        </div>
-    `;
+    // Clear previous content and update structure
+    qrCodeDisplay.innerHTML = '';
+    qrCodeDisplay.className = 'qr-code-active';
+    
+    // Create QR code container
+    const qrCodeContainer = document.createElement('div');
+    qrCodeContainer.id = `qrcode-${sessionId}`;
+    qrCodeContainer.className = 'qr-code-canvas';
+    
+    qrCodeDisplay.appendChild(qrCodeContainer);
 
-    // If you have QRCode library loaded
-    if (typeof QRCode !== 'undefined') {
-        new QRCode(document.getElementById(`qrcode-${sessionId}`), {
-            text: qrData,
-            width: 200,
-            height: 200,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-        });
-    } else {
-        // Fallback display
-        document.getElementById(`qrcode-${sessionId}`).innerHTML = `
-            <div style="width: 200px; height: 200px; background: white; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #ddd;">
-                <div style="text-align: center;">
-                    <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea;"></i>
-                    <p style="margin-top: 10px; font-size: 12px; color: #666;">QR Code Generated</p>
+    // Generate QR code
+    try {
+        if (typeof QRCode !== 'undefined') {
+            new QRCode(qrCodeContainer, {
+                text: qrData,
+                width: 256,
+                height: 256,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            console.log('✅ QR code generated successfully');
+        } else {
+            // Fallback display
+            qrCodeContainer.innerHTML = `
+                <div class="qr-fallback">
+                    <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 16px;"></i>
+                    <h4>QR Code Ready</h4>
+                    <p style="color: #666; margin: 10px 0;">QR Code library not loaded.</p>
+                    <p style="font-size: 12px; color: #999;">Please check browser console</p>
                 </div>
+            `;
+            console.error('QRCode library not loaded. Add: <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>');
+        }
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+        qrCodeContainer.innerHTML = `
+            <div class="qr-error">
+                <i class="fas fa-exclamation-triangle" style="font-size: 64px; color: #f56565; margin-bottom: 16px;"></i>
+                <h4>QR Code Error</h4>
+                <p style="color: #666;">Failed to generate QR code</p>
             </div>
         `;
     }
+    
+    // Show the modal
+    showQRModal();
 }
 
 // IMPROVED: Subscription management
@@ -703,7 +731,49 @@ function updatePaymentStats(stats) {
 // Modal management
 function showQRModal() {
     const qrModal = document.getElementById('qrModal');
-    if (qrModal) qrModal.classList.add('active');
+    if (qrModal) {
+        qrModal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // Prevent scrolling
+        console.log('✅ QR modal opened');
+    } else {
+        console.error('QR modal element not found');
+    }
+}
+
+function closeQRModal() {
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal) {
+        qrModal.classList.remove('active');
+        document.body.style.overflow = 'auto'; // Restore scrolling
+        
+        // Reset QR code display
+        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+        if (qrCodeDisplay) {
+            qrCodeDisplay.innerHTML = `
+                <i class="fas fa-qrcode"></i>
+                <p>Generating QR Code...</p>
+            `;
+            qrCodeDisplay.className = 'qr-placeholder';
+        }
+        
+        console.log('✅ QR modal closed');
+    }
+}s
+
+function closeQRModal() {
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal) {
+        qrModal.style.display = 'none';
+        qrModal.classList.remove('active');
+        // Restore body scroll
+        document.body.style.overflow = 'auto';
+        
+        // Clear QR code content
+        const qrContainer = document.getElementById('qrCodeDisplay');
+        if (qrContainer) {
+            qrContainer.innerHTML = '';
+        }
+    }
 }
 
 function closeQRModal() {
@@ -1312,7 +1382,18 @@ if (!document.querySelector('#notification-styles')) {
     `;
     document.head.appendChild(style);
 }
-socket.on('qrCode', (data) => {
-    console.log('🎯 Received QR code event:', data);
-    displayQRCode(data.qr, data.sessionId);
+
+// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal && e.target === qrModal) {
+        closeQRModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeQRModal();
+    }
 });
