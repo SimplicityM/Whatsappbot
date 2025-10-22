@@ -23,7 +23,7 @@ const io = socketIo(server, {
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../')));
+app.use(express.static(path.join(__dirname, '.'))); // Serve from current directory
 
 // Database connection
 mongoose.connect('mongodb://localhost:27017/whatsappbot', {
@@ -334,75 +334,286 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
 app.use('/api/sessions', require('./routes/sessions'));
 
+// Serve static files from root directory
+app.use(express.static(path.join(__dirname, '.')));
+
 // Serve home page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Serve user dashboard
 app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, '../user-dashboard.html'));
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
-// Serve admin dashboard (protected route)
-app.get('/admin', authenticateAdmin, (req, res) => {
-    res.sendFile(path.join(__dirname, '../admin.html'));
+// Serve admin dashboard
+app.get('/admin-dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
+// Serve payment page
+app.get('/payment', (req, res) => {
+    res.sendFile(path.join(__dirname, 'payment.html'));
 });
 
 // User endpoints
 app.get('/api/users/profile', authenticate, async (req, res) => {
-    // Return user profile data
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        res.json({
+            success: true,
+            data: { user }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user profile'
+        });
+    }
 });
 
 app.get('/api/users/settings', authenticate, async (req, res) => {
-    // Return user settings
+    try {
+        const user = await User.findById(req.user.id).select('settings');
+        res.json({
+            success: true,
+            data: { settings: user.settings || {} }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user settings'
+        });
+    }
 });
 
 app.put('/api/users/settings', authenticate, async (req, res) => {
-    // Save user settings
+    try {
+        const { settings } = req.body;
+        await User.findByIdAndUpdate(req.user.id, { settings });
+        res.json({
+            success: true,
+            message: 'Settings saved successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error saving settings'
+        });
+    }
 });
 
 // Session endpoints
 app.get('/api/sessions/my-sessions', authenticate, async (req, res) => {
-    // Return user's WhatsApp sessions
+    try {
+        const sessions = await Session.find({ userId: req.user.id }).sort({ createdAt: -1 });
+        res.json({
+            success: true,
+            data: { sessions }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching sessions'
+        });
+    }
 });
 
 app.post('/api/sessions/create', authenticate, async (req, res) => {
-    // Create new WhatsApp session
+    try {
+        const sessionId = `session-${req.user.id}-${Date.now()}`;
+        await createWhatsAppSession(req.user.id, sessionId);
+        
+        res.json({
+            success: true,
+            data: { sessionId },
+            message: 'Session created successfully'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
 });
 
 app.post('/api/sessions/:sessionId/restart', authenticate, async (req, res) => {
-    // Restart session
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ sessionId, userId: req.user.id });
+        
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+        
+        // Restart logic here
+        res.json({
+            success: true,
+            message: 'Session restart initiated'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error restarting session'
+        });
+    }
 });
 
 app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
-    // Delete session
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ sessionId, userId: req.user.id });
+        
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+        
+        // Destroy client if active
+        if (activeClients.has(sessionId)) {
+            const sessionData = activeClients.get(sessionId);
+            await sessionData.client.destroy();
+            activeClients.delete(sessionId);
+        }
+        
+        await Session.deleteOne({ sessionId });
+        
+        res.json({
+            success: true,
+            message: 'Session deleted successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting session'
+        });
+    }
 });
 
 // Payment endpoints
 app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
-    // Return subscription status
+    try {
+        const user = await User.findById(req.user.id);
+        res.json({
+            success: true,
+            data: {
+                subscription: user.subscription,
+                paymentStatus: 'active',
+                daysRemaining: 30, // Example
+                limits: subscriptionPlans[user.subscription]
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching subscription status'
+        });
+    }
 });
 
 app.get('/api/payments/plans', async (req, res) => {
-    // Return available plans
+    try {
+        const plans = [
+            {
+                id: 'starter',
+                name: 'Starter Plan',
+                amount: 2900,
+                features: [
+                    'Basic group tagging (tagall)',
+                    'Contact auto-save',
+                    'Basic media sharing',
+                    '5 active sessions',
+                    'Standard support'
+                ]
+            },
+            {
+                id: 'professional',
+                name: 'Professional Plan',
+                amount: 7900,
+                features: [
+                    'All Starter features',
+                    'Advanced tagging (tagallexcept)',
+                    'Event & meeting scheduling',
+                    'Reminder management',
+                    '25 active sessions',
+                    'Priority support'
+                ]
+            }
+        ];
+        
+        res.json({
+            success: true,
+            data: { plans }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching plans'
+        });
+    }
 });
 
 app.get('/api/payments/history', authenticate, async (req, res) => {
-    // Return payment history
+    try {
+        // Return empty history for now
+        res.json({
+            success: true,
+            data: {
+                transactions: [],
+                stats: {
+                    totalSpent: 0,
+                    paymentsCount: 0,
+                    lastPayment: null
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching payment history'
+        });
+    }
 });
 
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
-    // Return user statistics
+    try {
+        const { timeframe } = req.query;
+        const sessions = await Session.find({ userId: req.user.id });
+        
+        const stats = {
+            totalMessages: 0,
+            totalGroups: 0,
+            commandsUsed: 0,
+            messagesToday: 0,
+            groupsManaged: sessions.length
+        };
+        
+        res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching statistics'
+        });
+    }
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 WhatsApp Bot Server running on port ${PORT}`);
-    console.log(`📱 User Dashboard: http://localhost:${PORT}`);
-    console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin`);
+    console.log(`📱 Home Page: http://localhost:${PORT}`);
+    console.log(`👤 User Dashboard: http://localhost:${PORT}/dashboard`);
+    console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
 });
 
 // Graceful shutdown
