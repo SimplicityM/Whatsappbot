@@ -142,182 +142,295 @@
     </main>
 
     <script>
-        // Form validation and interactions
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('signupForm');
-            const togglePassword = document.getElementById('togglePassword');
-            const password = document.getElementById('password');
-            const confirmPassword = document.getElementById('confirmPassword');
-            const submitBtn = document.getElementById('submitBtn');
-            const btnLoader = document.getElementById('btnLoader');
-            const btnText = document.querySelector('.btn-text');
+    // Form validation and interactions
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('signupForm');
+        const togglePassword = document.getElementById('togglePassword');
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirmPassword');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnLoader = document.getElementById('btnLoader');
+        const btnText = document.querySelector('.btn-text');
 
-            // Mobile menu toggle
-            const hamburger = document.querySelector('.hamburger');
-            const navMenu = document.querySelector('.nav-menu');
+        // Mobile menu toggle
+        const hamburger = document.querySelector('.hamburger');
+        const navMenu = document.querySelector('.nav-menu');
 
+        if (hamburger && navMenu) {
             hamburger.addEventListener('click', () => {
                 hamburger.classList.toggle('active');
                 navMenu.classList.toggle('active');
             });
+        }
 
-            // Password toggle
+        // Password toggle
+        if (togglePassword && password) {
             togglePassword.addEventListener('click', function() {
                 const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
                 password.setAttribute('type', type);
-                this.querySelector('i').classList.toggle('fa-eye');
-                this.querySelector('i').classList.toggle('fa-eye-slash');
+                const icon = this.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-eye');
+                    icon.classList.toggle('fa-eye-slash');
+                }
             });
+        }
 
-            // Password strength checker
+        // Password strength checker
+        if (password) {
             password.addEventListener('input', function() {
                 const strength = checkPasswordStrength(this.value);
                 updatePasswordStrength(strength);
             });
+        }
 
-            // Form validation
+        // Form validation
+        if (form) {
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 if (validateForm()) {
                     submitForm();
                 }
             });
+        }
 
-            function validateForm() {
-                let isValid = true;
-                const formData = new FormData(form);
+        function validateForm() {
+            let isValid = true;
+            const formData = new FormData(form);
 
-                // Name validation
-                const name = formData.get('fullName').trim();
-                if (name.length < 2) {
-                    showError('nameError', 'Name must be at least 2 characters long');
-                    isValid = false;
-                } else {
-                    clearError('nameError');
-                }
-
-                // Email validation
-                const email = formData.get('email').trim();
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(email)) {
-                    showError('emailError', 'Please enter a valid email address');
-                    isValid = false;
-                } else {
-                    clearError('emailError');
-                }
-
-                // Password validation
-                const pwd = formData.get('password');
-                if (pwd.length < 8) {
-                    showError('passwordError', 'Password must be at least 8 characters long');
-                    isValid = false;
-                } else {
-                    clearError('passwordError');
-                }
-
-                // Confirm password validation
-                const confirmPwd = formData.get('confirmPassword');
-                if (pwd !== confirmPwd) {
-                    showError('confirmPasswordError', 'Passwords do not match');
-                    isValid = false;
-                } else {
-                    clearError('confirmPasswordError');
-                }
-
-                // Terms validation
-                const terms = formData.get('terms');
-                if (!terms) {
-                    showError('termsError', 'You must accept the terms and conditions');
-                    isValid = false;
-                } else {
-                    clearError('termsError');
-                }
-
-                return isValid;
+            // Name validation
+            const name = formData.get('fullName')?.trim() || '';
+            if (name.length < 2) {
+                showError('nameError', 'Name must be at least 2 characters long');
+                isValid = false;
+            } else {
+                clearError('nameError');
             }
 
-            function showError(elementId, message) {
-                const errorElement = document.getElementById(elementId);
+            // Email validation
+            const email = formData.get('email')?.trim() || '';
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showError('emailError', 'Please enter a valid email address');
+                isValid = false;
+            } else {
+                clearError('emailError');
+            }
+
+            // Password validation
+            const pwd = formData.get('password') || '';
+            if (pwd.length < 8) {
+                showError('passwordError', 'Password must be at least 8 characters long');
+                isValid = false;
+            } else {
+                clearError('passwordError');
+            }
+
+            // Confirm password validation
+            const confirmPwd = formData.get('confirmPassword') || '';
+            if (pwd !== confirmPwd) {
+                showError('confirmPasswordError', 'Passwords do not match');
+                isValid = false;
+            } else {
+                clearError('confirmPasswordError');
+            }
+
+            // Terms validation
+            const terms = formData.get('terms');
+            if (!terms) {
+                showError('termsError', 'You must accept the terms and conditions');
+                isValid = false;
+            } else {
+                clearError('termsError');
+            }
+
+            return isValid;
+        }
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
                 errorElement.textContent = message;
                 errorElement.style.display = 'block';
             }
+        }
 
-            function clearError(elementId) {
-                const errorElement = document.getElementById(elementId);
+        function clearError(elementId) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
                 errorElement.style.display = 'none';
             }
-
-            function checkPasswordStrength(password) {
-                let strength = 0;
-                if (password.length >= 8) strength++;
-                if (/[a-z]/.test(password)) strength++;
-                if (/[A-Z]/.test(password)) strength++;
-                if (/[0-9]/.test(password)) strength++;
-                if (/[^A-Za-z0-9]/.test(password)) strength++;
-                return strength;
-            }
-
-            function updatePasswordStrength(strength) {
-                const strengthFill = document.getElementById('strengthFill');
-                const strengthText = document.getElementById('strengthText');
-                const colors = ['#ff4757', '#ff6b7a', '#ffa502', '#2ed573', '#20bf6b'];
-                const texts = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
-                
-                strengthFill.style.width = (strength * 20) + '%';
-                strengthFill.style.backgroundColor = colors[strength - 1] || '#ddd';
-                strengthText.textContent = strength > 0 ? texts[strength - 1] : 'Password strength';
-            }
-
-          async function submitForm() {
-    submitBtn.disabled = true;
-    btnText.style.opacity = '0';
-    btnLoader.style.display = 'block';
-
-    try {
-        const formData = new FormData(form);
-        
-        const response = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                fullName: formData.get('fullName'),
-                email: formData.get('email'),
-                password: formData.get('password'),
-                confirmPassword: formData.get('confirmPassword')
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Store the token for authentication
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('user', JSON.stringify(data.data.user));
-            
-            // Show success message
-            alert('Account created successfully! Redirecting to dashboard...');
-            
-            // Redirect to dashboard
-            window.location.href = '/dashboard';
-        } else {
-            alert(data.message || 'Error creating account. Please try again.');
         }
-    } catch (error) {
-        console.error('Registration error:', error);
-        alert('Error creating account. Please try again.');
-    } finally {
-        submitBtn.disabled = false;
-        btnText.style.opacity = '1';
-        btnLoader.style.display = 'none';
-    }
-}
+
+        function checkPasswordStrength(password) {
+            if (!password) return 0;
+            
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            return strength;
+        }
+
+        function updatePasswordStrength(strength) {
+            const strengthFill = document.getElementById('strengthFill');
+            const strengthText = document.getElementById('strengthText');
+            
+            if (!strengthFill || !strengthText) return;
+            
+            const colors = ['#ff4757', '#ff6b7a', '#ffa502', '#2ed573', '#20bf6b'];
+            const texts = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+            
+            strengthFill.style.width = (strength * 20) + '%';
+            strengthFill.style.backgroundColor = colors[strength - 1] || '#ddd';
+            strengthText.textContent = strength > 0 ? texts[strength - 1] : 'Password strength';
+        }
+
+        async function submitForm() {
+            if (!submitBtn || !btnText || !btnLoader) return;
+            
+            submitBtn.disabled = true;
+            btnText.style.opacity = '0';
+            btnLoader.style.display = 'block';
+
+            try {
+                const formData = new FormData(form);
+                
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fullName: formData.get('fullName'),
+                        email: formData.get('email'),
+                        password: formData.get('password'),
+                        confirmPassword: formData.get('confirmPassword')
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store user session data
+                    const userSession = {
+                        token: data.data.token,
+                        user: data.data.user
+                    };
+                    localStorage.setItem('userSession', JSON.stringify(userSession));
+                    
+                    // Show success message
+                    showNotification('Account created successfully! Redirecting to dashboard...', 'success');
+                    
+                    // Redirect to dashboard after a short delay
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1500);
+                } else {
+                    showNotification(data.message || 'Error creating account. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                showNotification('Network error. Please check your connection and try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.style.opacity = '1';
+                btnLoader.style.display = 'none';
+            }
+        }
+
+        // Notification function
+        function showNotification(message, type = 'info') {
+            // Remove existing notifications
+            const existingNotifications = document.querySelectorAll('.custom-notification');
+            existingNotifications.forEach(notification => notification.remove());
+
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `custom-notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            // Add styles if not already present
+            if (!document.querySelector('#notification-styles')) {
+                const style = document.createElement('style');
+                style.id = 'notification-styles';
+                style.textContent = `
+                    .custom-notification {
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: white;
+                        border-radius: 8px;
+                        padding: 16px;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        border-left: 4px solid #667eea;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        animation: slideInRight 0.3s ease;
+                        z-index: 10000;
+                        max-width: 400px;
+                    }
+                    .custom-notification.success {
+                        border-left-color: #48bb78;
+                    }
+                    .custom-notification.error {
+                        border-left-color: #f56565;
+                    }
+                    .notification-content {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .notification-close {
+                        background: none;
+                        border: none;
+                        cursor: pointer;
+                        color: #718096;
+                        padding: 4px;
+                    }
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(notification);
+
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
         // Google Sign-in callback
         function handleCredentialResponse(response) {
             console.log("Encoded JWT ID token: " + response.credential);
             // Handle the Google sign-in response here
+            // You can send this token to your backend for verification
+            showNotification('Google sign-in successful!', 'success');
         }
-    </script>
+    });
+</script>
 </body>
 </html>
