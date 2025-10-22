@@ -268,28 +268,51 @@
                 strengthText.textContent = strength > 0 ? texts[strength - 1] : 'Password strength';
             }
 
-            async function submitForm() {
-                submitBtn.disabled = true;
-                btnText.style.opacity = '0';
-                btnLoader.style.display = 'block';
+          async function submitForm() {
+    submitBtn.disabled = true;
+    btnText.style.opacity = '0';
+    btnLoader.style.display = 'block';
 
-                try {
-                    // Simulate API call
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    // Success handling
-                    alert('Account created successfully!');
-                    form.reset();
-                } catch (error) {
-                    alert('Error creating account. Please try again.');
-                } finally {
-                    submitBtn.disabled = false;
-                    btnText.style.opacity = '1';
-                    btnLoader.style.display = 'none';
-                }
-            }
+    try {
+        const formData = new FormData(form);
+        
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                fullName: formData.get('fullName'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                confirmPassword: formData.get('confirmPassword')
+            })
         });
 
+        const data = await response.json();
+
+        if (data.success) {
+            // Store the token for authentication
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('user', JSON.stringify(data.data.user));
+            
+            // Show success message
+            alert('Account created successfully! Redirecting to dashboard...');
+            
+            // Redirect to dashboard
+            window.location.href = '/dashboard';
+        } else {
+            alert(data.message || 'Error creating account. Please try again.');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        alert('Error creating account. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        btnText.style.opacity = '1';
+        btnLoader.style.display = 'none';
+    }
+}
         // Google Sign-in callback
         function handleCredentialResponse(response) {
             console.log("Encoded JWT ID token: " + response.credential);
