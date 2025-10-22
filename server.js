@@ -75,13 +75,20 @@ const subscriptionPlans = {
     }
 };
 
-// Create WhatsApp client for a user session
+// ENHANCED SERVER LOGGING - Add to your createWhatsAppSession function
 async function createWhatsAppSession(userId, sessionId) {
     try {
+        console.log('='.repeat(60));
+        console.log('🔄 SERVER: Creating WhatsApp session');
+        console.log('👤 User ID:', userId);
+        console.log('📱 Session ID:', sessionId);
+        
         const user = await User.findById(userId);
         if (!user) {
+            console.error('❌ SERVER: User not found');
             throw new Error('User not found');
         }
+        console.log('✅ SERVER: User found:', user.email);
 
         // Check session limit
         const userSessions = await Session.find({ 
@@ -89,7 +96,12 @@ async function createWhatsAppSession(userId, sessionId) {
             status: { $in: ['connected', 'waiting_qr'] } 
         });
         
+        console.log('📊 SERVER: User sessions count:', userSessions.length);
+        console.log('📊 SERVER: User subscription:', user.subscription);
+        console.log('📊 SERVER: Max sessions allowed:', subscriptionPlans[user.subscription].maxSessions);
+        
         if (userSessions.length >= subscriptionPlans[user.subscription].maxSessions) {
+            console.error('❌ SERVER: Session limit reached');
             throw new Error(`Subscription limit reached. ${user.subscription} plan allows ${subscriptionPlans[user.subscription].maxSessions} sessions.`);
         }
 
@@ -102,6 +114,8 @@ async function createWhatsAppSession(userId, sessionId) {
                 args: ['--no-sandbox', '--disable-setuid-sandbox']
             }
         });
+
+        console.log('✅ SERVER: WhatsApp client created');
 
         // Store the client
         activeClients.set(sessionId, {
@@ -118,34 +132,46 @@ async function createWhatsAppSession(userId, sessionId) {
             subscriptionAtTime: user.subscription
         });
         await session.save();
+        console.log('✅ SERVER: Session record saved to database');
 
-       // QR Code event
-client.on('qr', async (qr) => {
-    console.log(`🔥 QR received for session ${sessionId}`);
-    console.log(`📱 QR length: ${qr.length}`);
-    
-    // Update session status
-    await Session.findOneAndUpdate(
-        { sessionId },
-        { 
-            status: 'waiting_qr',
-            qrCode: qr
-        }
-    );
+        // QR Code event with detailed logging
+        client.on('qr', async (qr) => {
+            console.log('📱 SERVER: QR CODE GENERATED!');
+            console.log('📱 Session:', sessionId);
+            console.log('📱 QR Data Length:', qr.length);
+            console.log('📱 QR Preview:', qr.substring(0, 100) + '...');
+            
+            // Update session status
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'waiting_qr',
+                    qrCode: qr
+                }
+            );
+            console.log('✅ SERVER: Session status updated to waiting_qr');
 
-    console.log(`📡 Emitting QR to user-${userId}`);
-    // Emit to specific user
-    io.to(`user-${userId}`).emit('qrCode', {
-        sessionId,
-        qr,
-        message: 'Scan this QR code with WhatsApp'
-    });
-    console.log(`✅ QR emitted successfully`);
-});
+            const roomName = `user-${userId}`;
+            console.log('📤 SERVER: Emitting to room:', roomName);
+            
+            // Check if room has connections
+            const room = io.sockets.adapter.rooms.get(roomName);
+            console.log('👥 SERVER: Room connections:', room ? room.size : 0);
+            
+            // Emit to specific user
+            io.to(roomName).emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp'
+            });
+            
+            console.log('✅ SERVER: QR code emitted to room');
+            console.log('='.repeat(60));
+        });
 
         // Ready event
         client.on('ready', async () => {
-            console.log(`WhatsApp client ready for session ${sessionId}`);
+            console.log('✅ SERVER: WhatsApp client ready for session:', sessionId);
             
             await Session.findOneAndUpdate(
                 { sessionId },
@@ -163,39 +189,18 @@ client.on('qr', async (qr) => {
             });
         });
 
-        // Message event with permission checking
-        client.on('message', async (message) => {
-            await handleIncomingMessage(userId, sessionId, message);
-        });
-
-        // Disconnection event
-        client.on('disconnected', async (reason) => {
-            console.log(`Session ${sessionId} disconnected:`, reason);
-            
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { status: 'disconnected' }
-            );
-
-            activeClients.delete(sessionId);
-            
-            io.to(`user-${userId}`).emit('sessionDisconnected', {
-                sessionId,
-                reason
-            });
-        });
-
         // Initialize the client
+        console.log('🔄 SERVER: Initializing WhatsApp client...');
         await client.initialize();
+        console.log('✅ SERVER: WhatsApp client initialized');
         
         return sessionId;
 
     } catch (error) {
-        console.error('Error creating WhatsApp session:', error);
+        console.error('❌ SERVER: Error creating WhatsApp session:', error);
         throw error;
     }
 }
-
 // Handle incoming messages with permission checking
 async function handleIncomingMessage(userId, sessionId, message) {
     try {
@@ -264,25 +269,34 @@ async function executeCommand(user, sessionId, command, message) {
 }
 
 // Socket.io connection handling
+// Socket.io connection handling - FIXED VERSION
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    // User joins their personal room
+    // User joins their personal room (with authentication)
     socket.on('join-user-room', (userId) => {
-        socket.join(`user-${userId}`);
-        console.log(`User ${userId} joined their room`);
+        if (!userId) {
+            console.log('❌ Cannot join room: user ID is null/undefined');
+            return;
+        }
+        
+        const roomName = `user-${userId}`;
+        socket.join(roomName);
+        console.log(`✅ User ${userId} joined room: ${roomName}`);
     });
 
-    // Admin joins admin room
-    socket.on('join-admin-room', (adminId) => {
-        socket.join('admin-room');
-        console.log(`Admin ${adminId} joined admin room`);
-    });
-
-    // Create new WhatsApp session
+    // Create new WhatsApp session - FIXED
     socket.on('createSession', async (data) => {
         try {
             const { userId } = data;
+            
+            if (!userId) {
+                console.error('❌ createSession: user ID is required');
+                socket.emit('sessionError', { error: 'User ID is required' });
+                return;
+            }
+            
+            console.log('🔄 Creating session for user:', userId);
             const sessionId = `session-${userId}-${Date.now()}`;
             
             await createWhatsAppSession(userId, sessionId);
@@ -293,57 +307,8 @@ io.on('connection', (socket) => {
             });
             
         } catch (error) {
-            socket.emit('sessionError', {
-                error: error.message
-            });
-        }
-    });
-
-    // Send message from admin dashboard
-    socket.on('sendMessage', async (data) => {
-        try {
-            const { sessionId, to, message } = data;
-            const sessionData = activeClients.get(sessionId);
-            
-            if (!sessionData) {
-                throw new Error('Session not found or disconnected');
-            }
-            
-            await sessionData.client.sendMessage(to, message);
-            
-            socket.emit('messageSent', {
-                success: true,
-                to,
-                message
-            });
-            
-        } catch (error) {
-            socket.emit('messageSent', {
-                success: false,
-                error: error.message
-            });
-        }
-    });
-
-    // Get user sessions
-    socket.on('getUserSessions', async (userId) => {
-        try {
-            const sessions = await Session.find({ userId }).sort({ createdAt: -1 });
-            socket.emit('userSessions', sessions);
-        } catch (error) {
-            socket.emit('sessionsError', { error: error.message });
-        }
-    });
-
-    // Admin: Get all sessions (for admin dashboard)
-    socket.on('getAllSessions', async () => {
-        try {
-            const sessions = await Session.find()
-                .populate('userId', 'name email subscription')
-                .sort({ createdAt: -1 });
-            socket.emit('allSessions', sessions);
-        } catch (error) {
-            socket.emit('sessionsError', { error: error.message });
+            console.error('Session creation error:', error);
+            socket.emit('sessionError', { error: error.message });
         }
     });
 

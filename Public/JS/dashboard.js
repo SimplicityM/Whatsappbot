@@ -1,24 +1,31 @@
-let currentUser = null;
-let userSessions = [];
-let userSubscription = null;
-let socket = null;
-
-// Configuration
-const CONFIG = {
-    API_BASE: window.location.origin,
-    SOCKET_URL: window.location.origin,
-    REFRESH_INTERVAL: 30000 // 30 seconds
-};
-
-// Initialize dashboard
+// Add this at the beginning of your DOMContentLoaded event handler
 document.addEventListener('DOMContentLoaded', function() {
+    // Check if required elements exist before setting up event listeners
+    const requiredElements = [
+        'mobileMenuBtn',
+        'sidebarToggle', 
+        'sessionFilter',
+        'sessionSearch',
+        'statsTimeframe'
+    ];
+    
+    requiredElements.forEach(elementId => {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.warn(`⚠️ Element not found: ${elementId}`);
+        }
+    });
+    
+    // Then continue with your existing initialization
     initializeDashboard();
     setupEventListeners();
     connectToServer();
     startAutoRefresh();
 });
 
-// FIXED: Authentication check function
+
+
+// Update your initializeDashboard function
 function initializeDashboard() {
     showLoading(true);
 
@@ -30,13 +37,24 @@ function initializeDashboard() {
 
     try {
         currentUser = JSON.parse(userSession);
+        
+        // Normalize user data
+        currentUser = normalizeUserData(currentUser);
+        
         if (!currentUser || !currentUser.token) {
             throw new Error('Invalid session data');
         }
         
+        console.log('👤 Normalized user data:', {
+            id: currentUser.user.id,
+            _id: currentUser.user._id,
+            name: currentUser.user.fullName
+        });
+        
         updateUserInfo();
         loadUserData();
         initializeAllSections();
+        
     } catch (error) {
         console.error('Invalid user session:', error);
         localStorage.removeItem('userSession');
@@ -46,6 +64,71 @@ function initializeDashboard() {
     }
 }
 
+let currentUser = null;
+let userSessions = [];
+let userSubscription = null;
+let socket = null;
+
+// Normalize user data - ensure id field exists
+function normalizeUserData(userData) {
+    if (userData && userData.user && userData.user._id) {
+        // Copy _id to id for consistency
+        userData.user.id = userData.user._id;
+        console.log('🔄 Normalized user data:', { 
+            id: userData.user.id, 
+            _id: userData.user._id 
+        });
+    }
+    return userData;
+}
+
+// Configuration
+const CONFIG = {
+    API_BASE: window.location.origin,
+    SOCKET_URL: window.location.origin,
+    REFRESH_INTERVAL: 30000 // 30 seconds
+};
+
+
+
+// FIXED: Authentication check function with normalization
+function initializeDashboard() {
+    showLoading(true);
+
+    const userSession = localStorage.getItem('userSession');
+    if (!userSession) {
+        window.location.href = '/index.html';
+        return;
+    }
+
+    try {
+        currentUser = JSON.parse(userSession);
+        
+        // NORMALIZE USER DATA - This is the key fix!
+        currentUser = normalizeUserData(currentUser);
+        
+        if (!currentUser || !currentUser.token) {
+            throw new Error('Invalid session data');
+        }
+        
+        console.log('✅ User session loaded and normalized:', {
+            id: currentUser.user.id,
+            name: currentUser.user.fullName,
+            email: currentUser.user.email
+        });
+        
+        updateUserInfo();
+        loadUserData();
+        initializeAllSections();
+        
+    } catch (error) {
+        console.error('Invalid user session:', error);
+        localStorage.removeItem('userSession');
+        window.location.href = '/index.html';
+    } finally {
+        showLoading(false);
+    }
+}
 function updateUserInfo() {
     if (!currentUser || !currentUser.user) return;
 
@@ -57,43 +140,79 @@ function updateUserInfo() {
 }
 
 function setupEventListeners() {
-    // Navigation
+    console.log('🔧 Setting up event listeners...');
+    
+    // Safe navigation function
+    function safeAddListener(selector, event, handler) {
+        const element = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (element && typeof handler === 'function') {
+            element.addEventListener(event, handler);
+            return true;
+        } else {
+            console.warn(`⚠️ Cannot add ${event} listener to:`, selector);
+            return false;
+        }
+    }
+
+    // Navigation - safe version
     document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', function(e) {
+        safeAddListener(link, 'click', function(e) {
             e.preventDefault();
             const section = this.getAttribute('data-section');
             switchSection(section);
         });
     });
 
-    // Mobile menu
+    // Mobile menu - with null checks
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const sidebarToggle = document.getElementById('sidebarToggle');
+    
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    } else {
+        console.warn('⚠️ mobileMenuBtn not found');
+    }
+    
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', toggleSidebar);
+    } else {
+        console.warn('⚠️ sidebarToggle not found');
+    }
 
-    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
-    if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
-
-    // Settings tabs
+    // Settings tabs - safe version
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        safeAddListener(btn, 'click', function() {
             switchTab(this.getAttribute('data-tab'));
         });
     });
 
-    // Session filters
+    // Session filters - with null checks
     const sessionFilter = document.getElementById('sessionFilter');
     const sessionSearch = document.getElementById('sessionSearch');
 
-    if (sessionFilter) sessionFilter.addEventListener('change', filterSessions);
-    if (sessionSearch) sessionSearch.addEventListener('input', filterSessions);
+    if (sessionFilter) {
+        sessionFilter.addEventListener('change', filterSessions);
+    } else {
+        console.warn('⚠️ sessionFilter not found');
+    }
+    
+    if (sessionSearch) {
+        sessionSearch.addEventListener('input', filterSessions);
+    } else {
+        console.warn('⚠️ sessionSearch not found');
+    }
 
-    // Statistics timeframe
+    // Statistics timeframe - with null check
     const statsTimeframe = document.getElementById('statsTimeframe');
     if (statsTimeframe) {
         statsTimeframe.addEventListener('change', function() {
             loadUserStatistics(this.value);
         });
+    } else {
+        console.warn('⚠️ statsTimeframe not found');
     }
+    
+    console.log('✅ Event listeners setup completed');
 }
 
 function switchSection(sectionName) {
@@ -144,35 +263,40 @@ function loadSectionData(section) {
     }
 }
 
-// FIXED: Socket.io connection with proper error handling
+// IMPROVED: Socket.io connection with better timing
 function connectToServer() {
     if (!currentUser) {
-        console.error('No current user found');
+        console.error('❌ No current user found for socket connection');
         return;
     }
 
     try {
-        console.log('Connecting to server...');
+        const userId = currentUser.user.id;
+        console.log('🔌 Connecting to server with user id:', userId);
+        
         socket = io(CONFIG.SOCKET_URL, {
             auth: {
                 token: currentUser.token
             },
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'],
+            timeout: 10000 // 10 second timeout
         });
         
         socket.on('connect', () => {
-            console.log('✅ Connected to server');
+            console.log('✅ Connected to server, socket ID:', socket.id);
             updateConnectionStatus(true);
             
-            // Join user room after connection
-            if (currentUser && currentUser.user) {
-                socket.emit('join-user-room', currentUser.user.id);
+            // Join user room after connection is fully established
+            if (userId) {
+                // Small delay to ensure connection is ready
+                setTimeout(() => {
+                    socket.emit('join-user-room', userId);
+                    console.log('👤 Joined user room: user-' + userId);
+                    
+                    // Setup debugging AFTER connection is fully established
+                    setupSocketDebugging();
+                }, 100);
             }
-        });
-        
-        socket.on('disconnect', (reason) => {
-            console.log('❌ Disconnected from server:', reason);
-            updateConnectionStatus(false);
         });
         
         socket.on('qrCode', (data) => {
@@ -187,16 +311,24 @@ function connectToServer() {
             closeQRModal();
         });
         
-        socket.on('sessionDisconnected', (data) => {
-            console.log('⚠️ Session disconnected:', data.sessionId);
-            showNotification(`Session ${data.sessionId} disconnected`, 'warning');
-            loadUserSessions();
+        socket.on('disconnect', (reason) => {
+            console.log('❌ Disconnected from server:', reason);
+            updateConnectionStatus(false);
         });
         
         socket.on('connect_error', (error) => {
-            console.error('Socket connection error:', error);
-            showNotification('Connection error occurred', 'error');
+            console.error('❌ Socket connection error:', error);
+            updateConnectionStatus(false);
+            showNotification('Connection error: ' + error.message, 'error');
         });
+        
+        // Add timeout for connection
+        setTimeout(() => {
+            if (!socket.connected) {
+                console.error('❌ Socket connection timeout');
+                showNotification('Connection timeout - please refresh', 'error');
+            }
+        }, 5000);
         
     } catch (error) {
         console.error('Failed to connect to server:', error);
@@ -381,10 +513,16 @@ function renderFilteredSessions(sessions) {
 }
 
 async function createNewSession() {
-    if (!currentUser) return;
+    if (!currentUser) {
+        showNotification('Please log in to create a session', 'error');
+        return;
+    }
 
     try {
         showLoading(true);
+        // Use normalized id
+        const userId = currentUser.user.id;
+        console.log('🔄 Creating session for normalized user id:', userId);
         
         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/create`, {
             method: 'POST',
@@ -398,9 +536,8 @@ async function createNewSession() {
         const data = await response.json();
         
         if (data.success) {
+            console.log('✅ Session created via API:', data.data.sessionId);
             showNotification('New session created! Scan the QR code to connect.', 'success');
-            showQRModal();
-            loadUserSessions();
         } else {
             showNotification(data.message || 'Failed to create session', 'error');
         }
@@ -411,52 +548,103 @@ async function createNewSession() {
         showLoading(false);
     }
 }
-
-// IMPROVED: QR Code display with proper error handling
-// SIMPLIFIED: QR Code display with local library
+// FINAL WORKING VERSION: QR Code display
 function displayQRCode(qrData, sessionId) {
-    console.log('🔄 QR Code function called');
+    console.log('🎯 displayQRCode called with:', { sessionId, qrDataLength: qrData?.length });
     
     const qrCodeDisplay = document.getElementById('qrCodeDisplay');
     if (!qrCodeDisplay) {
         console.error('❌ QR code display element not found');
+        showNotification('QR display error - element not found', 'error');
         return;
     }
 
-    // Clear and prepare
+    // Clear previous content
     qrCodeDisplay.innerHTML = '';
     qrCodeDisplay.className = 'qr-code-active';
     
+    // Create container for QR code
     const qrCodeContainer = document.createElement('div');
     qrCodeContainer.id = `qrcode-${sessionId}`;
     qrCodeContainer.className = 'qr-code-canvas';
     qrCodeDisplay.appendChild(qrCodeContainer);
 
-    console.log('📦 Checking QRCode library...');
-    
-    // Check if our QRCode library is available
-    if (typeof QRCode === 'undefined') {
-        console.error('❌ QRCode library not loaded - using image fallback');
-        showImageFallback(qrData, sessionId, qrCodeContainer);
-    } else {
-        try {
-            console.log('✅ QRCode library found, generating code...');
-            new QRCode(qrCodeContainer, {
-                text: qrData,
-                width: 256,
-                height: 256,
-                colorDark: "#000000",
-                colorLight: "#ffffff"
-            });
-            console.log('✅ QR code generated successfully');
-        } catch (error) {
-            console.error('❌ QR code generation failed:', error);
-            showImageFallback(qrData, sessionId, qrCodeContainer);
-        }
+    console.log('📦 QR container created, generating code...');
+
+    try {
+        // Generate the QR code
+        const qr = new QRCode(qrCodeContainer, {
+            text: qrData || 'https://web.whatsapp.com/',
+            width: 256,
+            height: 256,
+            colorDark: "#000000",
+            colorLight: "#ffffff"
+        });
+        
+        console.log('✅ QR code generated successfully');
+        
+        // Verify the canvas was created
+        setTimeout(() => {
+            const canvas = qrCodeContainer.querySelector('canvas');
+            if (canvas) {
+                console.log('🎨 Canvas verified:', canvas.width, 'x', canvas.height);
+                // Add some styling to the canvas
+                canvas.style.borderRadius = '8px';
+                canvas.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            } else {
+                console.warn('⚠️ No canvas element found in container');
+            }
+        }, 100);
+        
+    } catch (error) {
+        console.error('❌ QR code generation failed:', error);
+        
+        // Enhanced fallback
+        qrCodeContainer.innerHTML = `
+            <div class="qr-fallback" style="text-align: center; padding: 2rem;">
+                <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 1rem;"></i>
+                <h4 style="margin: 0 0 1rem 0; color: #2d3748;">QR Code Ready</h4>
+                <p style="color: #718096; margin-bottom: 1.5rem;">Session: <strong>${sessionId}</strong></p>
+                
+                <div class="qr-instructions" style="background: #f7fafc; padding: 1rem; border-radius: 8px; text-align: left;">
+                    <p style="margin: 0 0 0.5rem 0; font-weight: 500;">How to connect:</p>
+                    <ol style="margin: 0; padding-left: 1.2rem;">
+                        <li>Open WhatsApp on your phone</li>
+                        <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                        <li>Tap <strong>"Link a Device"</strong></li>
+                        <li>Point your camera at the QR code</li>
+                    </ol>
+                </div>
+            </div>
+        `;
     }
     
+    // Show the modal
     showQRModal();
 }
+
+
+
+
+// Debug socket QR events
+socket.on('qrCode', (data) => {
+    console.log('📱 QR CODE SOCKET EVENT RECEIVED:', {
+        sessionId: data.sessionId,
+        hasData: !!data.qr,
+        dataLength: data.qr?.length,
+        message: data.message,
+        timestamp: new Date().toISOString()
+    });
+    
+    if (!data.qr) {
+        console.error('❌ EMPTY QR DATA from server');
+        showNotification('No QR code data received', 'error');
+        return;
+    }
+    
+    console.log('🔄 Calling displayQRCode...');
+    displayQRCode(data.qr, data.sessionId);
+});
 
 // Fallback using QR code image service
 function showImageFallback(qrData, sessionId, container) {
@@ -1423,3 +1611,73 @@ document.addEventListener('keydown', function(e) {
         closeQRModal();
     }
 });
+
+// Add this debug code to your dashboard.js
+console.log('🔌 Socket connection status:', socket.connected);
+
+// Debug all socket events
+socket.onAny((eventName, ...args) => {
+    console.log('📡 SOCKET EVENT:', eventName, args);
+});
+
+// Specifically debug qrCode events
+socket.on('qrCode', (data) => {
+    console.log('🎯 QR CODE EVENT RECEIVED:', {
+        event: 'qrCode',
+        sessionId: data.sessionId,
+        hasQRData: !!data.qr,
+        dataLength: data.qr?.length,
+        timestamp: new Date().toLocaleTimeString()
+    });
+    
+    if (data.qr) {
+        console.log('🔄 Calling displayQRCode...');
+        displayQRCode(data.qr, data.sessionId);
+    } else {
+        console.error('❌ No QR data in event');
+    }
+});
+
+// SAFE Socket debugging
+function setupSocketDebugging() {
+    if (!socket) {
+        console.warn('⚠️ Cannot setup socket debugging: socket is null');
+        return;
+    }
+    
+    console.log('🔍 Setting up socket debugging...');
+    
+    try {
+        // Log all received events
+        socket.onAny((eventName, ...args) => {
+            console.log('📥 SOCKET RECEIVE:', eventName, args);
+        });
+        
+        // Specific debug for QR events - WITH NULL CHECK
+        socket.on('qrCode', (data) => {
+            if (!socket || !socket.connected) {
+                console.warn('⚠️ Socket not connected, ignoring QR event');
+                return;
+            }
+            
+            console.log('🎯 QR CODE EVENT DETAILS:', {
+                sessionId: data.sessionId,
+                hasQRData: !!data.qr,
+                qrDataLength: data.qr?.length,
+                timestamp: new Date().toLocaleTimeString()
+            });
+            
+            if (data.qr) {
+                console.log('🔄 Calling displayQRCode...');
+                displayQRCode(data.qr, data.sessionId);
+            } else {
+                console.error('❌ No QR data in event');
+                showNotification('No QR code data received from server', 'error');
+            }
+        });
+        
+        console.log('✅ Socket debugging enabled');
+    } catch (error) {
+        console.error('❌ Error setting up socket debugging:', error);
+    }
+}
