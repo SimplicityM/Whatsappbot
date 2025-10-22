@@ -23,11 +23,14 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.15.0",
     "mongoose": "^8.19.2",
+    "nodemon": "^3.1.10",
     "pkg-dir": "^8.0.0",
     "punycode": "^2.3.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "readline-sync": "^1.4.10",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "something-else": "^0.1.0",
     "whatsapp-web.js": "^1.26.0"
   }
