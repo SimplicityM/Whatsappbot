@@ -15,13 +15,13 @@
             <i class="fas fa-robot"></i>
             <span>TagThemAll Bot</span>
         </div>
-        <ul class="nav-menu">
-            <li><a href="index.html" class="active">Home</a></li>
-            <li><a href="#features">Features</a></li>
-            <li><a href="#pricing">Pricing</a></li>
-            <li><a href="#how-it-works">How It Works</a></li>
-            <li><a href="signup.html" class="btn-nav">Get Started</a></li>
-        </ul>
+       <ul class="nav-menu">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="index.html#features">Features</a></li>
+    <li><a href="#pricing" class="active">Pricing</a></li> <!-- Current page -->
+    <li><a href="index.html#how-it-works">How It Works</a></li>
+    <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+</ul>
         <div class="hamburger">
             <span class="bar"></span>
             <span class="bar"></span>
@@ -49,14 +49,14 @@
 <section class="pricing-section">
     <div class="container">
         <div class="pricing-grid">
-            <!-- Free Plan -->
+            <!-- Free Trial Plan (Keep this one as is, but remove monthly/yearly references) -->
             <div class="pricing-card free-plan">
                 <div class="plan-header">
                     <h3>Free Trial</h3>
                     <div class="price">
                         <span class="currency">$</span>
                         <span class="amount">0</span>
-                        <span class="period">/month</span>
+                        <span class="period">/7 days</span>
                     </div>
                     <p class="plan-description">Perfect for testing our capabilities</p>
                 </div>
@@ -90,122 +90,157 @@
                 </div>
             </div>
 
-            <!-- Basic Plan -->
+            <!-- Starter Plan (1 Month) - Replace "Basic" -->
             <div class="pricing-card basic-plan">
                 <div class="plan-header">
-                    <h3>Basic</h3>
+                    <h3>Starter</h3>
                     <div class="price">
                         <span class="currency">$</span>
-                        <span class="amount monthly-price">9.99</span>
-                        <span class="amount yearly-price" style="display: none;">7.99</span>
+                        <span class="amount">29</span>
                         <span class="period">/month</span>
                     </div>
-                    <p class="plan-description">Great for small businesses</p>
+                    <p class="plan-description">Perfect for small teams getting started</p>
+                    <div class="plan-duration">1 Month Plan</div>
                 </div>
                 
                 <div class="plan-features">
-                    <h4>Everything in Free, plus:</h4>
+                    <h4>What's included:</h4>
                     <ul>
-                        <li><i class="fas fa-check"></i> 3 WhatsApp Sessions</li>
-                        <li><i class="fas fa-check"></i> 500 Messages/Day</li>
-                        <li><i class="fas fa-check"></i> 10 Groups per Session</li>
-                        <li><i class="fas fa-check"></i> Group Management Commands</li>
-                        <li><i class="fas fa-check"></i> Auto-Reply Features</li>
-                        <li><i class="fas fa-check"></i> Email Support</li>
-                        <li><i class="fas fa-check"></i> Basic Analytics</li>
+                        <li><i class="fas fa-check"></i> Basic group tagging (tagall)</li>
+                        <li><i class="fas fa-check"></i> Contact auto-save</li>
+                        <li><i class="fas fa-check"></i> Basic media sharing</li>
+                        <li><i class="fas fa-check"></i> 5 active sessions</li>
+                        <li><i class="fas fa-check"></i> Standard support</li>
+                        <li><i class="fas fa-times"></i> Event scheduling</li>
+                        <li><i class="fas fa-times"></i> Advanced admin controls</li>
+                        <li><i class="fas fa-times"></i> Broadcast messaging</li>
                     </ul>
                 </div>
                 
-                <button class="plan-button basic-button" onclick="selectPlan('basic')">
+                <button class="plan-button basic-button" onclick="selectPlan('starter')">
                     <i class="fas fa-credit-card"></i>
-                    Choose Basic
+                    Get Started
                 </button>
                 
                 <div class="plan-footer">
-                    <small>Billed monthly • Cancel anytime</small>
+                    <small>1 month commitment • Cancel anytime</small>
                 </div>
             </div>
 
-            <!-- Premium Plan -->
+            <!-- Professional Plan (3 Months) - Replace "Premium" -->
             <div class="pricing-card premium-plan popular">
                 <div class="popular-badge">Most Popular</div>
                 <div class="plan-header">
-                    <h3>Premium</h3>
+                    <h3>Professional</h3>
                     <div class="price">
                         <span class="currency">$</span>
-                        <span class="amount monthly-price">19.99</span>
-                        <span class="amount yearly-price" style="display: none;">15.99</span>
-                        <span class="period">/month</span>
+                        <span class="amount">79</span>
+                        <span class="period">/3 months</span>
                     </div>
-                    <p class="plan-description">Perfect for growing businesses</p>
+                    <p class="plan-description">Ideal for growing businesses</p>
+                    <div class="plan-duration">3 Month Plan</div>
                 </div>
                 
                 <div class="plan-features">
-                    <h4>Everything in Basic, plus:</h4>
+                    <h4>All Starter features, plus:</h4>
                     <ul>
-                        <li><i class="fas fa-check"></i> 10 WhatsApp Sessions</li>
-                        <li><i class="fas fa-check"></i> 2,000 Messages/Day</li>
-                        <li><i class="fas fa-check"></i> 50 Groups per Session</li>
-                        <li><i class="fas fa-check"></i> All Bot Commands</li>
-                        <li><i class="fas fa-check"></i> Advanced Automation</li>
-                        <li><i class="fas fa-check"></i> Priority Support</li>
-                        <li><i class="fas fa-check"></i> Advanced Analytics</li>
-                        <li><i class="fas fa-check"></i> Custom Commands</li>
-                        <li><i class="fas fa-check"></i> Scheduling Features</li>
+                        <li><i class="fas fa-check"></i> Advanced tagging (tagallexcept)</li>
+                        <li><i class="fas fa-check"></i> Event & meeting scheduling</li>
+                        <li><i class="fas fa-check"></i> Reminder management</li>
+                        <li><i class="fas fa-check"></i> 25 active sessions</li>
+                        <li><i class="fas fa-check"></i> Priority support</li>
+                        <li><i class="fas fa-check"></i> Basic admin controls</li>
+                        <li><i class="fas fa-times"></i> Broadcast messaging</li>
                     </ul>
                 </div>
                 
-                <button class="plan-button premium-button" onclick="selectPlan('premium')">
+                <button class="plan-button premium-button" onclick="selectPlan('professional')">
                     <i class="fas fa-crown"></i>
-                    Choose Premium
+                    Choose Professional
                 </button>
                 
                 <div class="plan-footer">
-                    <small>Billed monthly • Cancel anytime</small>
+                    <small>3 month commitment • Cancel anytime</small>
                 </div>
             </div>
 
-            <!-- Enterprise Plan -->
+            <!-- Business Plan (6 Months) - New -->
             <div class="pricing-card enterprise-plan">
+                <div class="plan-header">
+                    <h3>Business</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount">149</span>
+                        <span class="period">/6 months</span>
+                    </div>
+                    <p class="plan-description">Comprehensive solution for established businesses</p>
+                    <div class="plan-duration">6 Month Plan</div>
+                </div>
+                
+                <div class="plan-features">
+                    <h4>All Professional features, plus:</h4>
+                    <ul>
+                        <li><i class="fas fa-check"></i> Advanced admin controls</li>
+                        <li><i class="fas fa-check"></i> Sudo user management</li>
+                        <li><i class="fas fa-check"></i> System monitoring</li>
+                        <li><i class="fas fa-check"></i> 100 active sessions</li>
+                        <li><i class="fas fa-check"></i> Broadcast messaging</li>
+                        <li><i class="fas fa-check"></i> Custom workflows</li>
+                        <li><i class="fas fa-check"></i> 24/7 support</li>
+                    </ul>
+                </div>
+                
+                <button class="plan-button enterprise-button" onclick="selectPlan('business')">
+                    <i class="fas fa-building"></i>
+                    Choose Business
+                </button>
+                
+                <div class="plan-footer">
+                    <small>6 month commitment • Cancel anytime</small>
+                </div>
+            </div>
+
+            <!-- Enterprise Plan (12 Months) - Updated -->
+            <div class="pricing-card enterprise-plan premium">
+                <div class="popular-badge">Best Value</div>
                 <div class="plan-header">
                     <h3>Enterprise</h3>
                     <div class="price">
                         <span class="currency">$</span>
-                        <span class="amount monthly-price">99.99</span>
-                        <span class="amount yearly-price" style="display: none;">79.99</span>
-                        <span class="period">/month</span>
+                        <span class="amount">279</span>
+                        <span class="period">/year</span>
                     </div>
-                    <p class="plan-description">For large organizations</p>
+                    <p class="plan-description">Ultimate automation for large organizations</p>
+                    <div class="plan-duration">12 Month Plan</div>
                 </div>
                 
                 <div class="plan-features">
-                    <h4>Everything in Premium, plus:</h4>
+                    <h4>All Business features, plus:</h4>
                     <ul>
-                        <li><i class="fas fa-check"></i> Unlimited Sessions</li>
-                        <li><i class="fas fa-check"></i> Unlimited Messages</li>
-                        <li><i class="fas fa-check"></i> Unlimited Groups</li>
-                        <li><i class="fas fa-check"></i> White-label Solution</li>
-                        <li><i class="fas fa-check"></i> Custom Integrations</li>
-                        <li><i class="fas fa-check"></i> 24/7 Phone Support</li>
-                        <li><i class="fas fa-check"></i> Dedicated Account Manager</li>
-                        <li><i class="fas fa-check"></i> SLA Guarantee</li>
+                        <li><i class="fas fa-check"></i> Unlimited active sessions</li>
+                        <li><i class="fas fa-check"></i> Advanced automation workflows</li>
+                        <li><i class="fas fa-check"></i> Custom bot commands</li>
+                        <li><i class="fas fa-check"></i> API access</li>
+                        <li><i class="fas fa-check"></i> White-label solution</li>
+                        <li><i class="fas fa-check"></i> Dedicated support manager</li>
+                        <li><i class="fas fa-check"></i> Custom integrations</li>
                     </ul>
                 </div>
                 
-                <button class="plan-button enterprise-button" onclick="contactSales()">
+                <button class="plan-button enterprise-button" onclick="selectPlan('enterprise')">
                     <i class="fas fa-phone"></i>
-                    Contact Sales
+                    Choose Enterprise
                 </button>
                 
                 <div class="plan-footer">
-                    <small>Custom billing • Dedicated support</small>
+                    <small>12 month commitment • Dedicated support</small>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Feature Comparison -->
+!-- Feature Comparison -->
 <section class="feature-comparison">
     <div class="container">
         <h2>Feature Comparison</h2>
@@ -214,53 +249,148 @@
                 <thead>
                     <tr>
                         <th>Features</th>
-                        <th>Free</th>
-                        <th>Basic</th>
-                        <th>Premium</th>
-                        <th>Enterprise</th>
+                        <th>Free Trial</th>
+                        <th>Starter (1mo)</th>
+                        <th>Professional (3mo)</th>
+                        <th>Business (6mo)</th>
+                        <th>Enterprise (1yr)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>WhatsApp Sessions</td>
+                        <td>Active Sessions</td>
                         <td>1</td>
-                        <td>3</td>
-                        <td>10</td>
+                        <td>5</td>
+                        <td>25</td>
+                        <td>100</td>
                         <td>Unlimited</td>
                     </tr>
                     <tr>
-                        <td>Daily Messages</td>
-                        <td>50</td>
-                        <td>500</td>
-                        <td>2,000</td>
-                        <td>Unlimited</td>
+                        <td>Trial Duration</td>
+                        <td>7 days</td>
+                        <td>1 month</td>
+                        <td>3 months</td>
+                        <td>6 months</td>
+                        <td>12 months</td>
                     </tr>
                     <tr>
-                        <td>Groups per Session</td>
-                        <td>3</td>
-                        <td>10</td>
-                        <td>50</td>
-                        <td>Unlimited</td>
-                    </tr>
-                    <tr>
-                        <td>Basic Commands</td>
+                        <td>Basic Group Tagging</td>
+                        <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                     </tr>
                     <tr>
-                        <td>Group Management</td>
+                        <td>Contact Auto-Save</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Basic Media Sharing</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Advanced Tagging (tagallexcept)</td>
+                        <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                     </tr>
                     <tr>
-                        <td>Advanced Automation</td>
+                        <td>Event & Meeting Scheduling</td>
                         <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Reminder Management</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Advanced Admin Controls</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Sudo User Management</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>System Monitoring</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Broadcast Messaging</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Custom Workflows</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Advanced Automation Workflows</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Custom Bot Commands</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>API Access</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>White-label Solution</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
                     </tr>
                     <tr>
@@ -268,7 +398,16 @@
                         <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
                         <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Support Level</td>
+                        <td>Community</td>
+                        <td>Standard</td>
+                        <td>Priority</td>
+                        <td>24/7</td>
+                        <td>Dedicated Manager</td>
                     </tr>
                 </tbody>
             </table>
