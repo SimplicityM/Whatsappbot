@@ -671,8 +671,8 @@
                 <div class="footer-section">
                     <h3>Support</h3>
                     <ul>
-                        <li><a href="#">Help Center</a></li>
-                        <li><a href="#">Getting Started</a></li>
+                        <li><a href="#" id="help-center-link">Help Center</a></li>
+                        <li><a href="signup.html">Getting Started</a></li>
                         <li><a href="bot-commands.html">Bot Commands</a></li>
                         <li><a href="#">Troubleshooting</a></li>
                         <li><a href="contact.html">Contact Support</a></li>
@@ -838,7 +838,39 @@ function handleGoogleSignIn(response) {
         }
     });
 }
+
+ function openJivoChat() {
+    // Wait for JivoChat to be fully loaded
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const tryOpen = () => {
+        attempts++;
+        
+        if (window.jivo_api && typeof window.jivo_api.open === 'function') {
+            window.jivo_api.open();
+        } else if (window.jivo && typeof window.jivo.open === 'function') {
+            window.jivo.open();
+        } else if (attempts < maxAttempts) {
+            setTimeout(tryOpen, 500); // Try again after 500ms
+        } else {
+            // Fallback after all attempts failed
+            window.open('mailto:support@tagthemallbot.com?subject=Help Request', '_blank');
+        }
+    };
+    
+    tryOpen();
+}
+
+// Then inside your DOMContentLoaded event listener, add this:
+document.getElementById('help-center-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    openJivoChat();
+});
+
+
     </script>
+
 </body>
 </html>
                             
