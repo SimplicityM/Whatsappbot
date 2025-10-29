@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Commands - TagThemAll Bot</title>
+    <link rel="stylesheet" href="CSS/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Add your navigation header here -->
+    
+    <main class="commands-page">
+        <div class="container">
+            <h1>Bot Commands Guide</h1>
+            
+            <section class="command-section">
+                <h2>Basic Commands</h2>
+                <div class="command-grid">
+                    <div class="command-card">
+                        <h3><code>!ping</code></h3>
+                        <p>Test bot response (replies with "Pong! 🏓")</p>
+                    </div>
+                    <div class="command-card">
+                        <h3><code>!help</code></h3>
+                        <p>Display all available commands</p>
+                    </div>
+                    <!-- Add more command cards here -->
+                </div>
+            </section>
+            
+            <!-- Add more sections for different command categories -->
+        </div>
+    </main>
+     <!-- Add your footer here -->
+</body>
+<script>
+    // Add this to your main JavaScript file or in a script tag
+function showBotCommands() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <span class="close" onclick="this.parentElement.parentElement.remove()">&times;</span>
+            <h2>Bot Commands</h2>
+            <div class="commands-list">
+                <h3>Basic Commands</h3>
+                <ul>
+                    <li><code>!ping</code> - Test bot response</li>
+                    <li><code>!help</code> - Display all available commands</li>
+                    <li><code>!status</code> - Show bot status</li>
+                </ul>
+                <!-- Add more command categories -->
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+</script>
+</html>
