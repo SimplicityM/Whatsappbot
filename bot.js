@@ -1766,6 +1766,139 @@ if (require.main === module) {
         console.log('⚠️  Please update config.json with your phone number before running the bot');
         process.exit(1);
     }
+
+    // Enhanced command handler with usage limits
+async function handleCommand(message, client, sessionId, userId) {
+    const commandText = message.body.toLowerCase();
+    const command = commandText.split(' ')[0];
+    const args = commandText.split(' ').slice(1);
+
+    try {
+        // Check usage limits before processing command
+        const limitCheck = await checkUsageLimits(userId, 'use_command', { command: command.substring(1) });
+        
+        if (!limitCheck.canProceed) {
+            await message.reply(`❌ ${limitCheck.reason}\n\n🚀 Upgrade your plan at: ${process.env.DOMAIN}/pricing`);
+            return;
+        }
+
+        // Check message limits
+        const messageLimitCheck = await checkUsageLimits(userId, 'send_message');
+        if (!messageLimitCheck.canProceed) {
+            await message.reply(`📊 ${messageLimitCheck.reason}\n\n💎 Upgrade now: ${process.env.DOMAIN}/pricing`);
+            return;
+        }
+
+        // Track usage
+        await trackUsage(userId, 'command_used', sessionId, command.substring(1));
+        await trackUsage(userId, 'message_sent', sessionId);
+
+        // Process the command
+        switch(command) {
+            case '!help':
+                await handleHelpCommand(message, userId);
+                break;
+            case '!tagall':
+                await handleTagAllCommand(message, args, client, userId);
+                break;
+            case '!status':
+                await handleStatusCommand(message, userId);
+                break;
+            // ... other commands
+            default:
+                await message.reply('❓ Unknown command. Type !help for available commands.');
+        }
+
+    } catch (error) {
+        console.error('Command handling error:', error);
+        await message.reply('⚠️ An error occurred while processing your command.');
+    }
+}
+
+// Enhanced help command showing available features
+async function handleHelpCommand(message, userId) {
+    const user = await User.findById(userId).populate('subscription');
+    const plan = subscriptionPlans[user.subscription?.planType || 'free'];
+    const usage = await getTodayUsage(userId);
+
+    let helpMessage = `🤖 *TagThemAll Bot Help*\n\n`;
+    helpMessage += `📋 *Your Plan:* ${plan.name}\n`;
+    helpMessage += `📊 *Today's Usage:*\n`;
+    helpMessage += `   • Messages: ${usage.messagesCount}/${plan.maxMessagesPerDay === -1 ? '∞' : plan.maxMessagesPerDay}\n`;
+    helpMessage += `   • Sessions: ${usage.sessionsActive}/${plan.maxSessions === -1 ? '∞' : plan.maxSessions}\n\n`;
+
+    helpMessage += `✅ *Available Commands:*\n`;
+    
+    // Show commands based on plan
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('ping')) {
+        helpMessage += `• !ping - Test bot response\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('status')) {
+        helpMessage += `• !status - Check bot status\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('tagall')) {
+        helpMessage += `• !tagall [message] - Tag all group members\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('broadcast')) {
+        helpMessage += `• !broadcast [message] - Send to all groups\n`;
+    }
+
+    // Show locked features for upgrade encouragement
+    if (!plan.allowedCommands.includes('*')) {
+        helpMessage += `\n🔒 *Upgrade to unlock:*\n`;
+        if (!plan.allowedCommands.includes('tagall')) {
+            helpMessage += `• !tagall - Group tagging (Basic+)\n`;
+        }
+        if (!plan.allowedCommands.includes('scheduler')) {
+            helpMessage += `• !reminder - Set reminders (Premium+)\n`;
+        }
+        if (!plan.allowedCommands.includes('analytics')) {
+            helpMessage += `• !analytics - View statistics (Premium+)\n`;
+        }
+        helpMessage += `\n💎 Upgrade at: ${process.env.DOMAIN}/pricing`;
+    }
+
+    await message.reply(helpMessage);
+}
+
+// Usage limit warning system
+async function sendUsageWarnings(userId) {
+    const usage = await getTodayUsage(userId);
+    const user = await User.findById(userId).populate('subscription');
+    const plan = subscriptionPlans[user.subscription?.planType || 'free'];
+
+    // Check if approaching limits
+    const messagePercentage = (usage.messagesCount / plan.maxMessagesPerDay) * 100;
+    
+    if (messagePercentage >= 80 && messagePercentage < 90) {
+        // Send 80% warning
+        await sendWarningMessage(userId, 'messages', 80, plan.maxMessagesPerDay - usage.messagesCount);
+    } else if (messagePercentage >= 90 && messagePercentage < 100) {
+        // Send 90% warning
+        await sendWarningMessage(userId, 'messages', 90, plan.maxMessagesPerDay - usage.messagesCount);
+    }
+}
+
+async function sendWarningMessage(userId, type, percentage, remaining) {
+    const sessions = await Session.find({ userId: userId, status: 'active' });
+    
+    const warningMessage = `⚠️ *Usage Warning*\n\n` +
+        `You've used ${percentage}% of your daily ${type} limit.\n` +
+        `${remaining} ${type} remaining today.\n\n` +
+        `💎 Upgrade for unlimited usage: ${process.env.DOMAIN}/pricing`;
+
+    // Send warning to all active sessions
+    for (const session of sessions) {
+        const client = activeClients.get(session.sessionId);
+        if (client) {
+            try {
+                await client.sendMessage(session.phoneNumber + '@c.us', warningMessage);
+            } catch (error) {
+                console.error('Warning message send error:', error);
+            }
+        }
+    }
+}
     
     // Start with 1 session initially
     module.exports.start(1);

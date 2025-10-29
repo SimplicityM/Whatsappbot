@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+<!-- Hero Section -->
+<section class="pricing-hero">
+    <div class="container">
+        <h1>Choose Your Perfect Plan</h1>
+        <p>Start free, upgrade when you need more power</p>
+        <div class="billing-toggle">
+            <span class="billing-label">Monthly</span>
+            <label class="switch">
+                <input type="checkbox" id="billingToggle">
+                <span class="slider"></span>
+            </label>
+            <span class="billing-label">Yearly <span class="discount-badge">Save 20%</span></span>
+        </div>
+    </div>
+</section>
+
+<!-- Pricing Plans -->
+<section class="pricing-section">
+    <div class="container">
+        <div class="pricing-grid">
+            <!-- Free Plan -->
+            <div class="pricing-card free-plan">
+                <div class="plan-header">
+                    <h3>Free Trial</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount">0</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <p class="plan-description">Perfect for testing our capabilities</p>
+                </div>
+                
+                <div class="plan-features">
+                    <h4>What's included:</h4>
+                    <ul>
+                        <li><i class="fas fa-check"></i> 1 WhatsApp Session</li>
+                        <li><i class="fas fa-check"></i> 50 Messages/Day</li>
+                        <li><i class="fas fa-check"></i> 3 Groups per Session</li>
+                        <li><i class="fas fa-check"></i> Basic Commands (ping, help, status)</li>
+                        <li><i class="fas fa-check"></i> 7-Day Trial</li>
+                        <li><i class="fas fa-check"></i> Community Support</li>
+                    </ul>
+                    
+                    <div class="usage-indicator">
+                        <div class="usage-bar">
+                            <div class="usage-fill" style="width: 0%"></div>
+                        </div>
+                        <span class="usage-text">0/50 messages used today</span>
+                    </div>
+                </div>
+                
+                <button class="plan-button free-button" onclick="startFreeTrial()">
+                    <i class="fas fa-rocket"></i>
+                    Start Free Trial
+                </button>
+                
+                <div class="plan-footer">
+                    <small>No credit card required</small>
+                </div>
+            </div>
+
+            <!-- Basic Plan -->
+            <div class="pricing-card basic-plan">
+                <div class="plan-header">
+                    <h3>Basic</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount monthly-price">9.99</span>
+                        <span class="amount yearly-price" style="display: none;">7.99</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <p class="plan-description">Great for small businesses</p>
+                </div>
+                
+                <div class="plan-features">
+                    <h4>Everything in Free, plus:</h4>
+                    <ul>
+                        <li><i class="fas fa-check"></i> 3 WhatsApp Sessions</li>
+                        <li><i class="fas fa-check"></i> 500 Messages/Day</li>
+                        <li><i class="fas fa-check"></i> 10 Groups per Session</li>
+                        <li><i class="fas fa-check"></i> Group Management Commands</li>
+                        <li><i class="fas fa-check"></i> Auto-Reply Features</li>
+                        <li><i class="fas fa-check"></i> Email Support</li>
+                        <li><i class="fas fa-check"></i> Basic Analytics</li>
+                    </ul>
+                </div>
+                
+                <button class="plan-button basic-button" onclick="selectPlan('basic')">
+                    <i class="fas fa-credit-card"></i>
+                    Choose Basic
+                </button>
+                
+                <div class="plan-footer">
+                    <small>Billed monthly • Cancel anytime</small>
+                </div>
+            </div>
+
+            <!-- Premium Plan -->
+            <div class="pricing-card premium-plan popular">
+                <div class="popular-badge">Most Popular</div>
+                <div class="plan-header">
+                    <h3>Premium</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount monthly-price">19.99</span>
+                        <span class="amount yearly-price" style="display: none;">15.99</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <p class="plan-description">Perfect for growing businesses</p>
+                </div>
+                
+                <div class="plan-features">
+                    <h4>Everything in Basic, plus:</h4>
+                    <ul>
+                        <li><i class="fas fa-check"></i> 10 WhatsApp Sessions</li>
+                        <li><i class="fas fa-check"></i> 2,000 Messages/Day</li>
+                        <li><i class="fas fa-check"></i> 50 Groups per Session</li>
+                        <li><i class="fas fa-check"></i> All Bot Commands</li>
+                        <li><i class="fas fa-check"></i> Advanced Automation</li>
+                        <li><i class="fas fa-check"></i> Priority Support</li>
+                        <li><i class="fas fa-check"></i> Advanced Analytics</li>
+                        <li><i class="fas fa-check"></i> Custom Commands</li>
+                        <li><i class="fas fa-check"></i> Scheduling Features</li>
+                    </ul>
+                </div>
+                
+                <button class="plan-button premium-button" onclick="selectPlan('premium')">
+                    <i class="fas fa-crown"></i>
+                    Choose Premium
+                </button>
+                
+                <div class="plan-footer">
+                    <small>Billed monthly • Cancel anytime</small>
+                </div>
+            </div>
+
+            <!-- Enterprise Plan -->
+            <div class="pricing-card enterprise-plan">
+                <div class="plan-header">
+                    <h3>Enterprise</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount monthly-price">99.99</span>
+                        <span class="amount yearly-price" style="display: none;">79.99</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <p class="plan-description">For large organizations</p>
+                </div>
+                
+                <div class="plan-features">
+                    <h4>Everything in Premium, plus:</h4>
+                    <ul>
+                        <li><i class="fas fa-check"></i> Unlimited Sessions</li>
+                        <li><i class="fas fa-check"></i> Unlimited Messages</li>
+                        <li><i class="fas fa-check"></i> Unlimited Groups</li>
+                        <li><i class="fas fa-check"></i> White-label Solution</li>
+                        <li><i class="fas fa-check"></i> Custom Integrations</li>
+                        <li><i class="fas fa-check"></i> 24/7 Phone Support</li>
+                        <li><i class="fas fa-check"></i> Dedicated Account Manager</li>
+                        <li><i class="fas fa-check"></i> SLA Guarantee</li>
+                    </ul>
+                </div>
+                
+                <button class="plan-button enterprise-button" onclick="contactSales()">
+                    <i class="fas fa-phone"></i>
+                    Contact Sales
+                </button>
+                
+                <div class="plan-footer">
+                    <small>Custom billing • Dedicated support</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Feature Comparison -->
+<section class="feature-comparison">
+    <div class="container">
+        <h2>Feature Comparison</h2>
+        <div class="comparison-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Features</th>
+                        <th>Free</th>
+                        <th>Basic</th>
+                        <th>Premium</th>
+                        <th>Enterprise</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>WhatsApp Sessions</td>
+                        <td>1</td>
+                        <td>3</td>
+                        <td>10</td>
+                        <td>Unlimited</td>
+                    </tr>
+                    <tr>
+                        <td>Daily Messages</td>
+                        <td>50</td>
+                        <td>500</td>
+                        <td>2,000</td>
+                        <td>Unlimited</td>
+                    </tr>
+                    <tr>
+                        <td>Groups per Session</td>
+                        <td>3</td>
+                        <td>10</td>
+                        <td>50</td>
+                        <td>Unlimited</td>
+                    </tr>
+                    <tr>
+                        <td>Basic Commands</td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Group Management</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Advanced Automation</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Custom Integrations</td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-times text-red"></i></td>
+                        <td><i class="fas fa-check text-green"></i></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ Section -->
+<section class="pricing-faq">
+    <div class="container">
+        <h2>Frequently Asked Questions</h2>
+        <div class="faq-grid">
+            <div class="faq-item">
+                <h3>Can I change plans anytime?</h3>
+                    <p>Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate the billing accordingly.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What happens if I exceed my limits?</h3>
+                    <p>We'll notify you when you're approaching your limits. If exceeded, you can upgrade instantly or wait until the next billing cycle for limits to reset.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>Is there a setup fee?</h3>
+                    <p>No setup fees! Start with our free trial and only pay when you're ready to upgrade.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>Can I cancel anytime?</h3>
+                    <p>Absolutely. Cancel anytime with no penalties. Your service continues until the end of your billing period.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Billing toggle functionality
+        document.getElementById('billingToggle').addEventListener('change', function() {
+            const monthlyPrices = document.querySelectorAll('.monthly-price');
+            const yearlyPrices = document.querySelectorAll('.yearly-price');
+            
+            if (this.checked) {
+                monthlyPrices.forEach(price => price.style.display = 'none');
+                yearlyPrices.forEach(price => price.style.display = 'inline');
+            } else {
+                monthlyPrices.forEach(price => price.style.display = 'inline');
+                yearlyPrices.forEach(price => price.style.display = 'none');
+            }
+        });
+
+        // Plan selection functions
+        function startFreeTrial() {
+            window.location.href = 'signup.html?plan=free';
+        }
+
+        function selectPlan(planType) {
+            window.location.href = `signup.html?plan=${planType}`;
+        }
+
+        function contactSales() {
+            window.location.href = 'contact.html?type=enterprise';
+        }
+
+        // Load user's current usage if logged in
+        async function loadCurrentUsage() {
+            try {
+                const response = await fetch('/api/user/usage', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const usage = await response.json();
+                    updateUsageIndicators(usage);
+                }
+            } catch (error) {
+                console.log('Not logged in or error loading usage');
+            }
+        }
+
+        function updateUsageIndicators(usage) {
+            const usageBar = document.querySelector('.usage-fill');
+            const usageText = document.querySelector('.usage-text');
+            
+            if (usageBar && usageText) {
+                const percentage = (usage.messagesCount / usage.messageLimit) * 100;
+                usageBar.style.width = `${Math.min(percentage, 100)}%`;
+                usageText.textContent = `${usage.messagesCount}/${usage.messageLimit} messages used today`;
+                
+                if (percentage > 80) {
+                    usageBar.style.backgroundColor = '#ff6b6b';
+                } else if (percentage > 60) {
+                    usageBar.style.backgroundColor = '#ffa726';
+                } else {
+                    usageBar.style.backgroundColor = '#4caf50';
+                }
+            }
+        }
+
+        // Load usage on page load
+        document.addEventListener('DOMContentLoaded', loadCurrentUsage);
+    </script>
+</body>
+</html>

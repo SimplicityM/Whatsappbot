@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+ const crypto = require('crypto'); // Add this import at the top
 
 const userSchema = new mongoose.Schema({
     fullName: {
@@ -75,10 +76,24 @@ const userSchema = new mongoose.Schema({
         groupsTagged: { type: Number, default: 0 },
         contactsSaved: { type: Number, default: 0 },
         messagesProcessed: { type: Number, default: 0 }
+    },
+
+
+    // ADD THESE NEW FIELDS HERE:
+    emailPreferences: {
+        marketing: { type: Boolean, default: true },
+        trialReminders: { type: Boolean, default: true },
+        usageAlerts: { type: Boolean, default: true },
+        productUpdates: { type: Boolean, default: true }
+    },
+    unsubscribeToken: {
+        type: String,
+        default: () => crypto.randomBytes(32).toString('hex')
     }
 }, {
     timestamps: true
 });
+
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
