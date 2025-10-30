@@ -1,0 +1,538 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up | AutoPay</title>
+   <link rel="stylesheet" href="CSS/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <body class="admin-body">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>AutoPay Admin</span>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+        </div>
+        
+        <!-- Your existing nav code continues here -->
+        <nav class="sidebar-nav">
+            <ul class="nav-list">
+            <li class="nav-item active">
+                <a href="#dashboard" class="nav-link" data-section="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#sessions" class="nav-link" data-section="sessions">
+                    <i class="fas fa-plug"></i>
+                    <span>Bot Sessions</span>
+                    <span class="badge" id="sessionCount">0</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#users" class="nav-link" data-section="users">
+                    <i class="fas fa-users"></i>
+                    <span>Users & Groups</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#contacts" class="nav-link" data-section="contacts">
+                    <i class="fas fa-address-book"></i>
+                    <span>Contacts</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#messages" class="nav-link" data-section="messages">
+                    <i class="fas fa-comments"></i>
+                    <span>Messages</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#reminders" class="nav-link" data-section="reminders">
+                    <i class="fas fa-bell"></i>
+                    <span>Reminders</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#analytics" class="nav-link" data-section="analytics">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Analytics</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#settings" class="nav-link" data-section="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user-shield"></i>
+            </div>
+            <div class="user-details">
+                <span class="user-name">Admin User</span>
+                <span class="user-role">Super Admin</span>
+            </div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+        </button>
+    </div>
+</aside>
+
+<!-- Main Content -->
+<main class="admin-main">
+    <!-- Top Header -->
+    <header class="admin-header">
+        <div class="header-left">
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h1 class="page-title" id="pageTitle">Dashboard</h1>
+        </div>
+        <div class="header-right">
+            <div class="header-actions">
+                <button class="action-btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+                <div class="notification-dropdown">
+                    <button class="notification-btn">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge">3</span>
+                    </button>
+                </div>
+            </div>
+            <div class="connection-status" id="connectionStatus">
+                <div class="status-indicator online"></div>
+                <span>Connected</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Dashboard Content -->
+    <div class="admin-content">
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="content-section active">
+            <div class="dashboard-grid">
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-plug"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="activeSessions">0</h3>
+                            <p>Active Sessions</p>
+                            <span class="stat-change positive">+2 today</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalUsers">0</h3>
+                            <p>Total Users</p>
+                            <span class="stat-change positive">+15 this week</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="messagesProcessed">0</h3>
+                            <p>Messages Today</p>
+                            <span class="stat-change positive">+234 today</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="uptime">00:00:00</h3>
+                            <p>System Uptime</p>
+                            <span class="stat-change neutral">Running</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <div class="actions-grid">
+                        <button class="action-card" onclick="createNewSession()">
+                            <i class="fas fa-plus"></i>
+                            <span>New Session</span>
+                        </button>
+                        <button class="action-card" onclick="broadcastMessage()">
+                            <i class="fas fa-bullhorn"></i>
+                            <span>Broadcast</span>
+                        </button>
+                        <button class="action-card" onclick="exportData()">
+                            <i class="fas fa-download"></i>
+                            <span>Export Data</span>
+                        </button>
+                        <button class="action-card" onclick="systemRestart()">
+                            <i class="fas fa-redo"></i>
+                            <span>Restart Bot</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="recent-activity">
+                    <h3>Recent Activity</h3>
+                    <div class="activity-list" id="activityList">
+                        <!-- Activity items will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- System Status */
+                <div class="system-status">
+                    <h3>System Status</h3>
+                    <div class="status-items">
+                        <div class="status-item">
+                            <span class="status-label">Bot Service</span>
+                            <span class="status-value online">Running</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Database</span>
+                            <span class="status-value online">Connected</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Memory Usage</span>
+                            <span class="status-value">245 MB</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">CPU Usage</span>
+                            <span class="status-value">12%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sessions Section -->
+        <section id="sessions-section" class="content-section">
+            <div class="section-header">
+                <h2>Bot Sessions Management</h2>
+                <button class="btn-primary" onclick="createSession()">
+                    <i class="fas fa-plus"></i>
+                    Create New Session
+                </button>
+            </div>
+
+            <div class="sessions-container">
+                <div class="sessions-filters">
+                    <select id="sessionFilter">
+                        <option value="all">All Sessions</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="error">Error</option>
+                    </select>
+                    <input type="search" placeholder="Search sessions..." id="sessionSearch">
+                </div>
+
+                <div class="sessions-grid" id="sessionsGrid">
+                    <!-- Session cards will be populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Users Section -->
+        <section id="users-section" class="content-section">
+            <div class="section-header">
+                <h2>Users & Groups Management</h2>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="exportUsers()">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </button>
+                    <button class="btn-primary" onclick="addUser()">
+                        <i class="fas fa-user-plus"></i>
+                        Add User
+                    </button>
+                </div>
+            </div>
+
+            <div class="users-table-container">
+                <table class="admin-table" id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Phone</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Last Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <!-- Users will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Contacts Section -->
+        <section id="contacts-section" class="content-section">
+            <div class="section-header">
+                <h2>Contacts Management</h2>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="importContacts()">
+                        <i class="fas fa-upload"></i>
+                        Import
+                    </button>
+                    <button class="btn-primary" onclick="addContact()">
+                        <i class="fas fa-plus"></i>
+                        Add Contact
+                    </button>
+                </div>
+            </div>
+
+            <div class="contacts-grid" id="contactsGrid">
+                <!-- Contacts will be populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Messages Section -->
+        <section id="messages-section" class="content-section">
+            <div class="section-header">
+                <h2>Message Management</h2>
+                <button class="btn-primary" onclick="showBroadcastModal()">
+                    <i class="fas fa-bullhorn"></i>
+                    Send Broadcast
+                </button>
+            </div>
+
+            <div class="messages-container">
+                <div class="message-stats">
+                    <div class="stat-item">
+                        <span class="stat-number">1,234</span>
+                        <span class="stat-label">Messages Today</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">45</span>
+                        <span class="stat-label">Groups Tagged</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">12</span>
+                        <span class="stat-label">Broadcasts Sent</span>
+                    </div>
+                </div>
+
+                <div class="message-logs" id="messageLogs">
+                    <!-- Message logs will be populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Reminders Section -->
+        <section id="reminders-section" class="content-section">
+            <div class="section-header">
+                <h2>Reminders & Events</h2>
+                <button class="btn-primary" onclick="createReminder()">
+                    <i class="fas fa-plus"></i>
+                    Create Reminder
+                </button>
+            </div>
+
+            <div class="reminders-container">
+                <div class="reminders-list" id="remindersList">
+                    <!-- Reminders will be populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Analytics Section -->
+        <section id="analytics-section" class="content-section">
+            <div class="section-header">
+                <h2>Analytics & Reports</h2>
+                <select id="analyticsTimeframe">
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="year">This Year</option>
+                </select>
+            </div>
+
+            <div class="analytics-grid">
+                <div class="chart-container">
+                    <h3>Message Activity</h3>
+                    <canvas id="messageChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>User Growth</h3>
+                    <canvas id="userChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Session Usage</h3>
+                    <canvas id="sessionChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Command Usage</h3>
+                    <canvas id="commandChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings-section" class="content-section">
+            <div class="section-header">
+                <h2>Bot Settings</h2>
+                <button class="btn-primary" onclick="saveSettings()">
+                    <i class="fas fa-save"></i>
+                    Save Changes
+                </button>
+            </div>
+
+            <div class="settings-container">
+                <div class="settings-tabs">
+                    <button class="tab-btn active" data-tab="general">General</button>
+                    <button class="tab-btn" data-tab="security">Security</button>
+                    <button class="tab-btn" data-tab="notifications">Notifications</button>
+                    <button class="tab-btn" data-tab="advanced">Advanced</button>
+                </div>
+
+                <div class="settings-content">
+                    <!-- General Settings -->
+                    <div id="general-settings" class="settings-tab active">
+                        <div class="setting-group">
+                            <h3>Bot Configuration</h3>
+                            <div class="setting-item">
+                                <label for="maxSessions">Maximum Sessions</label>
+                                <input type="number" id="maxSessions" value="1000" min="1" max="10000">
+                            </div>
+                            <div class="setting-item">
+                                <label for="commandPrefix">Command Prefix</label>
+                                <input type="text" id="commandPrefix" value="!" maxlength="1">
+                            </div>
+                            <div class="setting-item">
+                                <label for="autoSaveContacts">Auto-save Contacts</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoSaveContacts" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Settings -->
+                    <div id="security-settings" class="settings-tab">
+                        <div class="setting-group">
+                            <h3>Admin Access</h3>
+                            <div class="admin-users-list" id="adminUsersList">
+                                <!-- Admin users will be populated by JavaScript -->
+                            </div>
+                            <button class="btn-secondary" onclick="addAdmin()">
+                                <i class="fas fa-user-plus"></i>
+                                Add Admin
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Other settings tabs... -->
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<!-- Modals -->
+<div id="broadcastModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Send Broadcast Message</h3>
+            <button class="modal-close" onclick="closeBroadcastModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="broadcastMessage">Message</label>
+                <textarea id="broadcastMessage" placeholder="Enter your broadcast message..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="broadcastTarget">Send to</label>
+                <select id="broadcastTarget">
+                    <option value="all">All Users</option>
+                    <option value="groups">Groups Only</option>
+                    <option value="individuals">Individuals Only</option>
+                    <option value="custom">Custom Selection</option>
+                </select>
+            </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="scheduleMessage">
+                        Schedule for later
+                    </label>
+                </div>
+                <div class="form-group" id="scheduleGroup" style="display: none;">
+                    <label for="scheduleTime">Schedule Time</label>
+                    <input type="datetime-local" id="scheduleTime">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeBroadcastModal()">Cancel</button>
+                <button class="btn-primary" onclick="sendBroadcast()">
+                    <i class="fas fa-paper-plane"></i>
+                    Send Message
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session QR Modal -->
+    <div id="qrModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Scan QR Code</h3>
+                <button class="modal-close" onclick="closeQRModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-container">
+                    <div class="qr-placeholder" id="qrCode">
+                        <i class="fas fa-qrcode"></i>
+                        <p>Generating QR Code...</p>
+                    </div>
+                    <div class="qr-instructions">
+                        <h4>How to connect:</h4>
+                        <ol>
+                            <li>Open WhatsApp on your phone</li>
+                            <li>Go to Settings > Linked Devices</li>
+                            <li>Tap "Link a Device"</li>
+                            <li>Scan this QR code</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="js/admin.js"></script>
+   
+</body>
+</html>

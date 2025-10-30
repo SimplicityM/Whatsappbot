@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard - AutoPay</title>
+    <link rel="stylesheet" href="CSS/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/lib/browser.min.js"></script>
+    
+</head>
+<body class="admin-body">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>AutoPay</span>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <ul class="nav-list">
+                <li class="nav-item active">
+                    <a href="#overview" class="nav-link" data-section="overview">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Overview</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#sessions" class="nav-link" data-section="sessions">
+                        <i class="fas fa-plug"></i>
+                        <span>My Sessions</span>
+                        <span class="badge" id="mySessionCount">0</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#subscription" class="nav-link" data-section="subscription">
+                        <i class="fas fa-crown"></i>
+                        <span>Subscription</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#statistics" class="nav-link" data-section="statistics">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Statistics</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#settings" class="nav-link" data-section="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Bot Settings</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#payments" class="nav-link" data-section="payments">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Payments</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <span class="user-name" id="userName">Loading...</span>
+                    <span class="user-role" id="userSubscription">Free Plan</span>
+                </div>
+            </div>
+            <button class="logout-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main">
+        <!-- Header -->
+        <header class="admin-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1 class="page-title" id="pageTitle">Dashboard Overview</h1>
+            </div>
+            <div class="header-right">
+                <div class="header-actions">
+                    <button class="action-btn" onclick="refreshData()">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Refresh</span>
+                    </button>
+                    <button class="action-btn" onclick="upgradeSubscription()">
+                        <i class="fas fa-crown"></i>
+                        <span>Upgrade</span>
+                    </button>
+                </div>
+                <div class="connection-status" id="connectionStatus">
+                    <div class="status-indicator online"></div>
+                    <span>Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard Content -->
+        <div class="admin-content">
+            <!-- Overview Section -->
+            <section id="overview-section" class="content-section active">
+                <div class="dashboard-grid">
+                    <!-- Quick Stats -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                                <i class="fas fa-plug"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="activeSessionsCount">0</h3>
+                                <p>Active Sessions</p>
+                                <span class="stat-change neutral" id="sessionLimit">Limit: 1</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="messagesToday">0</h3>
+                                <p>Messages Today</p>
+                                <span class="stat-change positive">+0 today</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="groupsManaged">0</h3>
+                                <p>Groups Managed</p>
+                                <span class="stat-change neutral">Active</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">
+                                <i class="fas fa-crown"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="planDaysLeft">0</h3>
+                                <p>Days Remaining</p>
+                                <span class="stat-change warning" id="planStatus">Free</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="quick-actions">
+                        <h3>Quick Actions</h3>
+                        <div class="actions-grid">
+                            <button class="action-card" onclick="createNewSession()">
+                                <i class="fas fa-plus-circle"></i>
+                                <span>New Session</span>
+                            </button>
+                            <button class="action-card" onclick="viewSessions()">
+                                <i class="fas fa-list"></i>
+                                <span>Manage Sessions</span>
+                            </button>
+                            <button class="action-card" onclick="upgradeSubscription()">
+                                <i class="fas fa-rocket"></i>
+                                <span>Upgrade Plan</span>
+                            </button>
+                            <button class="action-card" onclick="openSettings()">
+                                <i class="fas fa-sliders-h"></i>
+                                <span>Bot Settings</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="recent-activity">
+                        <h3>Recent Activity</h3>
+                        <div class="activity-list" id="recentActivityList">
+                            <div class="activity-item info">
+                                <div class="activity-icon">
+                                    <i class="fas fa-info-circle"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <p>Welcome to your dashboard! Create your first WhatsApp session to get started.</p>
+                                    <span class="activity-time">Just now</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Subscription Status -->
+                    <div class="system-status">
+                        <h3>Subscription Status</h3>
+                        <div class="status-items">
+                            <div class="status-item">
+                                <span class="status-label">Current Plan</span>
+                                <span class="status-value" id="currentPlan">Free</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Status</span>
+                                <span class="status-value online" id="paymentStatus">Active</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Expires In</span>
+                                <span class="status-value" id="expiryDate">Never</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Session Limit</span>
+                                <span class="status-value" id="maxSessions">1</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sessions Section -->
+            <section id="sessions-section" class="content-section">
+                <div class="section-header">
+                    <h2>My WhatsApp Sessions</h2>
+                    <button class="btn-primary" onclick="createNewSession()">
+                        <i class="fas fa-plus"></i>
+                        Create New Session
+                    </button>
+                </div>
+
+                <div class="sessions-container">
+                    <div class="sessions-filters">
+                        <select id="sessionFilter">
+                            <option value="all">All Sessions</option>
+                            <option value="active">Active</option>
+                            <option value="waiting_qr">Waiting QR</option>
+                            <option value="disconnected">Disconnected</option>
+                        </select>
+                        <input type="search" placeholder="Search sessions..." id="sessionSearch">
+                    </div>
+
+                    <div class="sessions-grid" id="userSessionsGrid">
+                        <!-- User sessions will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Subscription Section -->
+            <section id="subscription-section" class="content-section">
+                <div class="section-header">
+                    <h2>My Subscription</h2>
+                    <button class="btn-primary" onclick="upgradeSubscription()">
+                        <i class="fas fa-crown"></i>
+                        Upgrade Plan
+                    </button>
+                </div>
+
+                <div class="subscription-container">
+                    <div class="subscription-current">
+                        <h3>Current Plan</h3>
+                        <div class="plan-card" id="currentPlanCard">
+                            <div class="plan-header">
+                                <h4 id="currentPlanName">Free Plan</h4>
+                                <span class="plan-badge" id="currentPlanBadge">Current</span>
+                            </div>
+                            <div class="plan-price">
+                                <span class="price" id="currentPlanPrice">₦0</span>
+                                <span class="period">/month</span>
+                            </div>
+                            <div class="plan-features" id="currentPlanFeatures">
+                                <!-- Features will be populated -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="available-plans">
+                        <h3>Available Plans</h3>
+                        <div class="plans-grid" id="availablePlansGrid">
+                            <!-- Plans will be populated -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section id="statistics-section" class="content-section">
+                <div class="section-header">
+                    <h2>Usage Statistics</h2>
+                    <select id="statsTimeframe">
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                    </select>
+                </div>
+
+                <div class="stats-container">
+                    <div class="stats-cards">
+                        <div class="stat-card-large">
+                            <div class="stat-icon-large">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="stat-content-large">
+                                <h3 id="totalMessages">0</h3>
+                                <p>Total Messages Processed</p>
+                                <div class="stat-trend">
+                                    <i class="fas fa-arrow-up trend-up"></i>
+                                    <span>0% this week</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card-large">
+                            <div class="stat-icon-large">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-content-large">
+                                <h3 id="totalGroups">0</h3>
+                                <p>Groups Managed</p>
+                                <div class="stat-trend">
+                                    <i class="fas fa-arrow-up trend-up"></i>
+                                    <span>0% this week</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card-large">
+                            <div class="stat-icon-large">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="stat-content-large">
+                                <h3 id="commandsUsed">0</h3>
+                                <p>Commands Executed</p>
+                                <div class="stat-trend">
+                                    <i class="fas fa-arrow-up trend-up"></i>
+                                    <span>0% this week</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-container">
+                        <div class="chart-card">
+                            <h4>Message Activity</h4>
+                            <div class="chart-placeholder" id="messageChart">
+                                <p>Message activity chart will appear here</p>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h4>Session Usage</h4>
+                            <div class="chart-placeholder" id="sessionChart">
+                                <p>Session usage chart will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings-section" class="content-section">
+                <div class="section-header">
+                    <h2>Bot Settings</h2>
+                    <button class="btn-primary" onclick="saveSettings()">
+                        <i class="fas fa-save"></i>
+                        Save Changes
+                    </button>
+                </div>
+
+                <div class="settings-container">
+                    <div class="settings-tabs">
+                        <button class="tab-btn active" data-tab="general">General</button>
+                        <button class="tab-btn" data-tab="commands">Commands</button>
+                        <button class="tab-btn" data-tab="notifications">Notifications</button>
+                    </div>
+
+                    <div class="settings-content">
+                        <!-- General Settings -->
+                        <div id="general-settings" class="settings-tab active">
+                            <div class="setting-group">
+                                <h3>Bot Behavior</h3>
+                                <div class="setting-item">
+                                    <label for="autoSaveContacts">Auto-save Contacts</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="autoSaveContacts" checked>
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="autoJoinGroups">Auto-join Groups</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="autoJoinGroups">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="commandPrefix">Command Prefix</label>
+                                    <input type="text" id="commandPrefix" value="!" maxlength="1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Commands Settings -->
+                        <div id="commands-settings" class="settings-tab">
+                            <div class="setting-group">
+                                <h3>Available Commands</h3>
+                                <div id="availableCommandsList">
+                                    <!-- Commands will be populated based on subscription -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Notifications Settings -->
+                        <div id="notifications-settings" class="settings-tab">
+                            <div class="setting-group">
+                                <h3>Notification Preferences</h3>
+                                <div class="setting-item">
+                                    <label for="notifyNewMessages">New Message Alerts</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="notifyNewMessages" checked>
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="notifySessionStatus">Session Status Alerts</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="notifySessionStatus" checked>
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Payments Section -->
+            <section id="payments-section" class="content-section">
+                <div class="section-header">
+                    <h2>Payment History</h2>
+                    <button class="btn-secondary" onclick="exportPayments()">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </button>
+                </div>
+
+                <div class="payments-container">
+                    <div class="payment-stats">
+                        <div class="payment-stat">
+                            <span class="stat-number" id="totalSpent">₦0</span>
+                            <span class="stat-label">Total Spent</span>
+                        </div>
+                        <div class="payment-stat">
+                            <span class="stat-number" id="paymentsCount">0</span>
+                            <span class="stat-label">Total Payments</span>
+                        </div>
+                        <div class="payment-stat">
+                            <span class="stat-number" id="lastPayment">-</span>
+                            <span class="stat-label">Last Payment</span>
+                        </div>
+                    </div>
+
+                    <div class="payments-table-container">
+                        <table class="admin-table" id="paymentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Plan</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paymentsTableBody">
+                                <!-- Payments will be populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Add this to your dashboard.html -->
+<div id="qrModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Scan QR Code</h3>
+            <button class="close-btn" onclick="closeQRModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="qrCodeDisplay" class="qr-code-display">
+                <i class="fas fa-qrcode"></i>
+                <p>Generating QR Code...</p>
+            </div>
+            <div class="qr-instructions">
+                <h4>How to Connect:</h4>
+                <ol>
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                    <li>Tap <strong>"Link a Device"</strong></li>
+                    <li>Point your camera at the QR code</li>
+                </ol>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeQRModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+    <!-- Upgrade Modal -->
+    <div id="upgradeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upgrade Your Plan</h3>
+                <button class="modal-close" onclick="closeUpgradeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="upgrade-plans" id="upgradePlansContainer">
+                    <!-- Upgrade plans will be populated -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="JS/dashboard.js"></script>
+</body>
+</html>

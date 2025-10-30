@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Commands - TagThemAll Bot</title>
+    <link rel="stylesheet" href="CSS/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation header -->
+     <nav class="navbar">
+    <div class="nav-container">
+        <div class="logo">
+            <i class="fas fa-robot"></i>
+            <span>TagThemAll Bot</span>
+        </div>
+        <ul class="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="bot-commands.html" class="active">Commands</a></li>
+            <li><a href="index.html#features">Features</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+        </ul>
+        <div class="hamburger">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+        </div>
+    </div>
+</nav>
+    
+   <!-- Hero Section -->
+<section class="hero-section commands-hero">
+    <div class="container">
+        <div class="hero-content">
+            <h1><i class="fas fa-terminal"></i> Complete Bot Commands Guide</h1>
+            <p>Master all 50+ powerful commands to automate your WhatsApp workflow</p>
+            <div class="command-search">
+                <input type="text" id="commandSearch" placeholder="Search commands..." class="search-input">
+                <i class="fas fa-search"></i>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Command Categories Navigation -->
+<section class="commands-nav">
+    <div class="container">
+        <div class="command-categories-nav">
+            <button class="category-btn active" data-category="all">All Commands</button>
+            <button class="category-btn" data-category="basic">Basic</button>
+            <button class="category-btn" data-category="group">Group Management</button>
+            <button class="category-btn" data-category="media">Media</button>
+            <button class="category-btn" data-category="schedule">Scheduling</button>
+            <button class="category-btn" data-category="contact">Contacts</button>
+            <button class="category-btn" data-category="admin">Admin</button>
+            <button class="category-btn" data-category="automation">Automation</button>
+        </div>
+    </div>
+</section>
+
+<main class="commands-page">
+    <div class="container">
+        <!-- Basic Commands Section -->
+        <section class="command-section" data-category="basic">
+            <h2><i class="fas fa-play-circle"></i> Basic Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!ping</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Test bot response and check latency</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!ping</code><br>
+                        <strong>Response:</strong> "Pong! 🏓 Latency: 45ms"
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!help</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Display all available commands with descriptions</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!help</code><br>
+                        <strong>Alternative:</strong> <code>!commands</code>
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!status</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Show bot status, uptime, and system information</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!status</code><br>
+                        <strong>Shows:</strong> Uptime, memory usage, active sessions
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!info</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Get detailed chat and group information</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!info</code><br>
+                        <strong>Shows:</strong> Chat type, member count, admin list
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!sessionid</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Get your unique session ID for support</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!sessionid</code><br>
+                        <strong>Returns:</strong> Your unique session identifier
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!version</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Check current bot version and updates</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!version</code><br>
+                        <strong>Shows:</strong> Current version, last update
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Group Management Commands -->
+        <section class="command-section" data-category="group">
+            <h2><i class="fas fa-users"></i> Group Management Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!tagall [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Tag all group members with a custom message</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!tagall Meeting in 10 minutes!</code><br>
+                        <strong>Alternative:</strong> <code>!everyone [message]</code>
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!tagallexcept [users] [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Tag all members except specified users</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!tagallexcept @user1 @user2 Team update</code><br>
+                        <strong>Note:</strong> Mention users to exclude them
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!groupinfo</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Get detailed group information and statistics</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!groupinfo</code><br>
+                        <strong>Shows:</strong> Name, description, member count, creation date
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!members</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>List all group members with their roles</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!members</code><br>
+                        <strong>Alternative:</strong> <code>!listmembers</code>
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!admins</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>List all group administrators</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!admins</code><br>
+                        <strong>Shows:</strong> All users with admin privileges
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!promote @user</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Promote a user to group administrator</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!promote @username</code><br>
+                        <strong>Requires:</strong> Bot must be group admin
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!demote @user</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Remove admin privileges from a user</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!demote @username</code><br>
+                        <strong>Requires:</strong> Bot must be group admin
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!kick @user</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Remove a user from the group</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!kick @username</code><br>
+                        <strong>Warning:</strong> This action cannot be undone
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!mute @user [time]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Temporarily mute a user in the group</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!mute @username 30m</code><br>
+                        <strong>Time formats:</strong> 30s, 5m, 2h, 1d
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Media Commands -->
+        <section class="command-section" data-category="media">
+            <h2><i class="fas fa-photo-video"></i> Media Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!sticker</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Convert image to sticker (reply to image)</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> Reply to an image with <code>!sticker</code><br>
+                        <strong>Formats:</strong> JPG, PNG, WEBP
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!toimg</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Convert sticker to image</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> Reply to a sticker with <code>!toimg</code><br>
+                        <strong>Output:</strong> PNG format
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!download [url]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Download media from URL and send to chat</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!download https://example.com/video.mp4</code><br>
+                        <strong>Supports:</strong> Images, videos, audio files
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!ytdl [url]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Download YouTube video/audio</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!ytdl https://youtube.com/watch?v=...</code><br>
+                        <strong>Options:</strong> Add "audio" for audio-only
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!qr [text]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Generate QR code from text</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!qr https://example.com</code><br>
+                        <strong>Supports:</strong> Text, URLs, contact info
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!screenshot [url]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Take screenshot of a webpage</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!screenshot https://google.com</code><br>
+                        <strong>Format:</strong> PNG image
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scheduling Commands -->
+        <section class="command-section" data-category="schedule">
+            <h2><i class="fas fa-calendar-alt"></i> Scheduling Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!meeting [details]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Schedule meetings with automatic reminders</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!meeting Team standup tomorrow 9AM</code><br>
+                        <strong>Features:</strong> Auto-reminders, calendar integration
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!event [details]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Create events with notifications</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!event Product launch Friday 2PM</code><br>
+                        <strong>Notifications:</strong> 1 day, 1 hour before
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!reminder [time] [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Set custom reminders</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!reminder 30m Call client</code><br>
+                        <strong>Time formats:</strong> 5m, 2h, 1d, tomorrow, next week
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!reminders</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>List all active reminders</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!reminders</code><br>
+                        <strong>Shows:</strong> ID, time, message, status
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!cancelreminder [id]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Cancel scheduled reminders</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!cancelreminder 123</code><br>
+                        <strong>Get ID:</strong> Use <code>!reminders</code> to see IDs
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!schedule [time] [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Schedule a message to be sent later</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!schedule 2PM Good afternoon everyone!</code><br>
+                        <strong>Supports:</strong> Daily, weekly recurring messages
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact Management Commands -->
+          <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!contacts</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>List all saved contacts</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!contacts</code><br>
+                        <strong>Shows:</strong> Name, number, date added
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!deletecontact [name]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Delete a saved contact</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!deletecontact John Doe</code><br>
+                        <strong>Alternative:</strong> Use contact ID number
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!searchcontact [query]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Search through saved contacts</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!searchcontact John</code><br>
+                        <strong>Searches:</strong> Names and phone numbers
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!exportcontacts</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Export contacts as CSV file</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!exportcontacts</code><br>
+                        <strong>Format:</strong> CSV file with all contact data
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Admin Commands -->
+        <section class="command-section" data-category="admin">
+            <h2><i class="fas fa-shield-alt"></i> Admin Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!sudo [command]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Execute admin-only system commands</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!sudo restart</code><br>
+                        <strong>Commands:</strong> restart, shutdown, update, logs
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!broadcast [message]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Send message to all active sessions</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!broadcast System maintenance in 1 hour</code><br>
+                        <strong>Reaches:</strong> All connected users
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!stats</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>View detailed bot statistics</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!stats</code><br>
+                        <strong>Shows:</strong> Users, messages, uptime, performance
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!logs [lines]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>View recent bot logs</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!logs 50</code><br>
+                        <strong>Default:</strong> Last 20 lines
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!banuser [user] [reason]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Ban user from using the bot</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!banuser @username Spam</code><br>
+                        <strong>Duration:</strong> Permanent until unbanned
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!unbanuser [user]</code></h3>
+                        <span class="command-badge admin">Admin Only</span>
+                    </div>
+                    <p>Remove ban from user</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!unbanuser @username</code><br>
+                        <strong>Effect:</strong> Restores full bot access
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Automation Commands -->
+        <section class="command-section" data-category="automation">
+            <h2><i class="fas fa-robot"></i> Automation Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!autoreply [on/off]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Enable/disable automatic replies</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!autoreply on</code><br>
+                        <strong>Status:</strong> <code>!autoreply status</code>
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!setautoreply [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Set custom auto-reply message</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!setautoreply I'm currently away</code><br>
+                        <strong>Variables:</strong> {name}, {time}, {date}
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!autoforward [chat]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Auto-forward messages to another chat</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!autoforward @groupname</code><br>
+                        <strong>Stop:</strong> <code>!autoforward off</code>
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!filter [add/remove] [word]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Add/remove word filters</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!filter add spam</code><br>
+                        <strong>Action:</strong> Auto-delete filtered messages
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!welcome [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Set welcome message for new members</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!welcome Welcome to our group!</code><br>
+                        <strong>Variables:</strong> {name}, {group}
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!goodbye [message]</code></h3>
+                        <span class="command-badge premium">Premium</span>
+                    </div>
+                    <p>Set goodbye message for leaving members</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!goodbye Goodbye {name}!</code><br>
+                        <strong>Trigger:</strong> When someone leaves group
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Utility Commands -->
+        <section class="command-section" data-category="utility">
+            <h2><i class="fas fa-tools"></i> Utility Commands</h2>
+            <div class="command-grid">
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!weather [location]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Get weather information for any location</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!weather New York</code><br>
+                        <strong>Shows:</strong> Temperature, conditions, forecast
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!translate [text]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Translate text to different languages</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!translate Hello to Spanish</code><br>
+                        <strong>Format:</strong> Auto-detects source language
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!calculate [expression]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Perform mathematical calculations</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!calculate 2 + 2 * 3</code><br>
+                        <strong>Supports:</strong> +, -, *, /, %, ^, sqrt, sin, cos
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!shorten [url]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Create shortened URLs</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!shorten https://verylongurl.com</code><br>
+                        <strong>Service:</strong> Uses reliable URL shortener
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!password [length]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Generate secure random passwords</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!password 12</code><br>
+                        <strong>Default:</strong> 8 characters, includes symbols
+                    </div>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-header">
+                        <h3><code>!time [timezone]</code></h3>
+                        <span class="command-badge basic">Basic</span>
+                    </div>
+                    <p>Get current time in any timezone</p>
+                    <div class="command-example">
+                        <strong>Usage:</strong> <code>!time EST</code><br>
+                        <strong>Formats:</strong> EST, PST, UTC, GMT+5
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Command Usage Tips -->
+        <section class="tips-section">
+            <h2><i class="fas fa-lightbulb"></i> Usage Tips</h2>
+            <div class="tips-grid">
+                <div class="tip-card">
+                    <h3>Command Prefix</h3>
+                    <p>All commands start with <code>!</code> by default. This can be changed by admins.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>Case Sensitivity</h3>
+                    <p>Commands are not case-sensitive. <code>!HELP</code> works the same as <code>!help</code>.</p>
+                </div>
+                <div class="tip-card">
+                    <h3>Reply Commands</h3>
+                    <p>Some commands work by replying to messages (like <code>!sticker</code>).</p>
+                </div>
+                <div class="tip-card">
+                    <h3>Permission Levels</h3>
+                    <p>Commands are marked as Basic, Premium, or Admin Only based on your subscription.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>TagThemAll Bot</h3>
+                <p>The most powerful WhatsApp automation bot with 50+ commands.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                    <a href="#"><i class="fab fa-facebook"></i></a>
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="bot-commands.html">Commands</a></li>
+                    <li><a href="dashboard.html">Dashboard</a></li>
+                    <li><a href="contact.html">Support</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Features</h4>
+                <ul>
+                    <li><a href="#group">Group Management</a></li>
+                    <li><a href="#automation">Automation</a></li>
+                    <li><a href="#scheduling">Scheduling</a></li>
+                    <li><a href="#media">Media Tools</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Support</h4>
+                <ul>
+                    <li><a href="contact.html">Contact Us</a></li>
+                    <li><a href="#faq">FAQ</a></li>
+                    <li><a href="#docs">Documentation</a></li>
+                    <li><a href="#api">API</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 TagThemAll Bot. All rights reserved.</p>
+            <div class="footer-links">
+                <a href="#privacy">Privacy Policy</a>
+                <a href="#terms">Terms of Service</a>
+            </div>
+        </div>
+    </div>
+</footer>
+<script>
+    // Enhanced JavaScript for bot commands page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Command search functionality
+        const searchInput = document.getElementById('commandSearch');
+        const commandCards = document.querySelectorAll('.command-card');
+        const categoryBtns = document.querySelectorAll('.category-btn');
+        const commandSections = document.querySelectorAll('.command-section');
+
+        // Search commands
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                
+                commandCards.forEach(card => {
+                    const commandName = card.querySelector('code').textContent.toLowerCase();
+                    const description = card.querySelector('p').textContent.toLowerCase();
+                    
+                    if (commandName.includes(searchTerm) || description.includes(searchTerm)) {
+                        card.style.display = 'block';
+                        card.parentElement.parentElement.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                // Hide empty sections
+                commandSections.forEach(section => {
+                    const visibleCards = section.querySelectorAll('.command-card[style*="block"], .command-card:not([style])');
+                    if (visibleCards.length === 0 && searchTerm !== '') {
+                        section.style.display = 'none';
+                    } else {
+                        section.style.display = 'block';
+                    }
+                });
+            });
+        }
+
+        // Category filtering
+        categoryBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const category = this.dataset.category;
+                
+                // Update active button
+                categoryBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Show/hide sections
+                commandSections.forEach(section => {
+                     if (category === 'all' || section.dataset.category === category) {
+                            section.style.display = 'block';
+                        } else {
+                            section.style.display = 'none';
+                        }
+                    });
+
+                    // Clear search when switching categories
+                    if (searchInput) {
+                        searchInput.value = '';
+                        commandCards.forEach(card => {
+                            card.style.display = 'block';
+                        });
+                    }
+                });
+            });
+
+            // Copy command to clipboard
+            const commandCodes = document.querySelectorAll('.command-card code');
+            commandCodes.forEach(code => {
+                code.addEventListener('click', function() {
+                    const commandText = this.textContent;
+                    navigator.clipboard.writeText(commandText).then(() => {
+                        // Show copy feedback
+                        const originalText = this.textContent;
+                        this.textContent = 'Copied!';
+                        this.style.background = '#4CAF50';
+                        
+                        setTimeout(() => {
+                            this.textContent = originalText;
+                            this.style.background = '';
+                        }, 1000);
+                    }).catch(err => {
+                        console.error('Failed to copy: ', err);
+                    });
+                });
+            });
+
+            // Mobile navigation toggle
+            const navToggle = document.querySelector('.nav-toggle');
+            const navMenu = document.querySelector('.nav-menu');
+            
+            if (navToggle && navMenu) {
+                navToggle.addEventListener('click', function() {
+                    navMenu.classList.toggle('active');
+                    this.classList.toggle('active');
+                });
+            }
+
+            // Smooth scrolling for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // Command badge tooltips
+            const badges = document.querySelectorAll('.command-badge');
+            badges.forEach(badge => {
+                badge.addEventListener('mouseenter', function() {
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'tooltip';
+                    tooltip.textContent = getTooltipText(this.textContent);
+                    document.body.appendChild(tooltip);
+                    
+                    const rect = this.getBoundingClientRect();
+                    tooltip.style.left = rect.left + 'px';
+                    tooltip.style.top = (rect.top - 40) + 'px';
+                });
+                
+                badge.addEventListener('mouseleave', function() {
+                    const tooltip = document.querySelector('.tooltip');
+                    if (tooltip) {
+                        tooltip.remove();
+                    }
+                });
+            });
+
+            function getTooltipText(badgeType) {
+                switch(badgeType) {
+                    case 'Basic': return 'Available to all users';
+                    case 'Premium': return 'Requires premium subscription';
+                    case 'Admin Only': return 'Only for bot administrators';
+                    default: return '';
+                }
+            }
+
+            // Add loading animation for command examples
+            const commandCardsAnim = document.querySelectorAll('.command-card');
+            commandCardsAnim.forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('fade-in');
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                // Ctrl/Cmd + K to focus search
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
+                }
+                
+                // Escape to clear search
+                if (e.key === 'Escape' && searchInput) {
+                    searchInput.value = '';
+                    searchInput.dispatchEvent(new Event('input'));
+                }
+            });
+
+            // Add command usage statistics (if available)
+            fetch('/api/command-stats')
+                .then(response => response.json())
+                .then(data => {
+                    updateCommandPopularity(data);
+                })
+                .catch(err => {
+                    console.log('Command stats not available');
+                });
+
+            function updateCommandPopularity(stats) {
+                commandCards.forEach(card => {
+                    const commandName = card.querySelector('code').textContent.split(' ')[0];
+                    const usage = stats[commandName];
+                    
+                    if (usage && usage > 100) {
+                        const popularBadge = document.createElement('span');
+                        popularBadge.className = 'popular-badge';
+                        popularBadge.textContent = 'Popular';
+                        card.querySelector('.command-header').appendChild(popularBadge);
+                    }
+                });
+            }
+
+            // Load favorites on page load
+            const favorites = JSON.parse(localStorage.getItem('favoriteCommands') || '[]');
+            commandCards.forEach(card => {
+                const command = card.querySelector('code').textContent;
+                if (favorites.includes(command)) {
+                    card.classList.add('favorite');
+                }
+                
+                // Add favorite button
+                const favoriteBtn = document.createElement('button');
+                favoriteBtn.className = 'favorite-btn';
+                favoriteBtn.innerHTML = '<i class="fas fa-star"></i>';
+                favoriteBtn.onclick = () => toggleFavorite(card);
+                card.querySelector('.command-header').appendChild(favoriteBtn);
+            });
+        });
+
+        // Modal functionality for detailed command help
+        function showBotCommands() {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-terminal"></i> Quick Command Reference</h2>
+                        <span class="close" onclick="this.parentElement.parentElement.parentElement.remove()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="quick-commands">
+                            <h3>Most Used Commands</h3>
+                            <div class="quick-command-list">
+                                <div class="quick-command">
+                                    <code>!help</code>
+                                    <span>Show all commands</span>
+                                </div>
+                                <div class="quick-command">
+                                    <code>!ping</code>
+                                    <span>Test bot response</span>
+                                </div>
+                                <div class="quick-command">
+                                    <code>!tagall [message]</code>
+                                    <span>Tag everyone in group</span>
+                                </div>
+                                <div class="quick-command">
+                                    <code>!status</code>
+                                    <span>Check bot status</span>
+                                </div>
+                                <div class="quick-command">
+                                    <code>!reminder [time] [message]</code>
+                                    <span>Set a reminder</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="command-tips">
+                            <h3>Pro Tips</h3>
+                            <ul>
+                                <li>Click any command to copy it to clipboard</li>
+                                <li>Use Ctrl+K to quickly search commands</li>
+                                <li>Commands are not case-sensitive</li>
+                                <li>Some commands require premium subscription</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-primary" onclick="window.location.href='dashboard.html'">
+                            Go to Dashboard
+                        </button>
+                        <button class="btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Close modal when clicking outside
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+
+        // Export commands as PDF or text
+        function exportCommands() {
+            const commands = [];
+            document.querySelectorAll('.command-card').forEach(card => {
+                const command = card.querySelector('code').textContent;
+                const description = card.querySelector('p').textContent;
+                const badge = card.querySelector('.command-badge').textContent;
+                commands.push(`${command} (${badge}): ${description}`);
+            });
+            
+            const content = commands.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'bot-commands.txt';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Add to favorites functionality
+        function toggleFavorite(commandElement) {
+            const command = commandElement.querySelector('code').textContent;
+            let favorites = JSON.parse(localStorage.getItem('favoriteCommands') || '[]');
+            
+            if (favorites.includes(command)) {
+                favorites = favorites.filter(fav => fav !== command);
+                commandElement.classList.remove('favorite');
+            } else {
+                favorites.push(command);
+                commandElement.classList.add('favorite');
+            }
+            
+            localStorage.setItem('favoriteCommands', JSON.stringify(favorites));
+        }
+    </script>
+
+    <!-- Additional CSS for enhanced styling -->
+    <!-- <style>
+        .commands-hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        .command-search {
+            position: relative;
+            max-width: 500px;
+            margin: 30px auto 0;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .command-search i {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+        }
+
+        .commands-nav {
+            background: #f8f9fa;
+            padding: 20px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .command-categories-nav {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .category-btn {
+            padding: 10px 20px;
+            border: 2px solid #007bff;
+            background: white;
+            color: #007bff;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .category-btn.active,
+        .category-btn:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        .command-badge {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .command-badge.basic {
+            background: #28a745;
+            color: white;
+        }
+
+        .command-badge.premium {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .command-badge.admin {
+            background: #dc3545;
+            color: white;
+        }
+
+        .command-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .command-example {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+            border-left: 4px solid #007bff;
+        }
+
+        .tips-section {
+            background: #f8f9fa;
+            padding: 40px 0;
+            margin-top: 40px;
+        }
+
+        .tips-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .tip-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .fade-in {
+            animation: fadeInUp 0.6s ease forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tooltip {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .favorite-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 16px;
+            transition: color 0.3s ease;
+        }
+
+        .command-card.favorite .favorite-btn {
+            color: #ffc107;
+        }
+
+        .popular-badge {
+            background: #ff6b6b;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            margin-left: 5px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .quick-command {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .quick-command:last-child {
+            border-bottom: none;
+        }
+
+        @media (max-width: 768px) {
+            .command-categories-nav {
+                justify-content: flex-start;
+                overflow-x: auto;
+                padding-bottom: 10px;
+            }
+            
+            .category-btn {
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            
+            .commands-hero {
+                padding: 60px 0;
+            }
+            
+            .command-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style> -->
+</body>
+</html>

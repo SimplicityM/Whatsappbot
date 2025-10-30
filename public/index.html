@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up | AutoPay</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="//code.jivosite.com/widget/MssWIIN7cW" async></script>
+
+</head>
+<body>
+    <!-- Navigation -->
+<nav class="navbar">
+    <div class="nav-container">
+        <div class="logo">
+            <i class="fas fa-robot"></i>
+            <span>TagThemAll Bot</span>
+        </div>
+        <ul class="nav-menu">
+            <li><a href="#home" class="active">Home</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+        </ul>
+        <div class="hamburger">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+        </div>
+    </div>
+</nav>
+    <!-- Hero Section -->
+<section id="home" class="hero">
+    <div class="hero-container">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <i class="fas fa-star"></i>
+                <span>Advanced WhatsApp Automation</span>
+            </div>
+            <h1 class="hero-title">
+                Revolutionize Your WhatsApp 
+                <span class="gradient-text">Group Management</span>
+            </h1>
+            <p class="hero-description">
+                TagThemAll Bot is the ultimate WhatsApp automation solution for businesses. 
+                Manage groups, tag members, schedule events, and automate your communication 
+                with powerful AI-driven features.
+            </p>
+            <div class="hero-buttons">
+                <a href="signup.html" class="btn-primary">
+                    <i class="fas fa-rocket"></i>
+                    Start Free Trial
+                </a>
+                <a href="#how-it-works" class="btn-secondary">
+                    <i class="fas fa-play"></i>
+                    Watch Demo
+                </a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat">
+                    <div class="stat-number">1000+</div>
+                    <div class="stat-label">Active Sessions</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">50+</div>
+                    <div class="stat-label">Bot Commands</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">24/7</div>
+                    <div class="stat-label">Automation</div>
+                </div>
+            </div>
+        </div>
+        <div class="hero-image">
+            <div class="phone-mockup">
+                <div class="phone-screen">
+                    <div class="chat-interface">
+                        <div class="chat-header">
+                            <i class="fas fa-users"></i>
+                            <span>Business Group</span>
+                        </div>
+                        <div class="chat-messages">
+                            <div class="message bot-message">
+                                <div class="message-content">
+                                    <i class="fas fa-robot"></i>
+                                    <span>TagThemAll Bot: All members have been tagged! 🎯</span>
+                                </div>
+                            </div>
+                            <div class="message user-message">
+                                <div class="message-content">
+                                    <span>!tagall Meeting in 5 minutes</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section id="features" class="features-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Powerful Features for Every Business Need</h2>
+            <p>From basic group management to advanced automation, TagThemAll Bot has everything you need</p>
+        </div>
+
+        <div class="features-grid">
+            <!-- Group Management -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <h3>Smart Group Management</h3>
+                <p>Tag all members, exclude specific users, and manage group communications with intelligent commands.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Tag all group members</li>
+                    <li><i class="fas fa-check"></i> Selective member tagging</li>
+                    <li><i class="fas fa-check"></i> Custom mention messages</li>
+                    <li><i class="fas fa-check"></i> Group analytics</li>
+                </ul>
+            </div>
+
+            <!-- Contact Management -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-address-book"></i>
+                </div>
+                <h3>Advanced Contact Management</h3>
+                <p>Automatically save new contacts, manage your contact database, and organize your network efficiently.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Auto-save new contacts</li>
+                    <li><i class="fas fa-check"></i> Contact database management</li>
+                    <li><i class="fas fa-check"></i> Call handling & logging</li>
+                    <li><i class="fas fa-check"></i> Contact analytics</li>
+                </ul>
+            </div>
+
+            <!-- Event Scheduling -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-calendar-alt"></i>
+                </div>
+                <h3>Event & Meeting Scheduler</h3>
+                <p>Schedule meetings, events, and reminders with automatic notifications and follow-ups.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Meeting scheduling</li>
+                    <li><i class="fas fa-check"></i> Event management</li>
+                    <li><i class="fas fa-check"></i> Automatic reminders</li>
+                    <li><i class="fas fa-check"></i> Calendar integration</li>
+                </ul>
+            </div>
+
+            <!-- Media Management -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <h3>Media & Document Sharing</h3>
+                <p>Send images, documents, audio files, and other media with automated distribution capabilities.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Document sharing</li>
+                    <li><i class="fas fa-check"></i> Image distribution</li>
+                    <li><i class="fas fa-check"></i> Audio messaging</li>
+                    <li><i class="fas fa-check"></i> Bulk media sending</li>
+                </ul>
+            </div>
+
+            <!-- Admin Controls -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <h3>Advanced Admin Controls</h3>
+                <p>Comprehensive admin panel with user management, system monitoring, and security features.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Sudo user management</li>
+                    <li><i class="fas fa-check"></i> System monitoring</li>
+                    <li><i class="fas fa-check"></i> Session management</li>
+                    <li><i class="fas fa-check"></i> Broadcast messaging</li>
+                </ul>
+            </div>
+
+            <!-- Automation -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <h3>Intelligent Automation</h3>
+                <p>AI-powered automation with custom commands, workflows, and intelligent response systems.</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Custom bot commands</li>
+                    <li><i class="fas fa-check"></i> Automated responses</li>
+                    <li><i class="fas fa-check"></i> Workflow automation</li>
+                    <li><i class="fas fa-check"></i> Smart notifications</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Pricing Section -->
+<section id="pricing" class="pricing-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Choose Your Perfect Plan</h2>
+            <p>Flexible pricing options designed to grow with your business needs</p>
+        </div>
+
+        <div class="pricing-toggle">
+            <span class="toggle-label">Monthly</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="pricingToggle">
+                <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Yearly <span class="discount">Save 20%</span></span>
+        </div>
+
+        <div class="pricing-grid">
+            <!-- Starter Plan - 1 Month -->
+            <div class="pricing-card">
+                <div class="plan-header">
+                    <h3>Starter</h3>
+                    <div class="plan-duration">1 Month</div>
+                    <div class="plan-price">
+                        <span class="currency">$</span>
+                        <span class="amount">29</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <p class="plan-description">Perfect for small teams getting started</p>
+                </div>
+                <ul class="plan-features">
+                    <li><i class="fas fa-check"></i> Basic group tagging (tagall)</li>
+                    <li><i class="fas fa-check"></i> Contact auto-save</li>
+                    <li><i class="fas fa-check"></i> Basic media sharing</li>
+                    <li><i class="fas fa-check"></i> 5 active sessions</li>
+                    <li><i class="fas fa-check"></i> Standard support</li>
+                    <li><i class="fas fa-times"></i> Event scheduling</li>
+                    <li><i class="fas fa-times"></i> Advanced admin controls</li>
+                    <li><i class="fas fa-times"></i> Broadcast messaging</li>
+                </ul>
+                <a href="signup.html" class="btn-plan">Get Started</a>
+            </div>
+
+            <!-- Professional Plan - 3 Months -->
+            <div class="pricing-card featured">
+                <div class="plan-badge">Most Popular</div>
+                <div class="plan-header">
+                    <h3>Professional</h3>
+                    <div class="plan-duration">3 Months</div>
+                    <div class="plan-price">
+                        <span class="currency">$</span>
+                        <span class="amount">79</span>
+                        <span class="period">/3 months</span>
+                    </div>
+                    <p class="plan-description">Ideal for growing businesses</p>
+                </div>
+                <ul class="plan-features">
+                    <li><i class="fas fa-check"></i> All Starter features</li>
+                    <li><i class="fas fa-check"></i> Advanced tagging (tagallexcept)</li>
+                    <li><i class="fas fa-check"></i> Event & meeting scheduling</li>
+                    <li><i class="fas fa-check"></i> Reminder management</li>
+                    <li><i class="fas fa-check"></i> 25 active sessions</li>
+                    <li><i class="fas fa-check"></i> Priority support</li>
+                    <li><i class="fas fa-check"></i> Basic admin controls</li>
+                    <li><i class="fas fa-times"></i> Broadcast messaging</li>
+                </ul>
+                <a href="signup.html" class="btn-plan">Choose Professional</a>
+            </div>
+
+            <!-- Business Plan - 6 Months -->
+            <div class="pricing-card">
+                <div class="plan-header">
+                    <h3>Business</h3>
+                    <div class="plan-duration">6 Months</div>
+                    <div class="plan-price">
+                        <span class="currency">$</span>
+                        <span class="amount">149</span>
+                        <span class="period">/6 months</span>
+                    </div>
+                    <p class="plan-description">Comprehensive solution for established businesses</p>
+                </div>
+                <ul class="plan-features">
+                    <li><i class="fas fa-check"></i> All Professional features</li>
+                    <li><i class="fas fa-check"></i> Advanced admin controls</li>
+                    <li><i class="fas fa-check"></i> Sudo user management</li>
+                    <li><i class="fas fa-check"></i> System monitoring</li>
+                    <li><i class="fas fa-check"></i> 100 active sessions</li>
+                    <li><i class="fas fa-check"></i> Broadcast messaging</li>
+                    <li><i class="fas fa-check"></i> Custom workflows</li>
+                    <li><i class="fas fa-check"></i> 24/7 support</li>
+                </ul>
+                <a href="signup.html" class="btn-plan">Choose Business</a>
+            </div>
+
+            <!-- Enterprise Plan - 1 Year -->
+            <div class="pricing-card premium">
+                <div class="plan-badge">Best Value</div>
+                <div class="plan-header">
+                    <h3>Enterprise</h3>
+                    <div class="plan-duration">12 Months</div>
+                    <div class="plan-price">
+                        <span class="currency">$</span>
+                        <span class="amount">279</span>
+                        <span class="period">/year</span>
+                    </div>
+                    <p class="plan-description">Ultimate automation for large organizations</p>
+                </div>
+                <ul class="plan-features">
+                    <li><i class="fas fa-check"></i> All Business features</li>
+                    <li><i class="fas fa-check"></i> Unlimited active sessions</li>
+                    <li><i class="fas fa-check"></i> Advanced automation workflows</li>
+                    <li><i class="fas fa-check"></i> Custom bot commands</li>
+                    <li><i class="fas fa-check"></i> API access</li>
+                    <li><i class="fas fa-check"></i> White-label solution</li>
+                    <li><i class="fas fa-check"></i> Dedicated support manager</li>
+                    <li><i class="fas fa-check"></i> Custom integrations</li>
+                </ul>
+                <a href="signup.html" class="btn-plan">Choose Enterprise</a>
+            </div>
+        </div>
+
+        <div class="pricing-guarantee">
+            <div class="guarantee-content">
+                <i class="fas fa-shield-alt"></i>
+                <div>
+                    <h4>30-Day Money-Back Guarantee</h4>
+                    <p>Try TagThemAll Bot risk-free. If you're not satisfied, get a full refund within 30 days.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works Section -->
+<section id="how-it-works" class="how-it-works">
+    <div class="container">
+        <div class="section-header">
+            <h2>Get Started in 3 Simple Steps</h2>
+            <p>Setting up TagThemAll Bot is quick and easy</p>
+        </div>
+
+        <div class="steps-container">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Sign Up & Choose Plan</h3>
+                    <p>Create your account and select the perfect plan for your business needs. Start with our free trial to explore all features.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Connect WhatsApp</h3>
+                    <p>Scan the QR code to connect your WhatsApp account. Our bot will automatically create a secure session for your business.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Start Automating</h3>
+                    <p>Begin using powerful commands like !tagall, !meeting, and !savecontact to streamline your WhatsApp communication.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-video">
+            <div class="video-placeholder">
+                <i class="fas fa-play-circle"></i>
+                <span>Watch 2-minute demo</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Bot Commands Section -->
+<section class="commands-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Powerful Bot Commands</h2>
+            <p>Over 50+ commands to automate your WhatsApp workflow</p>
+        </div>
+
+        <div class="commands-grid">
+            <div class="command-category">
+                <h3><i class="fas fa-users"></i> Group Management</h3>
+                <div class="commands-list">
+                    <div class="command">
+                        <code>!tagall [message]</code>
+                          <span>Tag all group members with custom message</span>
+                        </div>
+                        <div class="command">
+                            <code>!tagallexcept [message]</code>
+                            <span>Tag all members except mentioned users</span>
+                        </div>
+                        <div class="command">
+                            <code>!info</code>
+                            <span>Get detailed group information</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="command-category">
+                    <h3><i class="fas fa-calendar"></i> Scheduling</h3>
+                    <div class="commands-list">
+                        <div class="command">
+                            <code>!meeting [details]</code>
+                            <span>Schedule meetings with reminders</span>
+                        </div>
+                        <div class="command">
+                            <code>!event [details]</code>
+                            <span>Create events with notifications</span>
+                        </div>
+                        <div class="command">
+                            <code>!reminders</code>
+                            <span>List all active reminders</span>
+                        </div>
+                        <div class="command">
+                            <code>!cancelreminder [id]</code>
+                            <span>Cancel scheduled reminders</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="command-category">
+                    <h3><i class="fas fa-address-book"></i> Contact Management</h3>
+                    <div class="commands-list">
+                        <div class="command">
+                            <code>!savecontact [number] [name]</code>
+                            <span>Save new contacts automatically</span>
+                        </div>
+                        <div class="command">
+                            <code>!contacts</code>
+                            <span>List all saved contacts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="command-category">
+                    <h3><i class="fas fa-cog"></i> System Controls</h3>
+                    <div class="commands-list">
+                        <div class="command">
+                            <code>!status</code>
+                            <span>Check bot status and uptime</span>
+                        </div>
+                        <div class="command">
+                            <code>!sessionid</code>
+                            <span>Get your unique session ID</span>
+                        </div>
+                        <div class="command">
+                            <code>!sudo [command]</code>
+                            <span>Admin-only system commands</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="testimonials-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>What Our Customers Say</h2>
+                <p>Join thousands of businesses already using TagThemAll Bot</p>
+            </div>
+
+            <div class="testimonials-grid">
+                <div class="testimonial">
+                    <div class="testimonial-content">
+                        <div class="stars">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <p>"TagThemAll Bot has revolutionized our team communication. The group tagging feature saves us hours every week!"</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="author-info">
+                            <h4>Sarah Johnson</h4>
+                            <span>Marketing Director, TechCorp</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial">
+                    <div class="testimonial-content">
+                        <div class="stars">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <p>"The event scheduling and reminder features are game-changers. Never miss an important meeting again!"</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="author-info">
+                            <h4>Michael Chen</h4>
+                            <span>Project Manager, StartupXYZ</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial">
+                    <div class="testimonial-content">
+                        <div class="stars">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <p>"Incredible automation capabilities. The bot handles our customer support groups flawlessly with 1000+ sessions."</p>
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="author-info">
+                            <h4>Emily Rodriguez</h4>
+                            <span>Operations Lead, BigBusiness Inc</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Frequently Asked Questions</h2>
+                <p>Everything you need to know about TagThemAll Bot</p>
+            </div>
+
+            <div class="faq-container">
+                <div class="faq-item">
+                    <div class="faq-question">
+                        <h3>How many WhatsApp accounts can I connect?</h3>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                        <p>The number of accounts depends on your plan. Starter allows 5 sessions, Professional allows 25, Business allows 100, and Enterprise offers unlimited sessions.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">
+                        <h3>Is my WhatsApp data secure?</h3>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Absolutely! We use end-to-end encryption and never store your messages. All data is processed locally and securely.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">
+                        <h3>Can I use the bot for customer support?</h3>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Yes! TagThemAll Bot is perfect for customer support with features like automated responses, contact management, and broadcast messaging.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">
+                        <h3>What happens if I exceed my session limit?</h3>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                        <p>You can upgrade your plan anytime to increase your session limit. We'll notify you before you reach your current limit.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">
+                        <h3>Do you offer custom integrations?</h3>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Yes! Enterprise customers get access to our API and can request custom integrations with their existing business tools.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Transform Your WhatsApp Communication?</h2>
+                <p>Join thousands of businesses using TagThemAll Bot to streamline their messaging workflow</p>
+                <div class="cta-buttons">
+                    <a href="signup.html" class="btn-primary">
+                        <i class="fas fa-rocket"></i>
+                        Start Free Trial
+                    </a>
+                    <a href="contact.html" class="btn-secondary">
+                        <i class="fas fa-phone"></i>
+                        Contact Sales
+                    </a>
+                </div>
+                <div class="cta-features">
+                    <div class="cta-feature">
+                        <i class="fas fa-check"></i>
+                        <span>30-day free trial</span>
+                    </div>
+                    <div class="cta-feature">
+                        <i class="fas fa-check"></i>
+                        <span>No setup fees</span>
+                    </div>
+                    <div class="cta-feature">
+                        <i class="fas fa-check"></i>
+                        <span>Cancel anytime</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact" class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <i class="fas fa-robot"></i>
+                        <span>TagThemAll Bot</span>
+                    </div>
+                    <p>The ultimate WhatsApp automation solution for modern businesses. Streamline your communication and boost productivity.</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Product</h3>
+                    <ul>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#pricing">Pricing</a></li>
+                        <li><a href="#">API Documentation</a></li>
+                        <li><a href="#">Integrations</a></li>
+                        <li><a href="#">Changelog</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Support</h3>
+                    <ul>
+                        <li><a href="#" id="help-center-link">Help Center</a></li>
+                        <li><a href="signup.html">Getting Started</a></li>
+                        <li><a href="bot-commands.html">Bot Commands</a></li>
+                        <li><a href="#">Troubleshooting</a></li>
+                        <li><a href="contact.html">Contact Support</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Company</h3>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                        <li><a href="#">Terms of Service</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Contact Info</h3>
+                    <div class="contact-info">
+                        <div class="contact-item">
+                            <i class="fas fa-envelope"></i>
+                            <span>support@tagthemallbot.com</span>
+                        </div>
+                        <div class="contact-item">
+                            <i class="fas fa-phone"></i>
+                            <span>+1 (555) 123-4567</span>
+                        </div>
+                        <div class="contact-item">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>123 Business Ave, Tech City, TC 12345</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div class="footer-bottom-content">
+                    <p>&copy; 2025 TagThemAll Bot. All rights reserved.</p>
+                    <div class="footer-links">
+                        <a href="#">Privacy</a>
+                        <a href="#">Terms</a>
+                        <a href="#">Security</a>
+                        <a href="#">Status</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const hamburger = document.querySelector('.hamburger');
+            const navMenu = document.querySelector('.nav-menu');
+
+            hamburger.addEventListener('click', function() {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+
+            // Close mobile menu when clicking on a link
+            document.querySelectorAll('.nav-menu a').forEach(link => {
+                link.addEventListener('click', () => {
+                    hamburger.classList.remove('active');
+                    navMenu.classList.remove('active');
+                });
+            });
+
+            // Smooth scrolling for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // Pricing toggle
+            const pricingToggle = document.getElementById('pricingToggle');
+            if (pricingToggle) {
+                pricingToggle.addEventListener('change', function() {
+                    // Add yearly pricing logic here
+                    console.log('Pricing toggle changed:', this.checked);
+                });
+            }
+
+            // FAQ accordion
+            document.querySelectorAll('.faq-question').forEach(question => {
+                question.addEventListener('click', function() {
+                    const faqItem = this.parentElement;
+                    const answer = faqItem.querySelector('.faq-answer');
+                    const icon = this.querySelector('i');
+
+                    faqItem.classList.toggle('active');
+                    
+                    if (faqItem.classList.contains('active')) {
+                        answer.style.maxHeight = answer.scrollHeight + 'px';
+                        icon.style.transform = 'rotate(180deg)';
+                    } else {
+                        answer.style.maxHeight = '0';
+                        icon.style.transform = 'rotate(0deg)';
+                    }
+                });
+            });
+
+            // Navbar scroll effect
+            window.addEventListener('scroll', function() {
+                const navbar = document.querySelector('.navbar');
+                if (window.scrollY > 100) {
+                    navbar.classList.add('scrolled');
+                } else {
+                    navbar.classList.remove('scrolled');
+                }
+            });
+
+            // Animation on scroll
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+
+            // Observe elements for animation
+            document.querySelectorAll('.feature-card, .pricing-card, .step, .testimonial').forEach(el => {
+                observer.observe(el);
+            });
+        });
+
+        // Update your Google Sign-In callback
+function handleGoogleSignIn(response) {
+    fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Store user session
+            localStorage.setItem('userSession', JSON.stringify({
+                token: data.sessionToken,
+                user: data.user
+            }));
+            
+            // Redirect to admin
+            window.location.href = '/admin.html';
+        } else {
+            alert('Login failed: ' + data.error);
+        }
+    });
+}
+
+ function openJivoChat() {
+    // Wait for JivoChat to be fully loaded
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const tryOpen = () => {
+        attempts++;
+        
+        if (window.jivo_api && typeof window.jivo_api.open === 'function') {
+            window.jivo_api.open();
+        } else if (window.jivo && typeof window.jivo.open === 'function') {
+            window.jivo.open();
+        } else if (attempts < maxAttempts) {
+            setTimeout(tryOpen, 500); // Try again after 500ms
+        } else {
+            // Fallback after all attempts failed
+            window.open('mailto:support@tagthemallbot.com?subject=Help Request', '_blank');
+        }
+    };
+    
+    tryOpen();
+}
+
+// Then inside your DOMContentLoaded event listener, add this:
+document.getElementById('help-center-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    openJivoChat();
+});
+
+
+    </script>
+
+</body>
+</html>
+                            

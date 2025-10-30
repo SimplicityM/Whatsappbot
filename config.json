@@ -1,0 +1,10 @@
+{
+  "owner": "2347067012884",
+  "prefix": "!",
+  "maxSessions": 1,
+  "allowedUsers": [],
+  "adminSettings": {
+    "selfChatOnly": false,
+    "secondaryAdmins": {}
+  }
+}
