@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog | TagThemAll Bot</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>TagThemAll Bot</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="index.html#features">Features</a></li>
+                <li><a href="pricing.html">Pricing</a></li>
+                <li><a href="bot-commands.html">Commands</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="blog.html" class="active">Blog</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="blog-hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>TagThemAll Bot Blog</h1>
+                <p>Insights, tips, and updates on WhatsApp automation and business communication</p>
+                
+                <!-- Search Bar -->
+                <div class="blog-search">
+                    <input type="text" id="blogSearch" placeholder="Search articles..." class="search-input">
+                    <button class="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Article -->
+    <section class="featured-article">
+        <div class="container">
+            <div class="featured-content">
+                <div class="featured-image">
+                    <div class="image-placeholder">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="featured-badge">Featured</div>
+                </div>
+                <div class="featured-text">
+                    <div class="article-meta">
+                        <span class="category">Automation</span>
+                        <span class="date">January 15, 2025</span>
+                        <span class="read-time">5 min read</span>
+                    </div>
+                    <h2>10 WhatsApp Automation Strategies That Will Transform Your Business in 2025</h2>
+                    <p>Discover the latest WhatsApp automation techniques that successful businesses are using to streamline communication, boost productivity, and enhance customer experience.</p>
+                    <a href="#" class="read-more-btn">
+                        Read Full Article
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Categories Filter -->
+    <section class="blog-categories">
+        <div class="container">
+            <div class="categories-nav">
+                <button class="category-filter active" data-category="all">All Posts</button>
+                <button class="category-filter" data-category="automation">Automation</button>
+                <button class="category-filter" data-category="tutorials">Tutorials</button>
+                <button class="category-filter" data-category="business">Business Tips</button>
+                <button class="category-filter" data-category="updates">Product Updates</button>
+                <button class="category-filter" data-category="case-studies">Case Studies</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Blog Posts Grid -->
+    <section class="blog-posts">
+        <div class="container">
+            <div class="posts-grid">
+                <!-- Article 1 -->
+                <article class="blog-card" data-category="tutorials">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-graduation-cap"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Tutorials</span>
+                            <span class="date">January 12, 2025</span>
+                        </div>
+                        <h3>Complete Guide to Setting Up WhatsApp Group Automation</h3>
+                        <p>Step-by-step tutorial on how to configure TagThemAll Bot for maximum efficiency in your business groups.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Sarah Chen</span>
+                            </div>
+                            <span class="read-time">8 min read</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Article 2 -->
+                <article class="blog-card" data-category="business">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Business Tips</span>
+                            <span class="date">January 10, 2025</span>
+                        </div>
+                        <h3>How to Increase Team Productivity with WhatsApp Automation</h3>
+                        <p>Real-world strategies and best practices for using WhatsApp bots to enhance team collaboration and efficiency.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Mike Rodriguez</span>
+                            </div>
+                            <span class="read-time">6 min read</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Article 3 -->
+                <article class="blog-card" data-category="case-studies">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-building"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Case Studies</span>
+                            <span class="date">January 8, 2025</span>
+                        </div>
+                        <h3>Case Study: How TechCorp Saved 40 Hours Per Week with TagThemAll Bot</h3>
+                        <p>Detailed analysis of how a growing tech company transformed their communication workflow using our automation platform.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Emily Davis</span>
+                            </div>
+                            <span class="read-time">10 min read</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Article 4 -->
+                <article class="blog-card" data-category="updates">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-rocket"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Product Updates</span>
+                            <span class="date">January 5, 2025</span>
+                        </div>
+                        <h3>New Features Released: Advanced Scheduling and Custom Commands</h3>
+                        <p>Exciting new capabilities that make TagThemAll Bot even more powerful for business automation.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Alex Johnson</span>
+                            </div>
+                            <span class="read-time">4 min read</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Article 5 -->
+                <article class="blog-card" data-category="automation">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Automation</span>
+                            <span class="date">January 3, 2025</span>
+                        </div>
+                        <h3>The Future of Business Communication: AI-Powered WhatsApp Bots</h3>
+                        <p>Exploring emerging trends in conversational AI and how they're reshaping business communication strategies.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Sarah Chen</span>
+                            </div>
+                            <span class="read-time">7 min read</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Article 6 -->
+                <article class="blog-card" data-category="tutorials">
+                    <div class="card-image">
+                        <div class="image-placeholder">
+                            <i class="fas fa-tools"></i>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="article-meta">
+                            <span class="category">Tutorials</span>
+                            <span class="date">December 30, 2024</span>
+                        </div>
+                        <h3>Mastering Bot Commands: A Comprehensive Reference Guide</h3>
+                        <p>Complete documentation of all 50+ TagThemAll Bot commands with practical examples and use cases.</p>
+                        <div class="card-footer">
+                            <div class="author">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Mike Rodriguez</span>
+                            </div>
+                            <span class="read-time">12 min read</span>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <!-- Load More Button -->
+            <div class="load-more">
+                <button class="load-more-btn">
+                    <i class="fas fa-plus"></i>
+                    Load More Articles
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter Signup -->
+    <section class="newsletter-section">
+        <div class="container">
+            <div class="newsletter-content">
+                <div class="newsletter-text">
+                    <h2>Stay Updated with Our Latest Insights</h2>
+                    <p>Get the latest WhatsApp automation tips, product updates, and business strategies delivered to your inbox.</p>
+                </div>
+                <div class="newsletter-form">
+                    <form class="newsletter-signup">
+                        <input type="email" placeholder="Enter your email address" required>
+                        <button type="submit">
+                            <i class="fas fa-paper-plane"></i>
+                            Subscribe
+                        </button>
+                    </form>
+                    <p class="newsletter-note">No spam, unsubscribe at any time.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <i class="fas fa-robot"></i>
+                        <span>TagThemAll Bot</span>
+                    </div>
+                    <p>The ultimate WhatsApp automation solution for modern businesses.</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Product</h3>
+                    <ul>
+                        <li><a href="index.html#features">Features</a></li>
+                        <li><a href="pricing.html">Pricing</a></li>
+                        <li><a href="bot-commands.html">Bot Commands</a></li>
+                        <li><a href="#">API Documentation</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Company</h3>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Support</h3>
+                    <ul>
+                        <li><a href="#" id="help-center-link">Help Center</a></li>
+                        <li><a href="#">Documentation</a></li>
+                        <li><a href="#">Status Page</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div class="footer-bottom-content">
+                    <p>&copy; 2025 TagThemAll Bot. All rights reserved.</p>
+                    <div class="footer-links">
+                        <a href="#">Privacy</a>
+                        <a href="#">Terms</a>
+                        <a href="#">Security</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mobile menu toggle
+            const hamburger = document.querySelector('.hamburger');
+            const navMenu = document.querySelector('.nav-menu');
+
+            hamburger.addEventListener('click', function() {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+
+            // Category filtering
+            const categoryFilters = document.querySelectorAll('.category-filter');
+            const blogCards = document.querySelectorAll('.blog-card');
+
+            categoryFilters.forEach(filter => {
+                filter.addEventListener('click', function() {
+                    // Remove active class from all filters
+                    categoryFilters.forEach(f => f.classList.remove('active'));
+                    // Add active class to clicked filter
+                    this.classList.add('active');
+
+                    const category = this.getAttribute('data-category');
+
+                    blogCards.forEach(card => {
+                        if (category === 'all' || card.getAttribute('data-category') === category) {
+                            card.style.display = 'block';
+                            setTimeout(() => {
+                                card.style.opacity = '1';
+                                card.style.transform = 'translateY(0)';
+                            }, 100);
+                        } else {
+                            card.style.opacity = '0';
+                            card.style.transform = 'translateY(20px)';
+                            setTimeout(() => {
+                                card.style.display = 'none';
+                            }, 300);
+                        }
+                    });
+                });
+            });
+
+            // Search functionality
+            const searchInput = document.getElementById('blogSearch');
+            const searchBtn = document.querySelector('.search-btn');
+
+            function performSearch() {
+                const searchTerm = searchInput.value.toLowerCase();
+                
+                blogCards.forEach(card => {
+                    const title = card.querySelector('h3').textContent.toLowerCase();
+                    const content = card.querySelector('p').textContent.toLowerCase();
+                    
+                    if (title.includes(searchTerm) || content.includes(searchTerm)) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+
+            searchBtn.addEventListener('click', performSearch);
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+
+            // Newsletter form
+            const newsletterForm = document.querySelector('.newsletter-signup');
+            newsletterForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const email = this.querySelector('input[type="email"]').value;
+                
+                // Here you would typically send the email to your backend
+                alert('Thank you for subscribing! We\'ll keep you updated with our latest insights.');
+                this.reset();
+            });
+
+            // Load more functionality
+            const loadMoreBtn = document.querySelector('.load-more-btn');
+            loadMoreBtn.addEventListener('click', function() {
+                // Here you would typically load more articles from your backend
+                alert('Loading more articles... (This would fetch more content in a real implementation)');
+            });
+
+            // Animation on scroll
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+
+            // Observe elements for animation
+            document.querySelectorAll('.blog-card, .featured-content').forEach(el => {
+                observer.observe(el);
+            });
+        });
+    </script>
+</body>
+</html>
