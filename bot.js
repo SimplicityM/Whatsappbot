@@ -93,6 +93,8 @@ const groupRefreshIntervals = new Map();
 const senderAdminGroups = new Map();
 const groupCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Add this after line 95 in bot.js
+const userGroupSelections = new Map(); // Store user's selected groups
 
 const clientConfig = {
     puppeteer: {
@@ -1228,35 +1230,36 @@ Check console for detailed logs.`);
                 break;
             }
                
-            case 'list': {
-                try {
-                    console.log("🔍 Processing !list command in message_create");
-                    console.log("🔍 Self ID:", selfId);
-                    console.log("🆔 Session ID:", sessionId);
-                    
-                    await message.reply('⏳ Fetching groups where you are admin...');
-                    
-                    const senderKey = `${selfId}_${sessionId}`;
-                    const userAdminGroups = await getGroupsWhereSenderIsAdmin(client, selfId);
-                    
-                                      if (!userAdminGroups.length) {
-                        await message.reply('❌ You are not an admin in any groups');
+                                case 'list': {
+                        try {
+                            console.log("🔍 Processing !list command in message_create");
+                            console.log("🔍 Self ID:", selfId);
+                            console.log("🆔 Session ID:", sessionId);
+                            
+                            await message.reply('⏳ Fetching groups where you are admin...');
+                            
+                            const userAdminGroups = await getGroupsWhereSenderIsAdmin(client, selfId);
+                            
+                            if (!userAdminGroups.length) {
+                                await message.reply('❌ You are not an admin in any groups');
+                                break;
+                            }
+                            
+                            // Store groups for this user with enhanced numbering
+                            userGroupSelections.set(selfId, userAdminGroups);
+                            
+                            let listText = '';
+                            userAdminGroups.forEach((group, index) => {
+                                listText += `${index + 1}. ${group.name || 'Unnamed Group'} (${group.participants?.length || 0} members)\n`;
+                            });
+                            
+                            await message.reply(`*📋 Groups Where You Are Admin (${userAdminGroups.length})*\n\n${listText}\n\n💡 Use these numbers with commands:\n• !tagall [number] [message]\n• !tagallexcept [number] [message]\n• !selectgroup [number] - Set default group`);
+                        } catch (error) {
+                            console.error('Error in !list command:', error);
+                            await message.reply('❌ Error fetching groups');
+                        }
                         break;
                     }
-                    
-                    senderAdminGroups.set(senderKey, userAdminGroups);
-                    
-                    const listText = userAdminGroups.map((g, i) => 
-                        `${i+1}. ${g.name || 'Unnamed Group'} (${g.participants?.length || 0} members)`
-                    ).join('\n');
-                    
-                    await message.reply(`*📋 Groups Where You Are Admin (${userAdminGroups.length})*\n\n${listText}\n\n💡 Use these numbers with !tagall or !tagallexcept commands`);
-                } catch (error) {
-                    console.error('Error in !list command:', error);
-                    await message.reply('❌ Error fetching groups');
-                }
-                break;
-            }
             
             case 'status':
                 const statusMsg = `*Bot Status:*
@@ -1273,13 +1276,84 @@ Check console for detailed logs.`);
                 await message.reply(`✅ Refreshed: Found ${refreshedGroups.length} groups where you are admin`);
                 break;
                 
-            case 'tagall':
-                await handleGroupTagCommand(message, args, client, sessionId);
-                break;
+                            case 'tagall': {
+                    try {
+                        if (args.length < 2) {
+                            return message.reply('❌ Usage: !tagall [group_number] [message]\nUse !list to see group numbers');
+                        }
+                        
+                        const groupNumber = parseInt(args[0]);
+                        const tagMessage = args.slice(1).join(' ');
+                        
+                        const userGroups = userGroupSelections.get(selfId);
+                        if (!userGroups || groupNumber < 1 || groupNumber > userGroups.length) {
+                            return message.reply('❌ Invalid group number. Use !list to see available groups');
+                        }
+                        
+                        const selectedGroup = userGroups[groupNumber - 1];
+                        await executeTagAllInGroup(client, selectedGroup.id, tagMessage, selfId);
+                        
+                        await message.reply(`✅ Tagged all members in "${selectedGroup.name}"`);
+                    } catch (error) {
+                        console.error('Error in !tagall command:', error);
+                        await message.reply('❌ Error executing tagall command');
+                    }
+                    break;
+                }
 
-            case 'tagallexcept':
-                await handleGroupTagExceptCommand(message, args, client, sessionId);
-                break;
+                                case 'tagallexcept': {
+                        try {
+                            if (args.length < 2) {
+                                return message.reply('❌ Usage: !tagallexcept [group_number] [message]\nUse !list to see group numbers');
+                            }
+                            
+                            const groupNumber = parseInt(args[0]);
+                            const tagMessage = args.slice(1).join(' ');
+                            
+                            const userGroups = userGroupSelections.get(selfId);
+                            if (!userGroups || groupNumber < 1 || groupNumber > userGroups.length) {
+                                return message.reply('❌ Invalid group number. Use !list to see available groups');
+                            }
+                            
+                            const selectedGroup = userGroups[groupNumber - 1];
+                            await executeTagAllExceptInGroup(client, selectedGroup.id, tagMessage, selfId);
+                            
+                            await message.reply(`✅ Tagged members (except specified) in "${selectedGroup.name}"`);
+                        } catch (error) {
+                            console.error('Error in !tagallexcept command:', error);
+                            await message.reply('❌ Error executing tagallexcept command');
+                        }
+                        break;
+                    }
+
+                        case 'selectgroup': {
+                            try {
+                                if (args.length < 1) {
+                                    return message.reply('❌ Usage: !selectgroup [group_number]\nUse !list to see group numbers');
+                                }
+                                
+                                const groupNumber = parseInt(args[0]);
+                                const userGroups = userGroupSelections.get(selfId);
+                                
+                                if (!userGroups || groupNumber < 1 || groupNumber > userGroups.length) {
+                                    return message.reply('❌ Invalid group number. Use !list to see available groups');
+                                }
+                                
+                                const selectedGroup = userGroups[groupNumber - 1];
+                                
+                                // Store default group selection
+                                const userDefaults = userGroupSelections.get(`${selfId}_default`) || {};
+                                userDefaults.selectedGroup = selectedGroup;
+                                userGroupSelections.set(`${selfId}_default`, userDefaults);
+                                
+                                await message.reply(`✅ Default group set to: "${selectedGroup.name}"\nNow you can use !tagall [message] without specifying group number`);
+                            } catch (error) {
+                                console.error('Error in !selectgroup command:', error);
+                                await message.reply('❌ Error selecting group');
+                            }
+                            break;
+                        }
+
                 
             case 'sessionid':
                 const sessionIdFromMap = userSessions.get(selfId);
@@ -1952,6 +2026,73 @@ async function sendWarningMessage(userId, type, percentage, remaining) {
                 console.error('Warning message send error:', error);
             }
         }
+    }
+}
+
+
+// Helper function to execute tagall in specific group
+async function executeTagAllInGroup(client, groupId, message, adminId) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            if (participant.id._serialized !== adminId) {
+                mentions.push(participant.id._serialized);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagall in group:', error);
+        throw error;
+    }
+}
+
+// Helper function to execute tagallexcept in specific group
+async function executeTagAllExceptInGroup(client, groupId, message, adminId, exceptUsers = []) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            const userId = participant.id._serialized;
+            if (userId !== adminId && !exceptUsers.includes(userId)) {
+                mentions.push(userId);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagallexcept in group:', error);
+        throw error;
+    }
+}
+
+// Helper function to update usage statistics
+async function updateUsageStats(userId, statType) {
+    try {
+        // This would connect to your database to update stats
+        // Implementation depends on your database structure
+        console.log(`Updated ${statType} for user ${userId}`);
+    } catch (error) {
+        console.error('Error updating usage stats:', error);
     }
 }
 
