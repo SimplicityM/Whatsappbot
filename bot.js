@@ -2097,32 +2097,6 @@ async function updateUsageStats(userId, statType) {
 }
 
 
-// Helper function to execute tagall in specific group
-async function executeTagAllInGroup(client, groupId, message, adminId) {
-    try {
-        const chat = await client.getChatById(groupId);
-        await chat.fetchParticipants();
-        
-        const mentions = [];
-        let mentionText = `${message}\n\n`;
-        
-        for (const participant of chat.participants) {
-            if (participant.id._serialized !== adminId) {
-                mentions.push(participant.id._serialized);
-                mentionText += `@${participant.id.user} `;
-            }
-        }
-        
-        await chat.sendMessage(mentionText, { mentions });
-        
-        // Update usage statistics
-        await updateUsageStats(adminId, 'groupsTagged');
-        
-    } catch (error) {
-        console.error('Error executing tagall in group:', error);
-        throw error;
-    }
-}
 
 // Helper function to execute tagallexcept in specific group
 async function executeTagAllExceptInGroup(client, groupId, message, adminId, exceptUsers = []) {
@@ -2163,6 +2137,82 @@ async function updateUsageStats(userId, statType) {
     }
 }
     
+// Export function for server.js integration
+async function createBotSession(userId, sessionId, io) {
+    try {
+        console.log('🤖 BOT: Creating bot session');
+        console.log('👤 User ID:', userId);
+        console.log('📱 Session ID:', sessionId);
+
+        const client = new Client({
+            authStrategy: new LocalAuth({ 
+                clientId: `user-${userId}-${sessionId}` 
+            }),
+            puppeteer: clientConfig.puppeteer,
+            qrMaxRetries: clientConfig.qrMaxRetries,
+            authTimeoutMs: clientConfig.authTimeoutMs,
+            restartOnAuthFail: clientConfig.restartOnAuthFail,
+            takeoverOnConflict: clientConfig.takeoverOnConflict,
+            takeoverTimeoutMs: clientConfig.takeoverTimeoutMs,
+            chatLoadingTimeoutMs: clientConfig.chatLoadingTimeoutMs
+        });
+
+        // Store client in existing maps
+        clients.set(sessionId, client);
+
+        // QR Code event
+        client.on('qr', async (qr) => {
+            console.log('📱 BOT: QR CODE GENERATED!');
+            console.log('📱 Session:', sessionId);
+            
+            const roomName = `user-${userId}`;
+            io.to(roomName).emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp'
+            });
+            
+            console.log('✅ BOT: QR code emitted to room:', roomName);
+        });
+
+        // Ready event
+        client.on('ready', async () => {
+            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+            
+            const selfId = client.info.wid._serialized;
+            userSessions.set(selfId, sessionId);
+            
+            io.to(`user-${userId}`).emit('sessionReady', {
+                sessionId,
+                phone: client.info.wid.user,
+                message: 'WhatsApp connected successfully!'
+            });
+        });
+
+        // Add all your existing event handlers here
+        // Copy your message_create event and other handlers from the main bot code
+
+        // Initialize the client
+        console.log('🔄 BOT: Initializing WhatsApp client...');
+        await client.initialize();
+        console.log('✅ BOT: WhatsApp client initialized');
+        
+        return client;
+
+    } catch (error) {
+        console.error('❌ BOT: Error creating bot session:', error);
+        throw error;
+    }
+}
+
+// Export the function
+module.exports = { 
+    createBotSession,
+    clients,
+    userSessions
+};
+
+
     // Start with 1 session initially
     module.exports.start(1);
 }

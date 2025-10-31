@@ -12,6 +12,7 @@ const User = require('./models/User');
 const Session = require('./models/Session');
 // Authentication middleware
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const { createBotSession } = require('./bot');
 
 const app = express();
 const server = http.createServer(app);
@@ -105,15 +106,7 @@ async function createWhatsAppSession(userId, sessionId) {
             throw new Error(`Subscription limit reached. ${user.subscription} plan allows ${subscriptionPlans[user.subscription].maxSessions} sessions.`);
         }
 
-        const client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `user-${userId}-${sessionId}` 
-            }),
-            puppeteer: {
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            }
-        });
+        const client = await createBotSession(userId, sessionId, io);
 
         console.log('✅ SERVER: WhatsApp client created');
 
@@ -599,6 +592,129 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
         });
     }
 });
+
+// Add to server.js
+const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
+const abTestRoutes = require('./routes/ab-tests');
+
+// Routes
+app.use('/api/ab-tests', abTestRoutes);
+app.use('/api/analytics', abTestRoutes); // Reuse for analytics tracking
+
+// Public stats API for social proof
+app.get('/api/public/stats', async (req, res) => {
+    try {
+        const stats = await getPublicStats();
+        res.json(stats);
+    } catch (error) {
+        console.error('Error fetching public stats:', error);
+        res.status(500).json({ error: 'Failed to get stats' });
+    }
+});
+
+app.get('/api/public/recent-activity', async (req, res) => {
+    try {
+        const activities = await getRecentActivity();
+        res.json(activities);
+    } catch (error) {
+        console.error('Error fetching recent activity:', error);
+        res.status(500).json({ error: 'Failed to get activity' });
+    }
+});
+
+// Usage API for dashboard
+app.get('/api/user/usage', authenticate, async (req, res) => {
+    try {
+        const usage = await getUserUsageWithLimits(req.user.id);
+        res.json(usage);
+    } catch (error) {
+        console.error('Error fetching user usage:', error);
+        res.status(500).json({ error: 'Failed to get usage' });
+    }
+});
+
+// Helper Functions
+async function getPublicStats() {
+    try {
+        const totalUsers = await User.countDocuments({ status: 'active' });
+        const totalMessages = await Usage.aggregate([
+            { $group: { _id: null, total: { $sum: '$messagesCount' } } }
+        ]);
+        const totalGroups = await Session.countDocuments({ status: 'active' });
+
+        return {
+            totalUsers,
+            messagesSent: totalMessages[0]?.total || 0,
+            groupsManaged: totalGroups
+        };
+    } catch (error) {
+        console.error('Error in getPublicStats:', error);
+        throw error;
+    }
+}
+
+async function getRecentActivity() {
+    try {
+        // Mock recent activity - replace with real data from your analytics
+        const activities = [
+            {
+                user: 'Sarah M.',
+                action: 'upgraded to Premium plan',
+                timeAgo: '2 minutes ago'
+            },
+            {
+                user: 'TechCorp',
+                action: 'sent 1,500 automated messages',
+                timeAgo: '5 minutes ago'
+            },
+            {
+                user: 'Marketing Team',
+                action: 'tagged 250 members',
+                timeAgo: '8 minutes ago'
+            },
+            {
+                user: 'John D.',
+                action: 'created 3 new sessions',
+                timeAgo: '12 minutes ago'
+            },
+            {
+                user: 'StartupXYZ',
+                action: 'scheduled 50 reminders',
+                timeAgo: '15 minutes ago'
+            }
+        ];
+
+        return activities;
+    } catch (error) {
+        console.error('Error in getRecentActivity:', error);
+        throw error;
+    }
+}
+
+async function getUserUsageWithLimits(userId) {
+    try {
+        const user = await User.findById(userId).populate('subscription');
+        const plan = subscriptionPlans[user.subscription?.planType || 'free'];
+        const today = new Date().toISOString().split('T')[0];
+        
+        const usage = await Usage.findOne({ userId: userId, date: today }) || { 
+            messagesCount: 0, 
+            sessionsActive: 0 
+        };
+
+        return {
+            messagesCount: usage.messagesCount,
+            messageLimit: plan.maxMessagesPerDay,
+            sessionsActive: usage.sessionsActive,
+            sessionLimit: plan.maxSessions,
+            planType: plan.name,
+            upgradeUrl: `${process.env.DOMAIN}/pricing`
+        };
+    } catch (error) {
+        console.error('Error in getUserUsageWithLimits:', error);
+        throw error;
+    }
+}
 
 // Start server
 const PORT = process.env.PORT || 3000;
