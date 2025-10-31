@@ -988,10 +988,7 @@ function closeQRModal() {
     }
 }
 
-function closeQRModal() {
-    const qrModal = document.getElementById('qrModal');
-    if (qrModal) qrModal.classList.remove('active');
-}
+
 
 function showUpgradeModal() {
     const upgradeModal = document.getElementById('upgradeModal');
