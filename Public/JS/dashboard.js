@@ -513,6 +513,10 @@ function renderFilteredSessions(sessions) {
 }
 
 async function createNewSession() {
+    console.log('🔍 DEBUG: Starting createNewSession');
+    console.log('🔍 DEBUG: Socket connected?', socket?.connected);
+    console.log('🔍 DEBUG: Current user:', currentUser);
+    
     if (!currentUser) {
         showNotification('Please log in to create a session', 'error');
         return;
@@ -520,9 +524,18 @@ async function createNewSession() {
 
     try {
         showLoading(true);
-        // Use normalized id
         const userId = currentUser.user.id;
-        console.log('🔄 Creating session for normalized user id:', userId);
+        console.log('🔄 Creating session for user ID:', userId);
+        
+        // Ensure user is in socket room
+        if (socket && socket.connected) {
+            socket.emit('join-user-room', userId);
+            console.log('👤 Joined socket room: user-' + userId);
+        } else {
+            console.error('❌ Socket not connected!');
+            showNotification('Connection error. Please refresh the page.', 'error');
+            return;
+        }
         
         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/create`, {
             method: 'POST',
@@ -534,30 +547,54 @@ async function createNewSession() {
         });
         
         const data = await response.json();
+        console.log('📡 API Response:', data);
         
         if (data.success) {
             console.log('✅ Session created via API:', data.data.sessionId);
-            showNotification('New session created! Scan the QR code to connect.', 'success');
+            showNotification('New session created! Waiting for QR code...', 'success');
             
-            // Open the QR modal immediately after session creation
+            // Open the QR modal immediately
             showQRModal();
             
-            // Update the modal with session info
+            // Show loading state in modal
             const qrCodeDisplay = document.getElementById('qrCodeDisplay');
             if (qrCodeDisplay) {
                 qrCodeDisplay.innerHTML = `
-                    <i class="fas fa-qrcode"></i>
-                    <p>Generating QR Code for session: ${data.data.sessionId}</p>
-                    <div class="loading-spinner"></div>
+                    <div style="text-align: center; padding: 20px;">
+                        <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
+                        <p>Generating QR Code...</p>
+                        <p>Session: ${data.data.sessionId}</p>
+                        <div class="loading-spinner"></div>
+                    </div>
                 `;
             }
             
+            // Set up timeout to check if QR code arrives
+            setTimeout(() => {
+                const qrModal = document.getElementById('qrModal');
+                if (qrModal && qrModal.classList.contains('active')) {
+                    const qrDisplay = document.getElementById('qrCodeDisplay');
+                    if (qrDisplay && qrDisplay.innerHTML.includes('Generating QR Code')) {
+                        console.warn('⚠️ QR code not received after 10 seconds');
+                        qrDisplay.innerHTML = `
+                            <div style="text-align: center; padding: 20px;">
+                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f39c12; margin-bottom: 10px;"></i>
+                                <p>QR Code generation is taking longer than expected...</p>
+                                <p>Check server console for errors</p>
+                                <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin-top: 10px;">Refresh Page</button>
+                            </div>
+                        `;
+                    }
+                }
+            }, 10000); // 10 second timeout
+            
         } else {
+            console.error('❌ Session creation failed:', data.message);
             showNotification(data.message || 'Failed to create session', 'error');
         }
     } catch (error) {
-        console.error('Error creating session:', error);
-        showNotification('Error creating session', 'error');
+        console.error('❌ Error creating session:', error);
+        showNotification('Error creating session: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -618,25 +655,47 @@ function displayQRCode(qrData, sessionId) {
 }
 
 
-// Debug socket QR events
+// Enhanced QR Code event handler
 socket.on('qrCode', (data) => {
-    console.log('📱 QR CODE SOCKET EVENT RECEIVED:', {
+    console.log('🎯 QR CODE EVENT RECEIVED:', {
         sessionId: data.sessionId,
-        hasData: !!data.qr,
-        dataLength: data.qr?.length,
+        hasQR: !!data.qr,
+        qrLength: data.qr?.length,
         message: data.message,
         timestamp: new Date().toISOString()
     });
     
-    // Ensure QR modal is open when QR code is received
+    if (!data.qr) {
+        console.error('❌ No QR data received');
+        return;
+    }
+    
+    // Ensure modal is open
     const qrModal = document.getElementById('qrModal');
-    if (qrModal && !qrModal.classList.contains('active')) {
+    if (!qrModal || !qrModal.classList.contains('active')) {
+        console.log('📱 Opening QR modal...');
         showQRModal();
     }
     
-    // Display the QR code
-    if (data.qr) {
+    // Display the QR code with fallback
+    try {
         displayQRCode(data.qr, data.sessionId);
+        console.log('✅ QR code displayed successfully');
+    } catch (error) {
+        console.error('❌ Error displaying QR code:', error);
+        
+        // Fallback: show QR as text
+        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+        if (qrCodeDisplay) {
+            qrCodeDisplay.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <h3>QR Code Generated</h3>
+                    <p style="font-size: 12px; word-break: break-all; background: #f5f5f5; padding: 10px; border-radius: 5px;">${data.qr}</p>
+                    <p><strong>Session:</strong> ${data.sessionId}</p>
+                    <p style="color: #e74c3c;">QR display failed. Use WhatsApp Web manually with the code above.</p>
+                </div>
+            `;
+        }
     }
 });
 
