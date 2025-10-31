@@ -2057,33 +2057,7 @@ async function executeTagAllInGroup(client, groupId, message, adminId) {
     }
 }
 
-// Helper function to execute tagallexcept in specific group
-async function executeTagAllExceptInGroup(client, groupId, message, adminId, exceptUsers = []) {
-    try {
-        const chat = await client.getChatById(groupId);
-        await chat.fetchParticipants();
-        
-        const mentions = [];
-        let mentionText = `${message}\n\n`;
-        
-        for (const participant of chat.participants) {
-            const userId = participant.id._serialized;
-            if (userId !== adminId && !exceptUsers.includes(userId)) {
-                mentions.push(userId);
-                mentionText += `@${participant.id.user} `;
-            }
-        }
-        
-        await chat.sendMessage(mentionText, { mentions });
-        
-        // Update usage statistics
-        await updateUsageStats(adminId, 'groupsTagged');
-        
-    } catch (error) {
-        console.error('Error executing tagallexcept in group:', error);
-        throw error;
-    }
-}
+
 
 // Helper function to update usage statistics
 async function updateUsageStats(userId, statType) {
@@ -2126,16 +2100,7 @@ async function executeTagAllExceptInGroup(client, groupId, message, adminId, exc
     }
 }
 
-// Helper function to update usage statistics
-async function updateUsageStats(userId, statType) {
-    try {
-        // This would connect to your database to update stats
-        // Implementation depends on your database structure
-        console.log(`Updated ${statType} for user ${userId}`);
-    } catch (error) {
-        console.error('Error updating usage stats:', error);
-    }
-}
+
     
 // Export function for server.js integration
 async function createBotSession(userId, sessionId, io) {

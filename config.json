@@ -1,10 +1,13 @@
 {
-  "owner": "2347067012884",
-  "prefix": "!",
-  "maxSessions": 1,
-  "allowedUsers": [],
+  "sessionDataPath": "D:\\New folder\\Whatsappbot\\sessions",
+  "mediaPath": "D:\\New folder\\Whatsappbot\\media",
+  "authPath": "D:\\New folder\\Whatsappbot\\auth",
   "adminSettings": {
     "selfChatOnly": false,
     "secondaryAdmins": {}
-  }
+  },
+  "owner": "2347067012884",
+  "prefix": "!",
+  "maxSessions": 1,
+  "allowedUsers": []
 }
