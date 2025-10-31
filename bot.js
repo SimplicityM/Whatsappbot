@@ -1897,7 +1897,7 @@ if (require.main === module) {
     }
 
     // Enhanced command handler with usage limits
-async function handleCommand(message, client, sessionId, userId) {
+    async function handleCommand(message, client, sessionId, userId) {
     const commandText = message.body.toLowerCase();
     const command = commandText.split(' ')[0];
     const args = commandText.split(' ').slice(1);
@@ -1942,7 +1942,7 @@ async function handleCommand(message, client, sessionId, userId) {
         console.error('Command handling error:', error);
         await message.reply('⚠️ An error occurred while processing your command.');
     }
-}
+}}
 
 // Enhanced help command showing available features
 async function handleHelpCommand(message, userId) {
@@ -2175,13 +2175,10 @@ module.exports = {
     createBotSession,
     clients,
     userSessions
-};
-
-
-    // Start with 1 session initially
-    module.exports.start(1);
 }
 
+
+    
 
 
 
