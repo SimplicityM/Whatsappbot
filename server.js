@@ -134,7 +134,7 @@ async function createWhatsAppSession(userId, sessionId) {
         await session.save();
         console.log('✅ SERVER: Session record saved to database');
 
-        // Enhanced QR event handler with debugging
+          // Enhanced QR event handler with debugging
         client.on('qr', async (qr) => {
             console.log('📱 SERVER: QR event received from client');
             console.log('📱 SERVER: QR data length:', qr?.length);
@@ -153,6 +153,29 @@ async function createWhatsAppSession(userId, sessionId) {
             } catch (dbError) {
                 console.error('❌ SERVER: Error updating session status:', dbError);
             }
+
+            // 🔥 ADD THIS: Emit QR code to frontend
+            const roomName = `user-${userId}`;
+            console.log('📡 SERVER: Emitting QR to room:', roomName);
+            
+            // Emit to specific user room
+            io.to(roomName).emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp',
+                userId: userId
+            });
+            
+            // Also emit globally as backup
+            io.emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp',
+                userId: userId,
+                broadcast: true
+            });
+            
+            console.log('✅ SERVER: QR code emitted to frontend');
         });
 
         // Enhanced ready event handler
