@@ -538,6 +538,20 @@ async function createNewSession() {
         if (data.success) {
             console.log('✅ Session created via API:', data.data.sessionId);
             showNotification('New session created! Scan the QR code to connect.', 'success');
+            
+            // Open the QR modal immediately after session creation
+            showQRModal();
+            
+            // Update the modal with session info
+            const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+            if (qrCodeDisplay) {
+                qrCodeDisplay.innerHTML = `
+                    <i class="fas fa-qrcode"></i>
+                    <p>Generating QR Code for session: ${data.data.sessionId}</p>
+                    <div class="loading-spinner"></div>
+                `;
+            }
+            
         } else {
             showNotification(data.message || 'Failed to create session', 'error');
         }
@@ -600,44 +614,8 @@ function displayQRCode(qrData, sessionId) {
         `;
     }
     
-    // Show the modal
-    showQRModal();
+   
 }
-
-// FIXED: Show QR Modal function
-function showQRModal() {
-    const qrModal = document.getElementById('qrModal');
-    if (qrModal) {
-        qrModal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-        console.log('✅ QR modal opened');
-    } else {
-        console.error('❌ QR modal element not found');
-        showNotification('QR modal not found - check HTML structure', 'error');
-    }
-}
-
-// FIXED: Close QR Modal function (single implementation)
-function closeQRModal() {
-    const qrModal = document.getElementById('qrModal');
-    if (qrModal) {
-        qrModal.classList.remove('active');
-        document.body.style.overflow = 'auto';
-        
-        // Reset QR code display
-        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
-        if (qrCodeDisplay) {
-            qrCodeDisplay.innerHTML = `
-                <i class="fas fa-qrcode"></i>
-                <p>Generating QR Code...</p>
-            `;
-            qrCodeDisplay.className = 'qr-code-display';
-        }
-        
-        console.log('✅ QR modal closed');
-    }
-}
-
 
 
 // Debug socket QR events
@@ -650,14 +628,16 @@ socket.on('qrCode', (data) => {
         timestamp: new Date().toISOString()
     });
     
-    if (!data.qr) {
-        console.error('❌ EMPTY QR DATA from server');
-        showNotification('No QR code data received', 'error');
-        return;
+    // Ensure QR modal is open when QR code is received
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal && !qrModal.classList.contains('active')) {
+        showQRModal();
     }
     
-    console.log('🔄 Calling displayQRCode...');
-    displayQRCode(data.qr, data.sessionId);
+    // Display the QR code
+    if (data.qr) {
+        displayQRCode(data.qr, data.sessionId);
+    }
 });
 
 // Fallback using QR code image service
@@ -961,7 +941,7 @@ function showQRModal() {
     const qrModal = document.getElementById('qrModal');
     if (qrModal) {
         qrModal.classList.add('active');
-        document.body.style.overflow = 'hidden'; // Prevent scrolling
+        document.body.style.overflow = 'hidden';
         console.log('✅ QR modal opened');
     } else {
         console.error('QR modal element not found');
@@ -972,7 +952,11 @@ function closeQRModal() {
     const qrModal = document.getElementById('qrModal');
     if (qrModal) {
         qrModal.classList.remove('active');
-        document.body.style.overflow = 'auto'; // Restore scrolling
+        
+        // Force restore scrolling with multiple methods
+        document.body.style.overflow = '';
+        document.body.style.overflowY = '';
+        document.documentElement.style.overflow = '';
         
         // Reset QR code display
         const qrCodeDisplay = document.getElementById('qrCodeDisplay');
@@ -981,10 +965,10 @@ function closeQRModal() {
                 <i class="fas fa-qrcode"></i>
                 <p>Generating QR Code...</p>
             `;
-            qrCodeDisplay.className = 'qr-placeholder';
+            qrCodeDisplay.className = 'qr-code-display';
         }
         
-        console.log('✅ QR modal closed');
+        console.log('✅ QR modal closed and scrolling restored');
     }
 }
 
