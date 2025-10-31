@@ -601,7 +601,7 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
 });
 
 // Add to server.js
-const { emailMarketing, trackEmailTriggers } = require('./utils/emailMarketing');
+const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
 const abTestRoutes = require('./routes/ab-tests');
 
 // Routes
