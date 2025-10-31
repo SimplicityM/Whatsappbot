@@ -57,22 +57,23 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
         // Generate unique session ID
         const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
-        // Create new session
-        const session = new Session({
-            sessionId,
-            userId: user._id,
-            status: 'connecting'
-        });
+        console.log('🔄 API: Creating session for user:', user._id);
+        console.log('📱 Session ID:', sessionId);
 
-        await session.save();
+        // Import the createWhatsAppSession function
+        const { createWhatsAppSession } = require('../server');
+        
+        // Create WhatsApp session (this will handle database creation too)
+        await createWhatsAppSession(user._id, sessionId);
 
         res.json({
             success: true,
-            data: { sessionId }
+            data: { sessionId },
+            message: 'Session created successfully'
         });
 
     } catch (error) {
-        console.error('Create session error:', error);
+        console.error('❌ Create session error:', error);
         res.json({
             success: false,
             message: 'Failed to create session'
