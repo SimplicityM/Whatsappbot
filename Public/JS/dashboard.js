@@ -654,6 +654,25 @@ async function displayQRCode(qrData, sessionId) {
         
     } catch (error) {
         console.error('❌ QR code generation failed:', error);
+
+          
+    // Fallback: Show QR data as text that can be copied
+    qrCodeContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <i class="fas fa-qrcode" style="font-size: 48px; color: #6c757d; margin-bottom: 15px;"></i>
+            <h4>QR Code Data</h4>
+            <p style="font-size: 12px; color: #666;">Copy this text and create QR code manually:</p>
+            <textarea readonly style="width: 100%; height: 100px; font-family: monospace; font-size: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${qrData}</textarea>
+            <button onclick="navigator.clipboard.writeText('${qrData}')" style="margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Copy QR Data
+            </button>
+            <p style="font-size: 11px; color: #666; margin-top: 10px;">
+                Session: ${sessionId}<br>
+                Use any QR code generator online with the text above
+            </p>
+        </div>
+    `;
+
         
         // Enhanced fallback
         qrCodeContainer.innerHTML = `
