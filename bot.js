@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { Client, MessageMedia } = require('whatsapp-web.js');
+const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const crypto = require('crypto');
 
