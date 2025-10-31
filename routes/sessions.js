@@ -43,7 +43,7 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
         if (limits.sessions !== -1) {
             const userSessions = await Session.countDocuments({ 
                 userId: user._id,
-                status: 'connected'
+                status: { $in: ['connected', 'waiting_qr', 'connecting'] }
             });
 
             if (userSessions >= limits.sessions) {
@@ -55,7 +55,7 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
         }
 
         // Generate unique session ID
-        const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        const sessionId = `session-${user._id}-${Date.now()}`;
 
         console.log('🔄 API: Creating session for user:', user._id);
         console.log('📱 Session ID:', sessionId);
@@ -97,8 +97,8 @@ router.post('/:sessionId/restart', authenticate, async (req, res) => {
             });
         }
 
-        // Update session status
-        session.status = 'connecting';
+        // Update session status - FIXED: changed from 'connecting' to 'waiting_qr'
+        session.status = 'waiting_qr';
         session.errorMessage = null;
         await session.save();
 
@@ -146,6 +146,146 @@ router.delete('/:sessionId', authenticate, async (req, res) => {
         res.json({
             success: false,
             message: 'Failed to delete session'
+        });
+    }
+});
+
+// Get session details
+router.get('/:sessionId', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ 
+            sessionId,
+            userId: req.user._id 
+        });
+
+        if (!session) {
+            return res.json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: { session }
+        });
+
+    } catch (error) {
+        console.error('Get session error:', error);
+        res.json({
+            success: false,
+            message: 'Error fetching session details'
+        });
+    }
+});
+
+// Get session status
+router.get('/:sessionId/status', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ 
+            sessionId,
+            userId: req.user._id 
+        });
+
+        if (!session) {
+            return res.json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: { 
+                status: session.status,
+                phone: session.whatsappNumber,
+                uptime: session.getUptime(),
+                messageCount: session.usage.messagesProcessed || 0,
+                lastActivity: session.usage.lastActivity
+            }
+        });
+
+    } catch (error) {
+        console.error('Get session status error:', error);
+        res.json({
+            success: false,
+            message: 'Error fetching session status'
+        });
+    }
+});
+
+// Update session settings
+router.put('/:sessionId/settings', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { settings } = req.body;
+        
+        const session = await Session.findOne({ 
+            sessionId,
+            userId: req.user._id 
+        });
+
+        if (!session) {
+            return res.json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        session.settings = { ...session.settings, ...settings };
+        await session.save();
+
+        res.json({
+            success: true,
+            message: 'Session settings updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Update session settings error:', error);
+        res.json({
+            success: false,
+            message: 'Error updating session settings'
+        });
+    }
+});
+
+// Get session statistics
+router.get('/:sessionId/stats', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ 
+            sessionId,
+            userId: req.user._id 
+        });
+
+        if (!session) {
+            return res.json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        const stats = {
+            messagesProcessed: session.usage.messagesProcessed || 0,
+            lastActivity: session.usage.lastActivity,
+            uptime: session.getUptime(),
+            status: session.status,
+            createdAt: session.createdAt,
+            connectedAt: session.connectedAt
+        };
+
+        res.json({
+            success: true,
+            data: { stats }
+        });
+
+    } catch (error) {
+        console.error('Get session stats error:', error);
+        res.json({
+            success: false,
+            message: 'Error fetching session statistics'
         });
     }
 });
