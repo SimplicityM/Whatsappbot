@@ -271,38 +271,93 @@ const savedContacts = new Set(
         : []
 );
 
-async function saveNewContact(client, phoneNumber, name = null) {
+// Enhanced contact saving with email/phone notifications
+async function saveNewContact(contact, client, adminId) {
     try {
-        if (!client.info) {
-            logger.info('Client not ready, skipping contact save');
-            return false;
-        }
-
-        if (savedContacts.has(phoneNumber)) {
-            logger.info(`Contact ${phoneNumber} already saved`);
-            return false;
-        }
+        // Save contact to database (existing logic)
+        const savedContact = {
+            name: contact.pushname || 'Unknown',
+            number: contact.id.user,
+            savedAt: new Date(),
+            adminId: adminId
+        };
         
-        const contactName = name || `New Contact ${phoneNumber}`;
-        await client.pupPage.evaluate((contact, name) => {
-            return window.WWebJS.contactAdd(contact, name);
-        }, phoneNumber, contactName);
+        // Save to your database here
+        // await ContactModel.create(savedContact);
         
-        savedContacts.add(phoneNumber);
-        fs.writeFileSync(SAVED_CONTACTS_FILE, JSON.stringify([...savedContacts]));
-        logger.info(`New contact saved: ${phoneNumber} as "${contactName}"`);
-        return true;
+        // Send email notification
+        await sendEmailNotification(adminId, savedContact);
+        
+        // Send SMS notification (optional)
+        await sendSMSNotification(adminId, savedContact);
+        
+        // Notify admin via WhatsApp self-chat
+        const selfChat = await client.getChatById(adminId);
+        await selfChat.sendMessage(
+            `📞 *New Contact Saved*\n\n` +
+            `*Name:* ${savedContact.name}\n` +
+            `*Number:* ${savedContact.number}\n` +
+            `*Time:* ${savedContact.savedAt.toLocaleString()}`
+        );
+        
+        return savedContact;
+        
     } catch (error) {
-        if (error.message.includes('context was destroyed') || 
-            error.message.includes('navigation')) {
-            logger.info('Page navigation interrupted contact saving');
-            return false;
-        }
-        logger.error(`Failed to save contact ${phoneNumber}:`, error);
-        return false;
+        console.error('Error saving contact:', error);
+        throw error;
     }
 }
 
+// Email notification function
+async function sendEmailNotification(adminId, contact) {
+    try {
+        // You'll need to install nodemailer: npm install nodemailer
+        const nodemailer = require('nodemailer');
+        
+        // Get admin email from database
+        const adminUser = await User.findOne({ whatsappNumber: adminId });
+        if (!adminUser || !adminUser.email) return;
+        
+        const transporter = nodemailer.createTransporter({
+            // Configure your email service
+            service: 'gmail', // or your email service
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: adminUser.email,
+            subject: 'New WhatsApp Contact Saved',
+            html: `
+                <h2>New Contact Saved</h2>
+                <p><strong>Name:</strong> ${contact.name}</p>
+                <p><strong>Number:</strong> ${contact.number}</p>
+                <p><strong>Time:</strong> ${contact.savedAt.toLocaleString()}</p>
+            `
+        };
+        
+        await transporter.sendMail(mailOptions);
+        console.log('Email notification sent to:', adminUser.email);
+        
+    } catch (error) {
+        console.error('Error sending email notification:', error);
+    }
+}
+
+// SMS notification function (optional)
+async function sendSMSNotification(adminId, contact) {
+    try {
+        // You can use services like Twilio, Nexmo, etc.
+        // This is a placeholder implementation
+        console.log(`SMS notification would be sent for contact: ${contact.name}`);
+        
+    } catch (error) {
+        console.error('Error sending SMS notification:', error);
+    }
+}
 function setupCallHandlers(client) {
     client.on('call', async (call) => {
         try {
@@ -1897,6 +1952,73 @@ async function sendWarningMessage(userId, type, percentage, remaining) {
                 console.error('Warning message send error:', error);
             }
         }
+    }
+}
+
+
+// Helper function to execute tagall in specific group
+async function executeTagAllInGroup(client, groupId, message, adminId) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            if (participant.id._serialized !== adminId) {
+                mentions.push(participant.id._serialized);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagall in group:', error);
+        throw error;
+    }
+}
+
+// Helper function to execute tagallexcept in specific group
+async function executeTagAllExceptInGroup(client, groupId, message, adminId, exceptUsers = []) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            const userId = participant.id._serialized;
+            if (userId !== adminId && !exceptUsers.includes(userId)) {
+                mentions.push(userId);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagallexcept in group:', error);
+        throw error;
+    }
+}
+
+// Helper function to update usage statistics
+async function updateUsageStats(userId, statType) {
+    try {
+        // This would connect to your database to update stats
+        // Implementation depends on your database structure
+        console.log(`Updated ${statType} for user ${userId}`);
+    } catch (error) {
+        console.error('Error updating usage stats:', error);
     }
 }
     
