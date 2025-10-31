@@ -671,49 +671,7 @@ async function displayQRCode(qrData, sessionId) {
 }
 
 
-// Enhanced QR Code event handler
-socket.on('qrCode', (data) => {
-    console.log('🎯 QR CODE EVENT RECEIVED:', {
-        sessionId: data.sessionId,
-        hasQR: !!data.qr,
-        qrLength: data.qr?.length,
-        message: data.message,
-        timestamp: new Date().toISOString()
-    });
-    
-    if (!data.qr) {
-        console.error('❌ No QR data received');
-        return;
-    }
-    
-    // Ensure modal is open
-    const qrModal = document.getElementById('qrModal');
-    if (!qrModal || !qrModal.classList.contains('active')) {
-        console.log('📱 Opening QR modal...');
-        showQRModal();
-    }
-    
-    // Display the QR code with fallback
-    try {
-        displayQRCode(data.qr, data.sessionId);
-        console.log('✅ QR code displayed successfully');
-    } catch (error) {
-        console.error('❌ Error displaying QR code:', error);
-        
-        // Fallback: show QR as text
-        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
-        if (qrCodeDisplay) {
-            qrCodeDisplay.innerHTML = `
-                <div style="text-align: center; padding: 20px;">
-                    <h3>QR Code Generated</h3>
-                    <p style="font-size: 12px; word-break: break-all; background: #f5f5f5; padding: 10px; border-radius: 5px;">${data.qr}</p>
-                    <p><strong>Session:</strong> ${data.sessionId}</p>
-                    <p style="color: #e74c3c;">QR display failed. Use WhatsApp Web manually with the code above.</p>
-                </div>
-            `;
-        }
-    }
-});
+
 
 // Fallback using QR code image service
 function showImageFallback(qrData, sessionId, container) {
@@ -1682,31 +1640,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Add this debug code to your dashboard.js
-console.log('🔌 Socket connection status:', socket.connected);
 
-// Debug all socket events
-socket.onAny((eventName, ...args) => {
-    console.log('📡 SOCKET EVENT:', eventName, args);
-});
-
-// Specifically debug qrCode events
-socket.on('qrCode', (data) => {
-    console.log('🎯 QR CODE EVENT RECEIVED:', {
-        event: 'qrCode',
-        sessionId: data.sessionId,
-        hasQRData: !!data.qr,
-        dataLength: data.qr?.length,
-        timestamp: new Date().toLocaleTimeString()
-    });
-    
-    if (data.qr) {
-        console.log('🔄 Calling displayQRCode...');
-        displayQRCode(data.qr, data.sessionId);
-    } else {
-        console.error('❌ No QR data in event');
-    }
-});
 
 // SAFE Socket debugging
 function setupSocketDebugging() {
