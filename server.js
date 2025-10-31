@@ -341,6 +341,29 @@ io.on('connection', (socket) => {
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
+
+app.post('/api/sessions/create', authenticate, async (req, res) => {
+    try {
+        console.log('🔄 API: Creating session for user:', req.user.id);
+        const sessionId = `session-${req.user.id}-${Date.now()}`;
+
+        await createWhatsAppSession(req.user.id, sessionId);
+        
+        res.json({
+            success: true,
+            data: { sessionId },
+            message: 'Session created successfully'
+        });
+    } catch (error) {
+        console.error('❌ API: Session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+
 app.use('/api/sessions', require('./routes/sessions'));
 
 // Static file serving
@@ -402,26 +425,6 @@ app.get('/api/sessions/my-sessions', authenticate, async (req, res) => {
     }
 });
 
-app.post('/api/sessions/create', authenticate, async (req, res) => {
-    try {
-        console.log('🔄 API: Creating session for user:', req.user.id);
-        const sessionId = `session-${req.user.id}-${Date.now()}`;
-
-        await createWhatsAppSession(req.user.id, sessionId);
-        
-        res.json({
-            success: true,
-            data: { sessionId },
-            message: 'Session created successfully'
-        });
-    } catch (error) {
-        console.error('❌ API: Session creation error:', error);
-        res.status(400).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
 
 app.post('/api/sessions/:sessionId/restart', authenticate, async (req, res) => {
     try {
@@ -650,6 +653,9 @@ server.listen(PORT, () => {
     console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
     console.log(`💳 Payment Page: http://localhost:${PORT}/payment`);
 });
+
+// Export functions for use in routes
+module.exports = { createWhatsAppSession };
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
