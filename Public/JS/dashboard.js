@@ -627,33 +627,61 @@ async function displayQRCode(qrData, sessionId) {
     console.log('📦 QR container created, generating code...');
 
     try {
-        // Create canvas element for QR code
-        const canvas = document.createElement('canvas');
-        qrCodeContainer.appendChild(canvas);
-        
-        // Generate QR code using the qrcode@1.5.3 library
-        await QRCode.toCanvas(canvas, qrData, {
-            width: 256,
-            color: {
-                dark: '#000000',
-                light: '#ffffff'
-            },
-            errorCorrectionLevel: 'H'
+    // Try to generate QR code using the library
+    await QRCode.toCanvas(canvas, qrData, {
+        width: 256,
+        color: {
+            dark: '#000000',
+            light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+    });
+    
+    console.log('✅ QR code generated successfully');
+    
+} catch (error) {
+    console.error('❌ QR code generation failed:', error);
+    
+    // Fallback: Show QR data as copyable text
+    qrCodeContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #007bff;">
+            <i class="fas fa-qrcode" style="font-size: 48px; color: #007bff; margin-bottom: 15px;"></i>
+            <h4 style="color: #333; margin-bottom: 10px;">QR Code Ready!</h4>
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Copy the text below and use any QR code generator:</p>
+            
+            <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; margin: 15px 0;">
+                <textarea readonly id="qrDataText" style="width: 100%; height: 80px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: none;">${qrData}</textarea>
+            </div>
+            
+            <button onclick="copyQRData('${sessionId}')" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin-right: 10px;">
+                <i class="fas fa-copy"></i> Copy QR Data
+            </button>
+            
+            <button onclick="openQRGenerator('${qrData.replace(/'/g, "\\\'")}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500;">
+                <i class="fas fa-external-link-alt"></i> Generate QR Online
+            </button>
+            
+            <p style="font-size: 12px; color: #666; margin-top: 15px;">
+                <strong>Session:</strong> ${sessionId}<br>
+                <strong>Instructions:</strong> Copy the text above and paste it into any QR code generator, then scan with WhatsApp.
+            </p>
+        </div>
+    `;
+    
+    // Add helper functions to window object
+    window.copyQRData = function(sessionId) {
+        const textArea = document.getElementById('qrDataText');
+        textArea.select();
+        navigator.clipboard.writeText(textArea.value).then(() => {
+            showNotification('QR data copied to clipboard!', 'success');
         });
-        
-        // Add session info below QR code
-        const infoDiv = document.createElement('div');
-        infoDiv.style.marginTop = '10px';
-        infoDiv.innerHTML = `
-            <p style="margin: 5px 0; color: #666; font-size: 14px;">Session: ${sessionId}</p>
-            <p style="margin: 5px 0; color: #28a745; font-weight: bold;">✅ Scan with WhatsApp!</p>
-        `;
-        qrCodeContainer.appendChild(infoDiv);
-        
-        console.log('✅ QR code generated successfully with qrcode@1.5.3');
-        
-    } catch (error) {
-        console.error('❌ QR code generation failed:', error);
+    };
+    
+    window.openQRGenerator = function(data) {
+        const encodedData = encodeURIComponent(data);
+        window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`, '_blank');
+    };
+
 
           
     // Fallback: Show QR data as text that can be copied
