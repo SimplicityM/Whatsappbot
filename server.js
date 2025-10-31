@@ -128,7 +128,7 @@ async function createWhatsAppSession(userId, sessionId) {
         const session = new Session({
             userId,
             sessionId,
-            status: 'initializing',
+            status: 'connecting',
             subscriptionAtTime: user.subscription
         });
         await session.save();
