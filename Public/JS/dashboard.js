@@ -601,8 +601,8 @@ async function createNewSession() {
 }
 
 
-// FIXED: QR Code display function
-function displayQRCode(qrData, sessionId) {
+// FIXED: QR Code display function for qrcode@1.5.3
+async function displayQRCode(qrData, sessionId) {
     console.log('🎯 displayQRCode called with:', { sessionId, qrDataLength: qrData?.length });
     
     const qrCodeDisplay = document.getElementById('qrCodeDisplay');
@@ -620,22 +620,37 @@ function displayQRCode(qrData, sessionId) {
     const qrCodeContainer = document.createElement('div');
     qrCodeContainer.id = `qrcode-${sessionId}`;
     qrCodeContainer.className = 'qr-code-canvas';
+    qrCodeContainer.style.textAlign = 'center';
+    qrCodeContainer.style.padding = '20px';
     qrCodeDisplay.appendChild(qrCodeContainer);
 
     console.log('📦 QR container created, generating code...');
 
     try {
-        // Generate the QR code
-        const qr = new QRCode(qrCodeContainer, {
-            text: qrData,
+        // Create canvas element for QR code
+        const canvas = document.createElement('canvas');
+        qrCodeContainer.appendChild(canvas);
+        
+        // Generate QR code using the qrcode@1.5.3 library
+        await QRCode.toCanvas(canvas, qrData, {
             width: 256,
-            height: 256,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
+            color: {
+                dark: '#000000',
+                light: '#ffffff'
+            },
+            errorCorrectionLevel: 'H'
         });
         
-        console.log('✅ QR code generated successfully');
+        // Add session info below QR code
+        const infoDiv = document.createElement('div');
+        infoDiv.style.marginTop = '10px';
+        infoDiv.innerHTML = `
+            <p style="margin: 5px 0; color: #666; font-size: 14px;">Session: ${sessionId}</p>
+            <p style="margin: 5px 0; color: #28a745; font-weight: bold;">✅ Scan with WhatsApp!</p>
+        `;
+        qrCodeContainer.appendChild(infoDiv);
+        
+        console.log('✅ QR code generated successfully with qrcode@1.5.3');
         
     } catch (error) {
         console.error('❌ QR code generation failed:', error);
@@ -646,12 +661,13 @@ function displayQRCode(qrData, sessionId) {
                 <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 1rem;"></i>
                 <h4 style="margin: 0 0 1rem 0; color: #2d3748;">QR Code Ready</h4>
                 <p style="color: #718096; margin-bottom: 1.5rem;">Session: <strong>${sessionId}</strong></p>
-                <p style="color: #718096; margin-bottom: 1.5rem;">QR Data: ${qrData}</p>
+                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0; font-family: monospace; font-size: 10px; word-break: break-all; max-height: 100px; overflow-y: auto;">
+                    ${qrData}
+                </div>
+                <p style="color: #dc3545; font-size: 12px;">QR display failed. Use the code above manually.</p>
             </div>
         `;
     }
-    
-   
 }
 
 
