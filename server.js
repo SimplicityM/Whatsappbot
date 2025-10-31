@@ -134,50 +134,7 @@ async function createWhatsAppSession(userId, sessionId) {
         await session.save();
         console.log('✅ SERVER: Session record saved to database');
 
-          // Enhanced QR event handler with debugging
-        // client.on('qr', async (qr) => {
-        //     console.log('📱 SERVER: QR event received from client');
-        //     console.log('📱 SERVER: QR data length:', qr?.length);
-        //     console.log('📱 SERVER: QR preview:', qr?.substring(0, 50) + '...');
-            
-        //     try {
-        //         await Session.findOneAndUpdate(
-        //             { sessionId },
-        //             { 
-        //                 status: 'waiting_qr',
-        //                 qrCode: qr,
-        //                 updatedAt: new Date()
-        //             }
-        //         );
-        //         console.log('✅ SERVER: Session status updated to waiting_qr');
-        //     } catch (dbError) {
-        //         console.error('❌ SERVER: Error updating session status:', dbError);
-        //     }
-
-        //     // 🔥 ADD THIS: Emit QR code to frontend
-        //     const roomName = `user-${userId}`;
-        //     console.log('📡 SERVER: Emitting QR to room:', roomName);
-            
-        //     // Emit to specific user room
-        //     io.to(roomName).emit('qrCode', {
-        //         sessionId,
-        //         qr,
-        //         message: 'Scan this QR code with WhatsApp',
-        //         userId: userId
-        //     });
-            
-        //     // Also emit globally as backup
-        //     io.emit('qrCode', {
-        //         sessionId,
-        //         qr,
-        //         message: 'Scan this QR code with WhatsApp',
-        //         userId: userId,
-        //         broadcast: true
-        //     });
-            
-        //     console.log('✅ SERVER: QR code emitted to frontend');
-        // });
-
+        
         // Enhanced ready event handler
         client.on('ready', async () => {
             console.log('✅ SERVER: Client ready event received');
