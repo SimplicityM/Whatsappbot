@@ -1751,3 +1751,48 @@ function setupSocketDebugging() {
         console.error('❌ Error setting up socket debugging:', error);
     }
 }
+
+// Add this backup event handler
+socket.on('qrCode', (data) => {
+    console.log('🎯 QR CODE EVENT RECEIVED:', {
+        sessionId: data.sessionId,
+        hasQR: !!data.qr,
+        qrLength: data.qr?.length,
+        userId: data.userId,
+        currentUserId: currentUser?.user?.id
+    });
+    
+    // Check if this QR is for current user
+    if (data.userId && data.userId !== currentUser?.user?.id) {
+        console.log('🚫 QR code is for different user, ignoring');
+        return;
+    }
+    
+    if (!data.qr) {
+        console.error('❌ No QR data received');
+        return;
+    }
+    
+    // Ensure modal is open
+    const qrModal = document.getElementById('qrModal');
+    if (!qrModal || !qrModal.classList.contains('active')) {
+        console.log('📱 Opening QR modal...');
+        showQRModal();
+    }
+    
+    // Display the QR code
+    try {
+        displayQRCode(data.qr, data.sessionId);
+        console.log('✅ QR code displayed successfully');
+        
+        // Clear the timeout warning
+        const qrDisplay = document.getElementById('qrCodeDisplay');
+        if (qrDisplay && qrDisplay.innerHTML.includes('taking longer than expected')) {
+            // QR arrived after timeout, refresh display
+            setTimeout(() => displayQRCode(data.qr, data.sessionId), 100);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error displaying QR code:', error);
+    }
+});

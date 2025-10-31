@@ -95,6 +95,7 @@ async function createWhatsAppSession(userId, sessionId) {
         console.log('🔄 SERVER: Creating WhatsApp session using bot.js');
         console.log('👤 User ID:', userId);
         console.log('📱 Session ID:', sessionId);
+        console.log('🔍 SERVER: io object exists?', !!io);
 
         const user = await User.findById(userId);
         if (!user) {
@@ -113,7 +114,10 @@ async function createWhatsAppSession(userId, sessionId) {
             throw new Error(`Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions.`);
         }
 
+        console.log('🔄 SERVER: Calling createBotSession...');
         const client = await createBotSession(userId, sessionId, io);
+        console.log('✅ SERVER: Bot session created successfully');
+        console.log('🔍 SERVER: Client type:', typeof client);
 
         activeClients.set(sessionId, {
             client,
@@ -130,28 +134,118 @@ async function createWhatsAppSession(userId, sessionId) {
         await session.save();
         console.log('✅ SERVER: Session record saved to database');
 
-        client.on('qr', async () => {
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { status: 'waiting_qr' }
-            );
+        // Enhanced QR event handler with debugging
+        client.on('qr', async (qr) => {
+            console.log('📱 SERVER: QR event received from client');
+            console.log('📱 SERVER: QR data length:', qr?.length);
+            console.log('📱 SERVER: QR preview:', qr?.substring(0, 50) + '...');
+            
+            try {
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'waiting_qr',
+                        qrCode: qr,
+                        updatedAt: new Date()
+                    }
+                );
+                console.log('✅ SERVER: Session status updated to waiting_qr');
+            } catch (dbError) {
+                console.error('❌ SERVER: Error updating session status:', dbError);
+            }
         });
 
+        // Enhanced ready event handler
         client.on('ready', async () => {
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { 
-                    status: 'connected',
-                    phone: client.info.wid.user,
-                    connectedAt: new Date()
-                }
-            );
+            console.log('✅ SERVER: Client ready event received');
+            
+            try {
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'connected',
+                        phone: client.info.wid.user,
+                        connectedAt: new Date(),
+                        updatedAt: new Date()
+                    }
+                );
+                console.log('✅ SERVER: Session status updated to connected');
+                console.log('📱 SERVER: Phone number:', client.info.wid.user);
+            } catch (dbError) {
+                console.error('❌ SERVER: Error updating session status:', dbError);
+            }
         });
+
+        // Add disconnected event handler
+        client.on('disconnected', async (reason) => {
+            console.log('❌ SERVER: Client disconnected:', reason);
+            
+            try {
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'disconnected',
+                        errorMessage: reason,
+                        disconnectedAt: new Date()
+                    }
+                );
+                
+                // Remove from active clients
+                activeClients.delete(sessionId);
+                console.log('✅ SERVER: Session cleaned up after disconnect');
+                
+            } catch (dbError) {
+                console.error('❌ SERVER: Error updating session status:', dbError);
+            }
+        });
+
+        // Add authentication failure handler
+        client.on('auth_failure', async (message) => {
+            console.log('❌ SERVER: Authentication failed:', message);
+            
+            try {
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'auth_failed',
+                        errorMessage: message,
+                        updatedAt: new Date()
+                    }
+                );
+                
+                // Remove from active clients
+                activeClients.delete(sessionId);
+                console.log('✅ SERVER: Session cleaned up after auth failure');
+                
+            } catch (dbError) {
+                console.error('❌ SERVER: Error updating session status:', dbError);
+            }
+        });
+
+        console.log('✅ SERVER: All event handlers attached');
+        console.log('🔄 SERVER: WhatsApp session creation completed');
+        console.log('='.repeat(60));
         
         return sessionId;
 
     } catch (error) {
         console.error('❌ SERVER: Error creating WhatsApp session:', error);
+        console.error('❌ SERVER: Error stack:', error.stack);
+        
+        // Update session status to failed if session was created
+        try {
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'failed',
+                    errorMessage: error.message,
+                    updatedAt: new Date()
+                }
+            );
+        } catch (dbError) {
+            console.error('❌ SERVER: Error updating failed session status:', dbError);
+        }
+        
         throw error;
     }
 }

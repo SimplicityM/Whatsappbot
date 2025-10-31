@@ -2108,6 +2108,7 @@ async function createBotSession(userId, sessionId, io) {
         console.log('🤖 BOT: Creating bot session');
         console.log('👤 User ID:', userId);
         console.log('📱 Session ID:', sessionId);
+        console.log('🔍 BOT: io object exists?', !!io);
 
         const client = new Client({
             authStrategy: new LocalAuth({ 
@@ -2125,19 +2126,43 @@ async function createBotSession(userId, sessionId, io) {
         // Store client in existing maps
         clients.set(sessionId, client);
 
-        // QR Code event
+        // QR Code event with enhanced debugging
         client.on('qr', async (qr) => {
             console.log('📱 BOT: QR CODE GENERATED!');
             console.log('📱 Session:', sessionId);
+            console.log('📱 User ID:', userId);
+            console.log('📱 QR Data Length:', qr.length);
+            console.log('📱 QR Preview:', qr.substring(0, 50) + '...');
             
             const roomName = `user-${userId}`;
+            console.log('📤 BOT: Emitting to room:', roomName);
+            
+            // Check if io exists
+            if (!io) {
+                console.error('❌ BOT: io (socket.io) is null/undefined!');
+                return;
+            }
+            
+            // Emit to specific room
             io.to(roomName).emit('qrCode', {
                 sessionId,
                 qr,
-                message: 'Scan this QR code with WhatsApp'
+                message: 'Scan this QR code with WhatsApp',
+                userId: userId
             });
             
             console.log('✅ BOT: QR code emitted to room:', roomName);
+            
+            // Also emit to all sockets as backup
+            io.emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp',
+                userId: userId,
+                broadcast: true
+            });
+            
+            console.log('✅ BOT: QR code also broadcasted to all sockets');
         });
 
         // Ready event
@@ -2154,8 +2179,177 @@ async function createBotSession(userId, sessionId, io) {
             });
         });
 
-        // Add all your existing event handlers here
-        // Copy your message_create event and other handlers from the main bot code
+        // Disconnected event
+        client.on('disconnected', (reason) => {
+            console.log('❌ BOT: Client disconnected:', reason);
+            io.to(`user-${userId}`).emit('sessionDisconnected', {
+                sessionId,
+                reason,
+                message: 'WhatsApp session disconnected'
+            });
+        });
+
+        // Authentication failure event
+        client.on('auth_failure', (message) => {
+            console.log('❌ BOT: Authentication failed:', message);
+            io.to(`user-${userId}`).emit('authFailure', {
+                sessionId,
+                message: 'WhatsApp authentication failed'
+            });
+        });
+
+        // Message handler for bot commands
+        client.on('message_create', async (message) => {
+            try {
+                const selfId = client.info.wid._serialized;
+                
+                // Only process self-chat commands
+                if (!message.fromMe || message.to !== selfId || !message.body.startsWith('!')) {
+                    return;
+                }
+                
+                console.log('🤖 BOT: Processing self-chat command:', message.body);
+                
+                const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
+                
+                // React to command
+                try {
+                    await message.react('🤖');
+                } catch (error) {
+                    console.error("Failed to react:", error);
+                }
+
+                // Handle bot commands
+                switch (command.toLowerCase()) {
+                    case 'ping':
+                        await message.reply('Pong! 🏓');
+                        break;
+                        
+                    case 'help':
+                        await message.reply(`*Available Commands:*
+1. !ping - Check bot response
+2. !help - Show this help
+3. !status - Show bot status
+4. !list - List groups where you are admin
+5. !tagall [group_number] [message] - Tag all members
+6. !info - Get group information`);
+                        break;
+
+                    case 'status':
+                        const statusMsg = `*Bot Status:*
+- Session: ${sessionId}
+- User: ${userId}
+- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`;
+                        await message.reply(statusMsg);
+                        break;
+                        
+                    case 'list':
+                        try {
+                            await message.reply('⏳ Fetching groups where you are admin...');
+                            
+                            const chats = await client.getChats();
+                            const groupChats = chats.filter(chat => chat.isGroup);
+                            
+                            if (groupChats.length === 0) {
+                                return message.reply('❌ No groups found');
+                            }
+                            
+                            const adminGroups = [];
+                            
+                            for (const chat of groupChats) {
+                                try {
+                                    await chat.fetchParticipants();
+                                    const userParticipant = chat.participants.find(p => 
+                                        p.id._serialized === selfId
+                                    );
+                                    
+                                    if (userParticipant && userParticipant.isAdmin) {
+                                        adminGroups.push(chat);
+                                    }
+                                } catch (err) {
+                                    console.log(`Error checking ${chat.name}:`, err.message);
+                                }
+                            }
+                            
+                            if (adminGroups.length === 0) {
+                                return message.reply('❌ You are not an admin in any groups');
+                            }
+                            
+                            let listText = '';
+                            adminGroups.forEach((group, index) => {
+                                listText += `${index + 1}. ${group.name} (${group.participants?.length || 0} members)\n`;
+                            });
+                            
+                            await message.reply(`*📋 Groups Where You Are Admin (${adminGroups.length})*\n\n${listText}\n\n💡 Use: !tagall [number] [message]`);
+                            
+                        } catch (error) {
+                            console.error('Error in list command:', error);
+                            await message.reply('❌ Error fetching groups');
+                        }
+                        break;
+                        
+                    case 'tagall':
+                        try {
+                            if (args.length < 2) {
+                                return message.reply('❌ Usage: !tagall [group_number] [message]\nUse !list to see group numbers');
+                            }
+                            
+                            const groupNumber = parseInt(args[0]);
+                            const tagMessage = args.slice(1).join(' ');
+                            
+                            // Get admin groups
+                            const chats = await client.getChats();
+                            const groupChats = chats.filter(chat => chat.isGroup);
+                            const adminGroups = [];
+                            
+                            for (const chat of groupChats) {
+                                try {
+                                    await chat.fetchParticipants();
+                                    const userParticipant = chat.participants.find(p => 
+                                        p.id._serialized === selfId
+                                    );
+                                    
+                                    if (userParticipant && userParticipant.isAdmin) {
+                                        adminGroups.push(chat);
+                                    }
+                                } catch (err) {
+                                    console.log(`Error checking ${chat.name}:`, err.message);
+                                }
+                            }
+                            
+                            if (!adminGroups || groupNumber < 1 || groupNumber > adminGroups.length) {
+                                return message.reply('❌ Invalid group number. Use !list to see available groups');
+                            }
+                            
+                            const selectedGroup = adminGroups[groupNumber - 1];
+                            
+                            // Tag all members
+                            const mentions = [];
+                            let mentionText = `${tagMessage}\n\n`;
+                            
+                            for (const participant of selectedGroup.participants) {
+                                if (participant.id._serialized !== selfId) {
+                                    mentions.push(participant.id._serialized);
+                                    mentionText += `@${participant.id.user} `;
+                                }
+                            }
+                            
+                            await selectedGroup.sendMessage(mentionText, { mentions });
+                            await message.reply(`✅ Tagged all members in "${selectedGroup.name}"`);
+                            
+                        } catch (error) {
+                            console.error('Error in tagall command:', error);
+                            await message.reply('❌ Error executing tagall command');
+                        }
+                        break;
+                        
+                    default:
+                        await message.reply('Unknown command. Try !help');
+                }
+            } catch (error) {
+                console.error('❌ BOT: Error processing bot command:', error);
+            }
+        });
 
         // Initialize the client
         console.log('🔄 BOT: Initializing WhatsApp client...');
