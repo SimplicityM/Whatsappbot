@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const crypto = require('crypto');
+const User = require('./models/User');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 

@@ -1,7 +1,7 @@
 {
-  "sessionDataPath": "D:\\New folder\\Whatsappbot\\sessions",
-  "mediaPath": "D:\\New folder\\Whatsappbot\\media",
-  "authPath": "D:\\New folder\\Whatsappbot\\auth",
+  "sessionDataPath": "./sessions",
+  "mediaPath": "./media", 
+  "authPath": "./auth",
   "adminSettings": {
     "selfChatOnly": false,
     "secondaryAdmins": {}

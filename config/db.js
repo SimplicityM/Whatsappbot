@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
     // Use environment variable or default to local MongoDB
-    const mongoURI = process.env.mongo || 'mongodb://localhost:27017/whatsappbot';
+    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot';
     
     try {
         await mongoose.connect(mongoURI, {
