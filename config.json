@@ -1,6 +1,6 @@
 {
   "sessionDataPath": "./sessions",
-  "mediaPath": "./media", 
+  "mediaPath": "./media",
   "authPath": "./auth",
   "adminSettings": {
     "selfChatOnly": false,
