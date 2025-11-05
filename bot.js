@@ -481,7 +481,6 @@ function createClient(sessionId) {
 
     clientGroups.set(sessionId, []);
 
-    setupClientEvents(client, sessionId);
     setupCallHandlers(client);
     return client;
 }

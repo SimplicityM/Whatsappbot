@@ -389,6 +389,12 @@ async function loadUserSessions() {
             }
         });
         
+        if (response.status === 401) {
+            // Token expired - logout automatically
+            logout();
+            return;
+        }
+        
         if (response.ok) {
             const data = await response.json();
             userSessions = data.data.sessions || [];
@@ -408,11 +414,8 @@ async function loadUserSessions() {
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f56565; margin-bottom: 16px;"></i>
                     <h3>Failed to Load Sessions</h3>
-                    <p>Unable to connect to the server. Please try refreshing.</p>
-                    <button class="btn-primary" onclick="loadUserSessions()">
-                        <i class="fas fa-refresh"></i>
-                        Retry
-                    </button>
+                    <p>Please refresh the page or try logging in again</p>
+                    <button onclick="logout()" class="btn-primary">Login Again</button>
                 </div>
             `;
         }
