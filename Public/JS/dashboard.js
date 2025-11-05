@@ -627,96 +627,86 @@ async function displayQRCode(qrData, sessionId) {
     console.log('📦 QR container created, generating code...');
 
     try {
-    // Try to generate QR code using the library
-    await QRCode.toCanvas(canvas, qrData, {
-        width: 256,
-        color: {
-            dark: '#000000',
-            light: '#ffffff'
-        },
-        errorCorrectionLevel: 'H'
-    });
-    
-    console.log('✅ QR code generated successfully');
-    
-} catch (error) {
-    console.error('❌ QR code generation failed:', error);
-    
-    // Fallback: Show QR data as copyable text
-    qrCodeContainer.innerHTML = `
-        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #007bff;">
-            <i class="fas fa-qrcode" style="font-size: 48px; color: #007bff; margin-bottom: 15px;"></i>
-            <h4 style="color: #333; margin-bottom: 10px;">QR Code Ready!</h4>
-            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Copy the text below and use any QR code generator:</p>
-            
-            <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; margin: 15px 0;">
-                <textarea readonly id="qrDataText" style="width: 100%; height: 80px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: none;">${qrData}</textarea>
-            </div>
-            
-            <button onclick="copyQRData('${sessionId}')" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin-right: 10px;">
-                <i class="fas fa-copy"></i> Copy QR Data
-            </button>
-            
-            <button onclick="openQRGenerator('${qrData.replace(/'/g, "\\\'")}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500;">
-                <i class="fas fa-external-link-alt"></i> Generate QR Online
-            </button>
-            
-            <p style="font-size: 12px; color: #666; margin-top: 15px;">
-                <strong>Session:</strong> ${sessionId}<br>
-                <strong>Instructions:</strong> Copy the text above and paste it into any QR code generator, then scan with WhatsApp.
-            </p>
-        </div>
-    `;
-    
-    // Add helper functions to window object
-    window.copyQRData = function(sessionId) {
-        const textArea = document.getElementById('qrDataText');
-        textArea.select();
-        navigator.clipboard.writeText(textArea.value).then(() => {
-            showNotification('QR data copied to clipboard!', 'success');
-        });
-    };
-    
-    window.openQRGenerator = function(data) {
-        const encodedData = encodeURIComponent(data);
-        window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`, '_blank');
-    };
-
-
-          
-    // Fallback: Show QR data as text that can be copied
-    qrCodeContainer.innerHTML = `
-        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-            <i class="fas fa-qrcode" style="font-size: 48px; color: #6c757d; margin-bottom: 15px;"></i>
-            <h4>QR Code Data</h4>
-            <p style="font-size: 12px; color: #666;">Copy this text and create QR code manually:</p>
-            <textarea readonly style="width: 100%; height: 100px; font-family: monospace; font-size: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${qrData}</textarea>
-            <button onclick="navigator.clipboard.writeText('${qrData}')" style="margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Copy QR Data
-            </button>
-            <p style="font-size: 11px; color: #666; margin-top: 10px;">
-                Session: ${sessionId}<br>
-                Use any QR code generator online with the text above
-            </p>
-        </div>
-    `;
-
+        // Create canvas element first
+        const canvas = document.createElement('canvas');
+        qrCodeContainer.appendChild(canvas);
         
-        // Enhanced fallback
+        // Generate QR code using the library
+        await QRCode.toCanvas(canvas, qrData, {
+            width: 256,
+            color: {
+                dark: '#000000',
+                light: '#ffffff'
+            },
+            errorCorrectionLevel: 'H'
+        });
+        
+        console.log('✅ QR code generated successfully');
+        
+        // Add instructions
+        const instructions = document.createElement('div');
+        instructions.innerHTML = `
+            <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">📱 How to Connect:</h4>
+                <ol style="text-align: left; color: #666; font-size: 14px; margin: 0; padding-left: 20px;">
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Go to Settings → Linked Devices</li>
+                    <li>Tap "Link a Device"</li>
+                    <li>Scan this QR code</li>
+                </ol>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #999;">
+                    Session: ${sessionId}
+                </p>
+            </div>
+        `;
+        qrCodeContainer.appendChild(instructions);
+        
+    } catch (error) {
+        console.error('❌ QR code generation failed:', error);
+        
+        // Fallback: Show QR data as copyable text
         qrCodeContainer.innerHTML = `
-            <div class="qr-fallback" style="text-align: center; padding: 2rem;">
-                <i class="fas fa-qrcode" style="font-size: 64px; color: #667eea; margin-bottom: 1rem;"></i>
-                <h4 style="margin: 0 0 1rem 0; color: #2d3748;">QR Code Ready</h4>
-                <p style="color: #718096; margin-bottom: 1.5rem;">Session: <strong>${sessionId}</strong></p>
-                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0; font-family: monospace; font-size: 10px; word-break: break-all; max-height: 100px; overflow-y: auto;">
-                    ${qrData}
+            <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #007bff;">
+                <i class="fas fa-qrcode" style="font-size: 48px; color: #007bff; margin-bottom: 15px;"></i>
+                <h4 style="color: #333; margin-bottom: 10px;">QR Code Ready!</h4>
+                <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Copy the text below and use any QR code generator:</p>
+                
+                <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; margin: 15px 0;">
+                    <textarea readonly id="qrDataText-${sessionId}" style="width: 100%; height: 80px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: none;">${qrData}</textarea>
                 </div>
-                <p style="color: #dc3545; font-size: 12px;">QR display failed. Use the code above manually.</p>
+                
+                <button onclick="copyQRData('${sessionId}')" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin-right: 10px;">
+                    <i class="fas fa-copy"></i> Copy QR Data
+                </button>
+                
+                <button onclick="openQRGenerator('${qrData.replace(/'/g, "\\'")}', '${sessionId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500;">
+                    <i class="fas fa-external-link-alt"></i> Generate QR Online
+                </button>
+                
+                <p style="font-size: 12px; color: #666; margin-top: 15px;">
+                    <strong>Session:</strong> ${sessionId}<br>
+                    <strong>Instructions:</strong> Copy the text above and paste it into any QR code generator, then scan with WhatsApp.
+                </p>
             </div>
         `;
     }
 }
 
+// Helper functions
+window.copyQRData = function(sessionId) {
+    const textArea = document.getElementById(`qrDataText-${sessionId}`);
+    if (textArea) {
+        textArea.select();
+        navigator.clipboard.writeText(textArea.value).then(() => {
+            showNotification('QR data copied to clipboard!', 'success');
+        });
+    }
+};
+
+window.openQRGenerator = function(data, sessionId) {
+    const encodedData = encodeURIComponent(data);
+    window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`, '_blank');
+};
 
 
 
