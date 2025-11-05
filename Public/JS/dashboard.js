@@ -1009,8 +1009,7 @@ function updatePaymentStats(stats) {
 // Modal management
 function showQRModal() {
     const qrModal = document.getElementById('qrModal');
-    if (qrModal) {
-        qrModal.classList.add('active');
+    if (qrModal && qrModal.style.display === 'block')
         document.body.style.overflow = 'hidden';
         console.log('✅ QR modal opened');
     } else {

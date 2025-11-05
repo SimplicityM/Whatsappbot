@@ -17,7 +17,7 @@ const sessionSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['connecting', 'connected', 'disconnected', 'error', 'pending_approval'],
+        enum: ['connecting', 'connected', 'disconnected', 'error', 'pending_approval', 'waiting_qr', 'failed', 'auth_failed'],
         default: 'connecting'
     },
     qrCode: {
