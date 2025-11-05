@@ -612,33 +612,46 @@ async function displayQRCode(qrData, sessionId) {
         return;
     }
 
-    // Clear previous content and set active state
+    // Clear previous content
     qrCodeDisplay.innerHTML = '';
-    qrCodeDisplay.className = 'qr-code-active';
     
     // Create container for QR code
     const qrCodeContainer = document.createElement('div');
-    qrCodeContainer.id = `qrcode-${sessionId}`;
-    qrCodeContainer.className = 'qr-code-canvas';
     qrCodeContainer.style.textAlign = 'center';
     qrCodeContainer.style.padding = '20px';
     qrCodeDisplay.appendChild(qrCodeContainer);
 
-    console.log('📦 QR container created, generating code...');
+    console.log('📦 QR container created, checking QRCode library...');
+
+    // Wait for QRCode library (max 3 seconds)
+    let attempts = 0;
+    while (typeof QRCode === 'undefined' && attempts < 30) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+    }
 
     try {
-        // Create canvas element first
+        if (typeof QRCode === 'undefined') {
+            throw new Error('QRCode library not available after waiting');
+        }
+
+        // Create canvas element
         const canvas = document.createElement('canvas');
         qrCodeContainer.appendChild(canvas);
         
-        // Generate QR code using the library
-        await QRCode.toCanvas(canvas, qrData, {
-            width: 256,
-            color: {
-                dark: '#000000',
-                light: '#ffffff'
-            },
-            errorCorrectionLevel: 'H'
+        // Generate QR code
+        await new Promise((resolve, reject) => {
+            QRCode.toCanvas(canvas, qrData, {
+                width: 256,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                },
+                errorCorrectionLevel: 'H'
+            }, function(error) {
+                if (error) reject(error);
+                else resolve();
+            });
         });
         
         console.log('✅ QR code generated successfully');
@@ -664,28 +677,30 @@ async function displayQRCode(qrData, sessionId) {
     } catch (error) {
         console.error('❌ QR code generation failed:', error);
         
-        // Fallback: Show QR data as copyable text
+        // Enhanced fallback
         qrCodeContainer.innerHTML = `
             <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #007bff;">
                 <i class="fas fa-qrcode" style="font-size: 48px; color: #007bff; margin-bottom: 15px;"></i>
                 <h4 style="color: #333; margin-bottom: 10px;">QR Code Ready!</h4>
-                <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Copy the text below and use any QR code generator:</p>
+                <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Copy the text below and generate QR code online:</p>
                 
                 <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; margin: 15px 0;">
                     <textarea readonly id="qrDataText-${sessionId}" style="width: 100%; height: 80px; font-family: monospace; font-size: 11px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: none;">${qrData}</textarea>
                 </div>
                 
-                <button onclick="copyQRData('${sessionId}')" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin-right: 10px;">
-                    <i class="fas fa-copy"></i> Copy QR Data
-                </button>
-                
-                <button onclick="openQRGenerator('${qrData.replace(/'/g, "\\'")}', '${sessionId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500;">
-                    <i class="fas fa-external-link-alt"></i> Generate QR Online
-                </button>
+                <div style="margin: 15px 0;">
+                    <button onclick="copyQRData('${sessionId}')" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin: 5px;">
+                        <i class="fas fa-copy"></i> Copy QR Data
+                    </button>
+                    
+                    <button onclick="openQRGenerator('${qrData.replace(/'/g, "\\'")}', '${sessionId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 500; margin: 5px;">
+                        <i class="fas fa-external-link-alt"></i> Generate QR Online
+                    </button>
+                </div>
                 
                 <p style="font-size: 12px; color: #666; margin-top: 15px;">
                     <strong>Session:</strong> ${sessionId}<br>
-                    <strong>Instructions:</strong> Copy the text above and paste it into any QR code generator, then scan with WhatsApp.
+                    <strong>Instructions:</strong> Copy the text above, paste it into any online QR generator, then scan with WhatsApp.
                 </p>
             </div>
         `;
@@ -699,6 +714,11 @@ window.copyQRData = function(sessionId) {
         textArea.select();
         navigator.clipboard.writeText(textArea.value).then(() => {
             showNotification('QR data copied to clipboard!', 'success');
+        }).catch(() => {
+            // Fallback for older browsers
+            textArea.select();
+            document.execCommand('copy');
+            showNotification('QR data copied!', 'success');
         });
     }
 };
@@ -707,7 +727,6 @@ window.openQRGenerator = function(data, sessionId) {
     const encodedData = encodeURIComponent(data);
     window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`, '_blank');
 };
-
 
 
 // Fallback using QR code image service
@@ -1009,11 +1028,12 @@ function updatePaymentStats(stats) {
 // Modal management
 function showQRModal() {
     const qrModal = document.getElementById('qrModal');
-    if (qrModal && qrModal.style.display === 'block')
+    if (qrModal) {
+        qrModal.style.display = 'block';  // ✅ SHOW the modal
         document.body.style.overflow = 'hidden';
         console.log('✅ QR modal opened');
     } else {
-        console.error('QR modal element not found');
+        console.error('❌ QR modal element not found');
     }
 }
 
