@@ -635,26 +635,26 @@ async function displayQRCode(qrData, sessionId) {
             throw new Error('QRCode library not available after waiting');
         }
 
-        // Create canvas element
-        const canvas = document.createElement('canvas');
-        qrCodeContainer.appendChild(canvas);
+        // Create container div for QRCode.js (not canvas)
+        const qrContainer = document.createElement('div');
+        qrContainer.style.display = 'inline-block';
+        qrContainer.style.padding = '10px';
+        qrContainer.style.background = 'white';
+        qrContainer.style.borderRadius = '8px';
+        qrContainer.style.border = '1px solid #ddd';
+        qrCodeContainer.appendChild(qrContainer);
 
-        // Generate QR code using QRious
-        try {
-            const qr = new QRious({
-                element: canvas,
-                value: qrData,
-                size: 256,
-                foreground: '#000000',
-                background: '#ffffff',
-                level: 'H'
-            });
-            
-            console.log('✅ QR code generated successfully with QRious');
-        } catch (error) {
-            throw error;
-        }
+        // Generate QR code using QRCode.js (David Shim's library)
+        const qr = new QRCode(qrContainer, {
+            text: qrData,
+            width: 256,
+            height: 256,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
         
+        console.log('✅ QR code generated successfully with QRCode.js');
                 
         // Add instructions
         const instructions = document.createElement('div');
