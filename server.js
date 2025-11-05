@@ -29,6 +29,27 @@ const io = socketIo(server, {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+const cors = require('cors');
+app.use(cors({
+    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    credentials: true
+}));
+
+// Content Security Policy
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', 
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.socket.io; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
+        "connect-src 'self' ws: wss: https:; " +
+        "img-src 'self' data: https:; " +
+        "object-src 'none'; " +
+        "base-uri 'self';"
+    );
+    next();
+});
+
 // Database connection
 const connectDB = async () => {
     try {
