@@ -1177,48 +1177,21 @@ async function createBotSession(userId, sessionId, io) {
         console.log('📱 Session ID:', sessionId);
         console.log('🔍 BOT: io object exists?', !!io);
 
-        // Validate inputs
-        if (!userId || !sessionId || !io) {
-            throw new Error(`Missing required parameters: userId=${userId}, sessionId=${sessionId}, io=${!!io}`);
-        }
-
-        console.log('🔄 BOT: Creating WhatsApp client...');
-        
         const client = new Client({
             authStrategy: new LocalAuth({ 
-                clientId: `user-${userId}-${sessionId}`,
-                dataPath: path.join(__dirname, '.wwebjs_auth')
+                clientId: `user-${userId}-${sessionId}` 
             }),
-            puppeteer: {
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
-                ],
-                defaultViewport: null,
-                timeout: 60000
-            },
-            qrMaxRetries: 10,
-            authTimeoutMs: 300000, // 5 minutes
-            restartOnAuthFail: true,
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 30000,
-            chatLoadingTimeoutMs: 120000
+            puppeteer: clientConfig.puppeteer,
+            qrMaxRetries: clientConfig.qrMaxRetries,
+            authTimeoutMs: clientConfig.authTimeoutMs,
+            restartOnAuthFail: clientConfig.restartOnAuthFail,
+            takeoverOnConflict: clientConfig.takeoverOnConflict,
+            takeoverTimeoutMs: clientConfig.takeoverTimeoutMs,
+            chatLoadingTimeoutMs: clientConfig.chatLoadingTimeoutMs
         });
-
-        console.log('✅ BOT: WhatsApp client created');
 
         // Store client in existing maps
         clients.set(sessionId, client);
-        console.log('✅ BOT: Client stored in map');
 
         // QR Code event with enhanced debugging
         client.on('qr', async (qr) => {
@@ -1236,10 +1209,6 @@ async function createBotSession(userId, sessionId, io) {
                 console.error('❌ BOT: io (socket.io) is null/undefined!');
                 return;
             }
-            
-            // Check room membership
-            const room = io.sockets.adapter.rooms.get(roomName);
-            console.log('👥 BOT: Clients in room:', room ? room.size : 0);
             
             // Emit to specific room
             io.to(roomName).emit('qrCode', {
@@ -1304,6 +1273,39 @@ async function createBotSession(userId, sessionId, io) {
                     return;
                 }
 
+                // Group refresh functionality
+                console.log(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
+                await refreshGroupsForSession(client, sessionId);
+                console.log(`✅ Finished group refresh call for session ${sessionId}`);
+
+                groupRefreshIntervals.set(
+                    sessionId,
+                    setInterval(() => refreshGroupsForSession(client, sessionId), 600000)
+                );
+
+                // Welcome messages and session setup
+                const selfId = client.info.wid._serialized;
+                userSessions.set(selfId, sessionId);
+                
+                const chat = await client.getChatById(selfId);
+                
+                // Send welcome messages
+                const testMsg = await chat.sendMessage("Welcome, We are happy you joined us...");
+                await testMsg.delete(true);
+                
+                await chat.sendMessage(`🤖 *Bot Connected*\n\nYour session ID: \`${sessionId}\``);
+                await chat.sendMessage("👋 Hello, I'm a WhatsApp bot. Use !help to see available commands");
+                
+                // Keep-alive interval
+                const keepAliveInterval = setInterval(async () => {
+                    try {
+                        await client.getState();
+                        console.log(`Keep-alive ping for session ${sessionId}`);
+                    } catch (error) {
+                        console.error(`Keep-alive failed for session ${sessionId}:`, error);
+                    }
+                }, 300000);
+
                 // Emit success to frontend
                 io.to(`user-${userId}`).emit('sessionReady', {
                     sessionId,
@@ -1311,7 +1313,7 @@ async function createBotSession(userId, sessionId, io) {
                     message: 'WhatsApp connected successfully!'
                 });
                 
-                console.log('✅ BOT: Session fully ready');
+                console.log('✅ BOT: Session fully ready with welcome messages sent');
                 
             } catch (error) {
                 console.error('❌ BOT: Error in ready handler:', error);
@@ -1341,18 +1343,94 @@ async function createBotSession(userId, sessionId, io) {
             });
         });
 
-        console.log('🔄 BOT: Initializing WhatsApp client...');
-        
-        // Initialize the client with error handling
-        try {
-            await client.initialize();
-            console.log('✅ BOT: Client initialization completed');
-        } catch (initError) {
-            console.error('❌ BOT: Client initialization failed:', initError);
-            throw new Error(`WhatsApp client initialization failed: ${initError.message}`);
-        }
+        // Message handler for bot commands
+        client.on('message_create', async (message) => {
+            try {
+                const selfId = client.info.wid._serialized;
+                
+                // Only process self-chat commands
+                if (!message.fromMe || message.to !== selfId || !message.body.startsWith('!')) {
+                    return;
+                }
+                
+                console.log('🤖 BOT: Processing self-chat command:', message.body);
+                
+                const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
+                
+                // React to command
+                try {
+                    await message.react('🤖');
+                } catch (error) {
+                    console.error("Failed to react:", error);
+                }
 
-        console.log('✅ BOT: createBotSession completed successfully');
+                // Helper function to get admin groups
+                const getAdminGroups = async () => {
+                    const chats = await client.getChats();
+                    const groupChats = chats.filter(chat => chat.isGroup);
+                    const adminGroups = [];
+                    
+                    for (const chat of groupChats) {
+                        try {
+                            await chat.fetchParticipants();
+                            const userParticipant = chat.participants.find(p => p.id._serialized === selfId);
+                            
+                            if (userParticipant && userParticipant.isAdmin) {
+                                adminGroups.push(chat);
+                            }
+                        } catch (err) {
+                            console.log(`Error checking ${chat.name}:`, err.message);
+                        }
+                    }
+                    
+                    return adminGroups;
+                };
+
+                switch (command.toLowerCase()) {
+                    case 'ping':
+                        await message.reply('Pong! 🏓');
+                        break;
+                        
+                    case 'help':
+                        await message.reply(`*Available Commands:*
+!ping - Check bot response
+!help - Show this help
+!status - Show bot status
+!list - List groups where you are admin
+!tagall [group_number] [message] - Tag all members
+!tagallexcept [group_number] [message] - Tag all except specified
+!sessionid - Get your session ID`);
+                        break;
+                        
+                    case 'status':
+                        const statusMsg = `*Bot Status:*
+- Session: ${sessionId}
+- User: ${userId}
+- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
+- Active sessions: ${clients.size}
+- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
+                        await message.reply(statusMsg);
+                        break;
+                
+                    case 'sessionid':
+                        const sessionIdFromMap = userSessions.get(selfId) || sessionId;
+                        await message.reply(`Your session ID: \`${sessionIdFromMap}\``);
+                        break;
+                        
+                    default:
+                        await message.reply('❌ Unknown command. Try !help for available commands');
+                }
+                
+            } catch (error) {
+                console.error('❌ BOT: Error processing bot command:', error);
+            }
+        });
+
+        // *** THIS IS THE MISSING CRITICAL LINE ***
+        console.log('🔄 BOT: Initializing WhatsApp client...');
+        await client.initialize();
+        console.log('✅ BOT: Client initialization completed');
+        
         return client;
 
     } catch (error) {
@@ -1361,6 +1439,7 @@ async function createBotSession(userId, sessionId, io) {
         throw error;
     }
 }
+
 
 // Export the function
 module.exports = { 
