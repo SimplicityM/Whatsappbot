@@ -1393,423 +1393,423 @@ async function createBotSession(userId, sessionId, io) {
                     
                 case 'help':
                     await message.reply(`*Available Commands:*
-            !ping - Check bot response
-            !help - Show this help
-            !status - Show bot status
-            !list - List groups where you are admin
-            !tagall [group_number] [message] - Tag all members
-            !tagallexcept [group_number] [message] - Tag all except specified
-            !sessionid - Get your session ID
-            !media - Send test media
-            !newsession - Create new session
-            !shutdown - Turn off bot (admin only)
-            !document - Send document
-            !savecontact - Save a new contact
-            !contacts - List all saved contacts
-            !meeting - Schedule a meeting with reminders
-            !event - Schedule an event with reminders
-            !reminders - List all active reminders
-            !cancelreminder - Cancel a scheduled reminder
-            !refreshgroups - Refresh groups you are admin of
-            !testchats - Debug chat retrieval
-            !testparticipants - Debug participant detection
-            !listraw - Raw admin detection test
-            !listsimple - Simplified list test
-            !info - Get group information`);
+                    !ping - Check bot response
+                    !help - Show this help
+                    !status - Show bot status
+                    !list - List groups where you are admin
+                    !tagall [group_number] [message] - Tag all members
+                    !tagallexcept [group_number] [message] - Tag all except specified
+                    !sessionid - Get your session ID
+                    !media - Send test media
+                    !newsession - Create new session
+                    !shutdown - Turn off bot (admin only)
+                    !document - Send document
+                    !savecontact - Save a new contact
+                    !contacts - List all saved contacts
+                    !meeting - Schedule a meeting with reminders
+                    !event - Schedule an event with reminders
+                    !reminders - List all active reminders
+                    !cancelreminder - Cancel a scheduled reminder
+                    !refreshgroups - Refresh groups you are admin of
+                    !testchats - Debug chat retrieval
+                    !testparticipants - Debug participant detection
+                    !listraw - Raw admin detection test
+                    !listsimple - Simplified list test
+                    !info - Get group information`);
                     break;
                     
-                case 'status':
-                    const statusMsg = `*Bot Status:*
-            - Session: ${sessionId}
-            - User: ${userId}
-            - Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
-            - Active sessions: ${clients.size}
-            - Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-                    await message.reply(statusMsg);
-                    break;
+                            case 'status':
+                                const statusMsg = `*Bot Status:*
+                        - Session: ${sessionId}
+                        - User: ${userId}
+                        - Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
+                        - Active sessions: ${clients.size}
+                        - Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
+                                await message.reply(statusMsg);
+                                break;
                     
-                case 'list':
-                    try {
-                        await message.reply('⏳ Fetching groups where you are admin...');
-                        const adminGroups = await getAdminGroups();
-                        
-                        if (adminGroups.length === 0) {
-                            return await message.reply('❌ You are not an admin in any groups');
-                        }
-                        
-                        let listText = '';
-                        adminGroups.forEach((group, index) => {
-                            listText += `${index + 1}. ${group.name} (${group.participants?.length || 0} members)\n`;
-                        });
-                        
-                        await message.reply(`*📋 Groups Where You Are Admin (${adminGroups.length})*\n\n${listText}\n\n💡 Use: !tagall [number] [message] or !tagallexcept [number] [message]`);
-                    } catch (error) {
-                        console.error('Error in list command:', error);
-                        await message.reply('❌ Error fetching groups');
-                    }
-                    break;
+                                case 'list':
+                                    try {
+                                        await message.reply('⏳ Fetching groups where you are admin...');
+                                        const adminGroups = await getAdminGroups();
+                                        
+                                        if (adminGroups.length === 0) {
+                                            return await message.reply('❌ You are not an admin in any groups');
+                                        }
+                                        
+                                        let listText = '';
+                                        adminGroups.forEach((group, index) => {
+                                            listText += `${index + 1}. ${group.name} (${group.participants?.length || 0} members)\n`;
+                                        });
+                                        
+                                        await message.reply(`*📋 Groups Where You Are Admin (${adminGroups.length})*\n\n${listText}\n\n💡 Use: !tagall [number] [message] or !tagallexcept [number] [message]`);
+                                    } catch (error) {
+                                        console.error('Error in list command:', error);
+                                        await message.reply('❌ Error fetching groups');
+                                    }
+                                    break;
                     
-                case 'tagall':
-                    try {
-                        if (args.length < 2) {
-                            return await message.reply('❌ Usage: !tagall [group_number] [message]\nUse !list to see group numbers');
-                        }
-                        
-                        const groupNumber = parseInt(args[0]);
-                        const tagMessage = args.slice(1).join(' ');
-                        const adminGroups = await getAdminGroups();
-                        
-                        if (!adminGroups || groupNumber < 1 || groupNumber > adminGroups.length) {
-                            return await message.reply('❌ Invalid group number. Use !list to see available groups');
-                        }
-                        
-                        const selectedGroup = adminGroups[groupNumber - 1];
-                        const mentions = [];
-                        let mentionText = `${tagMessage}\n\n`;
-                        
-                        for (const participant of selectedGroup.participants) {
-                            if (participant.id._serialized !== selfId) {
-                                mentions.push(participant.id._serialized);
-                                mentionText += `@${participant.id.user} `;
-                            }
-                        }
-                        
-                        await selectedGroup.sendMessage(mentionText, { mentions });
-                        await message.reply(`✅ Tagged all members in "${selectedGroup.name}"`);
-                    } catch (error) {
-                        console.error('Error in tagall command:', error);
-                        await message.reply('❌ Error executing tagall command');
-                    }
-                    break;
+                                        case 'tagall':
+                                            try {
+                                                if (args.length < 2) {
+                                                    return await message.reply('❌ Usage: !tagall [group_number] [message]\nUse !list to see group numbers');
+                                                }
+                                                
+                                                const groupNumber = parseInt(args[0]);
+                                                const tagMessage = args.slice(1).join(' ');
+                                                const adminGroups = await getAdminGroups();
+                                                
+                                                if (!adminGroups || groupNumber < 1 || groupNumber > adminGroups.length) {
+                                                    return await message.reply('❌ Invalid group number. Use !list to see available groups');
+                                                }
+                                                
+                                                const selectedGroup = adminGroups[groupNumber - 1];
+                                                const mentions = [];
+                                                let mentionText = `${tagMessage}\n\n`;
+                                                
+                                                for (const participant of selectedGroup.participants) {
+                                                    if (participant.id._serialized !== selfId) {
+                                                        mentions.push(participant.id._serialized);
+                                                        mentionText += `@${participant.id.user} `;
+                                                    }
+                                                }
+                                                
+                                                await selectedGroup.sendMessage(mentionText, { mentions });
+                                                await message.reply(`✅ Tagged all members in "${selectedGroup.name}"`);
+                                            } catch (error) {
+                                                console.error('Error in tagall command:', error);
+                                                await message.reply('❌ Error executing tagall command');
+                                            }
+                                            break;
                     
-                case 'tagallexcept':
-                    try {
-                        if (args.length < 2) {
-                            return await message.reply('❌ Usage: !tagallexcept [group_number] [message]\nOptionally add phone numbers to exclude at the end');
-                        }
-                        
-                        const groupNumber = parseInt(args[0]);
-                        const tagMessage = args.slice(1).join(' ');
-                        const adminGroups = await getAdminGroups();
-                        
-                        if (!adminGroups || groupNumber < 1 || groupNumber > adminGroups.length) {
-                            return await message.reply('❌ Invalid group number. Use !list to see available groups');
-                        }
-                        
-                        const selectedGroup = adminGroups[groupNumber - 1];
-                        const phoneRegex = /\b\d{10,15}\b/g;
-                        const excludeNumbers = tagMessage.match(phoneRegex) || [];
-                        const cleanMessage = tagMessage.replace(phoneRegex, '').trim();
-                        
-                        const mentions = [];
-                        let mentionText = `${cleanMessage}\n\n`;
-                        
-                        for (const participant of selectedGroup.participants) {
-                            const participantNumber = participant.id.user;
-                            const shouldExclude = excludeNumbers.some(num => participantNumber.includes(num)) ||
-                                                participant.id._serialized === selfId;
-                            
-                            if (!shouldExclude) {
-                                mentions.push(participant.id._serialized);
-                                mentionText += `@${participantNumber} `;
-                            }
-                        }
-                        
-                        await selectedGroup.sendMessage(mentionText, { mentions });
-                        await message.reply(`✅ Tagged members (except ${excludeNumbers.length} excluded) in "${selectedGroup.name}"`);
-                    } catch (error) {
-                        console.error('Error in tagallexcept command:', error);
-                        await message.reply('❌ Error executing tagallexcept command');
-                    }
-                    break;
+                                                    case 'tagallexcept':
+                                                        try {
+                                                            if (args.length < 2) {
+                                                                return await message.reply('❌ Usage: !tagallexcept [group_number] [message]\nOptionally add phone numbers to exclude at the end');
+                                                            }
+                                                            
+                                                            const groupNumber = parseInt(args[0]);
+                                                            const tagMessage = args.slice(1).join(' ');
+                                                            const adminGroups = await getAdminGroups();
+                                                            
+                                                            if (!adminGroups || groupNumber < 1 || groupNumber > adminGroups.length) {
+                                                                return await message.reply('❌ Invalid group number. Use !list to see available groups');
+                                                            }
+                                                            
+                                                            const selectedGroup = adminGroups[groupNumber - 1];
+                                                            const phoneRegex = /\b\d{10,15}\b/g;
+                                                            const excludeNumbers = tagMessage.match(phoneRegex) || [];
+                                                            const cleanMessage = tagMessage.replace(phoneRegex, '').trim();
+                                                            
+                                                            const mentions = [];
+                                                            let mentionText = `${cleanMessage}\n\n`;
+                                                            
+                                                            for (const participant of selectedGroup.participants) {
+                                                                const participantNumber = participant.id.user;
+                                                                const shouldExclude = excludeNumbers.some(num => participantNumber.includes(num)) ||
+                                                                                    participant.id._serialized === selfId;
+                                                                
+                                                                if (!shouldExclude) {
+                                                                    mentions.push(participant.id._serialized);
+                                                                    mentionText += `@${participantNumber} `;
+                                                                }
+                                                            }
+                                                            
+                                                            await selectedGroup.sendMessage(mentionText, { mentions });
+                                                            await message.reply(`✅ Tagged members (except ${excludeNumbers.length} excluded) in "${selectedGroup.name}"`);
+                                                        } catch (error) {
+                                                            console.error('Error in tagallexcept command:', error);
+                                                            await message.reply('❌ Error executing tagallexcept command');
+                                                        }
+                                                        break;
                     
-                case 'sessionid':
-                    const sessionIdFromMap = userSessions.get(selfId) || sessionId;
-                    await message.reply(`Your session ID: \`${sessionIdFromMap}\``);
-                    break;
+                                                            case 'sessionid':
+                                                                const sessionIdFromMap = userSessions.get(selfId) || sessionId;
+                                                                await message.reply(`Your session ID: \`${sessionIdFromMap}\``);
+                                                                break;
                     
-                case 'media':
-                    try {
-                        const mediaPath = './media/test-image.jpg';
-                        const fs = require('fs');
-                        if (fs.existsSync(mediaPath)) {
-                            const media = MessageMedia.fromFilePath(mediaPath);
-                            await message.reply(media);
-                        } else {
-                            await message.reply('📷 No test media found. Add images to ./media/ folder');
-                        }
-                    } catch (error) {
-                        console.error('Error in media command:', error);
-                        await message.reply('❌ Error sending media');
-                    }
-                    break;
+                                                            case 'media':
+                                                                try {
+                                                                    const mediaPath = './media/test-image.jpg';
+                                                                    const fs = require('fs');
+                                                                    if (fs.existsSync(mediaPath)) {
+                                                                        const media = MessageMedia.fromFilePath(mediaPath);
+                                                                        await message.reply(media);
+                                                                    } else {
+                                                                        await message.reply('📷 No test media found. Add images to ./media/ folder');
+                                                                    }
+                                                                } catch (error) {
+                                                                    console.error('Error in media command:', error);
+                                                                    await message.reply('❌ Error sending media');
+                                                                }
+                                                                break;
                     
-                case 'newsession':
-                    try {
-                        await message.reply('🔄 Creating new session... This may take a moment.');
-                        await message.reply('✅ New session creation initiated');
-                    } catch (error) {
-                        console.error('Error in newsession command:', error);
-                        await message.reply('❌ Error creating new session');
-                    }
-                    break;
-                    
-                case 'shutdown':
-                    try {
-                        const isAdmin = selfId === process.env.ADMIN_PHONE || message.from === process.env.ADMIN_PHONE;
-                        if (!isAdmin) {
-                            return await message.reply('🔒 Admin-only command');
-                        }
-                        
-                        await message.reply('🔄 Shutting down bot...');
-                        setTimeout(() => {
-                            process.exit(0);
-                        }, 2000);
-                    } catch (error) {
-                        console.error('Error in shutdown command:', error);
-                        await message.reply('❌ Error during shutdown');
-                    }
-                    break;
-                    
-                case 'document':
-                    try {
-                        await message.reply('📄 Document feature - specify document type or check ./documents/ folder');
-                    } catch (error) {
-                        console.error('Error in document command:', error);
-                        await message.reply('❌ Error sending document');
-                    }
-                    break;
-                    
-                case 'savecontact':
-                    try {
-                        if (args.length < 1) {
-                            return await message.reply('❌ Usage: !savecontact [phone_number] [optional_name]');
-                        }
-                        
-                        const phoneNumber = args[0];
-                        const contactName = args.slice(1).join(' ') || 'Unknown';
-                        await message.reply(`✅ Contact saved: ${contactName} (${phoneNumber})`);
-                    } catch (error) {
-                        console.error('Error in savecontact command:', error);
-                        await message.reply('❌ Error saving contact');
-                    }
-                    break;
-                    
-                case 'contacts':
-                    try {
-                        await message.reply('📞 *Saved Contacts:*\n\n(Contact list feature - implement database retrieval)');
-                    } catch (error) {
-                        console.error('Error in contacts command:', error);
-                        await message.reply('❌ Error retrieving contacts');
-                    }
-                    break;
-                    
-                case 'meeting':
-                    try {
-                        if (args.length < 3) {
-                            return await message.reply('❌ Usage: !meeting [YYYY-MM-DD] [HH:mm] [title]');
-                        }
-                        
-                        const date = args[0];
-                        const time = args[1];
-                        const title = args.slice(2).join(' ');
-                        await message.reply(`📅 Meeting scheduled:\n*${title}*\nDate: ${date}\nTime: ${time}`);
-                    } catch (error) {
-                        console.error('Error in meeting command:', error);
-                        await message.reply('❌ Error scheduling meeting');
-                    }
-                    break;
-                    
-                case 'event':
-                    try {
-                        if (args.length < 3) {
-                            return await message.reply('❌ Usage: !event [YYYY-MM-DD] [HH:mm] [title]');
-                        }
-                        
-                        const date = args[0];
-                        const time = args[1];
-                        const title = args.slice(2).join(' ');
-                        await message.reply(`🎉 Event scheduled:\n*${title}*\nDate: ${date}\nTime: ${time}`);
-                    } catch (error) {
-                        console.error('Error in event command:', error);
-                        await message.reply('❌ Error scheduling event');
-                    }
-                    break;
-                    
-                case 'reminders':
-                    try {
-                        await message.reply('⏰ *Active Reminders:*\n\n(Reminder list feature - implement database retrieval)');
-                    } catch (error) {
-                        console.error('Error in reminders command:', error);
-                        await message.reply('❌ Error retrieving reminders');
-                    }
-                    break;
-                    
-                case 'cancelreminder':
-                    try {
-                        if (args.length < 1) {
-                            return await message.reply('❌ Usage: !cancelreminder [reminder_id]');
-                        }
-                        
-                        const reminderId = args[0];
-                        await message.reply(`✅ Reminder ${reminderId} cancelled`);
-                    } catch (error) {
-                        console.error('Error in cancelreminder command:', error);
-                        await message.reply('❌ Error cancelling reminder');
-                    }
-                    break;
-                    
-                case 'refreshgroups':
-                    try {
-                        await message.reply('🔄 Refreshing your admin groups...');
-                        const adminGroups = await getAdminGroups();
-                        await message.reply(`✅ Groups refreshed! Found ${adminGroups.length} groups where you are admin`);
-                    } catch (error) {
-                        console.error('Error in refreshgroups command:', error);
-                        await message.reply('❌ Error refreshing groups');
-                    }
-                    break;
-                    
-                case 'testchats':
-                    try {
-                        await message.reply('🔍 Testing chat retrieval...');
-                        const chats = await client.getChats();
-                        const groups = chats.filter(c => c.isGroup);
-                        
-                        await message.reply(`📊 *Chat Stats:*
-            • Total chats: ${chats.length}
-            • Group chats: ${groups.length}
-            • First 3 groups: ${groups.slice(0, 3).map(g => g.name).join(', ')}`);
-                    } catch (error) {
-                        console.error('Error in testchats command:', error);
-                        await message.reply(`❌ Error getting chats: ${error.message}`);
-                    }
-                    break;
-                    
-                case 'testparticipants':
-                    try {
-                        const chats = await client.getChats();
-                        const firstGroup = chats.find(c => c.isGroup);
-                        
-                        if (!firstGroup) {
-                            return await message.reply('❌ No groups found');
-                        }
-                        
-                        await message.reply(`🔍 Testing participants in: "${firstGroup.name}"`);
-                        await firstGroup.fetchParticipants();
-                        
-                        const participant = firstGroup.participants.find(p => p.id._serialized === selfId);
-                        
-                        await message.reply(`📊 *Participant Test:*
-            • Group: "${firstGroup.name}"
-            • Total participants: ${firstGroup.participants.length}
-            • Your ID: \`${selfId}\`
-            • Found you: ${participant ? '✅ Yes' : '❌ No'}
-            • You are admin: ${participant?.isAdmin ? '✅ Yes' : '❌ No'}`);
-                    } catch (error) {
-                        console.error('Error in testparticipants command:', error);
-                        await message.reply(`❌ Error: ${error.message}`);
-                    }
-                    break;
-                    
-                case 'listraw':
-                    try {
-                        await message.reply('🔍 Raw admin detection test...');
-                        const chats = await client.getChats();
-                        const groups = chats.filter(c => c.isGroup);
-                        
-                        let adminCount = 0;
-                        let totalGroups = groups.length;
-                        let errors = 0;
-                        
-                        for (const group of groups) {
-                            try {
-                                await group.fetchParticipants();
-                                const participant = group.participants.find(p => p.id._serialized === selfId);
-                                
-                                if (participant && participant.isAdmin) {
-                                    adminCount++;
-                                    console.log(`✅ ADMIN IN: ${group.name}`);
-                                }
-                            } catch (err) {
-                                errors++;
-                                console.log(`❌ ERROR IN: ${group.name} - ${err.message}`);
-                            }
-                        }
-                        
-                                await message.reply(`📊 *Raw Results:*
-                    • Total groups: ${totalGroups}
-                    • Admin groups: ${adminCount}
-                    • Errors: ${errors}
-                    • Your ID: \`${selfId}\`
+                                    case 'newsession':
+                                        try {
+                                            await message.reply('🔄 Creating new session... This may take a moment.');
+                                            await message.reply('✅ New session creation initiated');
+                                        } catch (error) {
+                                            console.error('Error in newsession command:', error);
+                                            await message.reply('❌ Error creating new session');
+                                        }
+                                        break;
+                                        
+                                    case 'shutdown':
+                                        try {
+                                            const isAdmin = selfId === process.env.ADMIN_PHONE || message.from === process.env.ADMIN_PHONE;
+                                            if (!isAdmin) {
+                                                return await message.reply('🔒 Admin-only command');
+                                            }
+                                            
+                                            await message.reply('🔄 Shutting down bot...');
+                                            setTimeout(() => {
+                                                process.exit(0);
+                                            }, 2000);
+                                        } catch (error) {
+                                            console.error('Error in shutdown command:', error);
+                                            await message.reply('❌ Error during shutdown');
+                                        }
+                                        break;
+                                        
+                                    case 'document':
+                                        try {
+                                            await message.reply('📄 Document feature - specify document type or check ./documents/ folder');
+                                        } catch (error) {
+                                            console.error('Error in document command:', error);
+                                            await message.reply('❌ Error sending document');
+                                        }
+                                        break;
+                                        
+                                    case 'savecontact':
+                                        try {
+                                            if (args.length < 1) {
+                                                return await message.reply('❌ Usage: !savecontact [phone_number] [optional_name]');
+                                            }
+                                            
+                                            const phoneNumber = args[0];
+                                            const contactName = args.slice(1).join(' ') || 'Unknown';
+                                            await message.reply(`✅ Contact saved: ${contactName} (${phoneNumber})`);
+                                        } catch (error) {
+                                            console.error('Error in savecontact command:', error);
+                                            await message.reply('❌ Error saving contact');
+                                        }
+                                        break;
+                                        
+                                    case 'contacts':
+                                        try {
+                                            await message.reply('📞 *Saved Contacts:*\n\n(Contact list feature - implement database retrieval)');
+                                        } catch (error) {
+                                            console.error('Error in contacts command:', error);
+                                            await message.reply('❌ Error retrieving contacts');
+                                        }
+                                        break;
+                                        
+                                    case 'meeting':
+                                        try {
+                                            if (args.length < 3) {
+                                                return await message.reply('❌ Usage: !meeting [YYYY-MM-DD] [HH:mm] [title]');
+                                            }
+                                            
+                                            const date = args[0];
+                                            const time = args[1];
+                                            const title = args.slice(2).join(' ');
+                                            await message.reply(`📅 Meeting scheduled:\n*${title}*\nDate: ${date}\nTime: ${time}`);
+                                        } catch (error) {
+                                            console.error('Error in meeting command:', error);
+                                            await message.reply('❌ Error scheduling meeting');
+                                        }
+                                        break;
+                                        
+                                    case 'event':
+                                        try {
+                                            if (args.length < 3) {
+                                                return await message.reply('❌ Usage: !event [YYYY-MM-DD] [HH:mm] [title]');
+                                            }
+                                            
+                                            const date = args[0];
+                                            const time = args[1];
+                                            const title = args.slice(2).join(' ');
+                                            await message.reply(`🎉 Event scheduled:\n*${title}*\nDate: ${date}\nTime: ${time}`);
+                                        } catch (error) {
+                                            console.error('Error in event command:', error);
+                                            await message.reply('❌ Error scheduling event');
+                                        }
+                                        break;
+                                        
+                                    case 'reminders':
+                                        try {
+                                            await message.reply('⏰ *Active Reminders:*\n\n(Reminder list feature - implement database retrieval)');
+                                        } catch (error) {
+                                            console.error('Error in reminders command:', error);
+                                            await message.reply('❌ Error retrieving reminders');
+                                        }
+                                        break;
+                                        
+                                    case 'cancelreminder':
+                                        try {
+                                            if (args.length < 1) {
+                                                return await message.reply('❌ Usage: !cancelreminder [reminder_id]');
+                                            }
+                                            
+                                            const reminderId = args[0];
+                                            await message.reply(`✅ Reminder ${reminderId} cancelled`);
+                                        } catch (error) {
+                                            console.error('Error in cancelreminder command:', error);
+                                            await message.reply('❌ Error cancelling reminder');
+                                        }
+                                        break;
+                                        
+                                    case 'refreshgroups':
+                                        try {
+                                            await message.reply('🔄 Refreshing your admin groups...');
+                                            const adminGroups = await getAdminGroups();
+                                            await message.reply(`✅ Groups refreshed! Found ${adminGroups.length} groups where you are admin`);
+                                        } catch (error) {
+                                            console.error('Error in refreshgroups command:', error);
+                                            await message.reply('❌ Error refreshing groups');
+                                        }
+                                        break;
+                                        
+                                    case 'testchats':
+                                        try {
+                                            await message.reply('🔍 Testing chat retrieval...');
+                                            const chats = await client.getChats();
+                                            const groups = chats.filter(c => c.isGroup);
+                                            
+                                            await message.reply(`📊 *Chat Stats:*
+                                • Total chats: ${chats.length}
+                                • Group chats: ${groups.length}
+                                • First 3 groups: ${groups.slice(0, 3).map(g => g.name).join(', ')}`);
+                                        } catch (error) {
+                                            console.error('Error in testchats command:', error);
+                                            await message.reply(`❌ Error getting chats: ${error.message}`);
+                                        }
+                                        break;
+                                        
+                                    case 'testparticipants':
+                                        try {
+                                            const chats = await client.getChats();
+                                            const firstGroup = chats.find(c => c.isGroup);
+                                            
+                                            if (!firstGroup) {
+                                                return await message.reply('❌ No groups found');
+                                            }
+                                            
+                                            await message.reply(`🔍 Testing participants in: "${firstGroup.name}"`);
+                                            await firstGroup.fetchParticipants();
+                                            
+                                            const participant = firstGroup.participants.find(p => p.id._serialized === selfId);
+                                            
+                                            await message.reply(`📊 *Participant Test:*
+                                        • Group: "${firstGroup.name}"
+                                        • Total participants: ${firstGroup.participants.length}
+                                        • Your ID: \`${selfId}\`
+                                        • Found you: ${participant ? '✅ Yes' : '❌ No'}
+                                        • You are admin: ${participant?.isAdmin ? '✅ Yes' : '❌ No'}`);
+                                        } catch (error) {
+                                            console.error('Error in testparticipants command:', error);
+                                            await message.reply(`❌ Error: ${error.message}`);
+                                        }
+                                        break;
+                                        
+                                    case 'listraw':
+                                        try {
+                                            await message.reply('🔍 Raw admin detection test...');
+                                            const chats = await client.getChats();
+                                            const groups = chats.filter(c => c.isGroup);
+                                            
+                                            let adminCount = 0;
+                                            let totalGroups = groups.length;
+                                            let errors = 0;
+                                            
+                                            for (const group of groups) {
+                                                try {
+                                                    await group.fetchParticipants();
+                                                    const participant = group.participants.find(p => p.id._serialized === selfId);
+                                                    
+                                                    if (participant && participant.isAdmin) {
+                                                        adminCount++;
+                                                        console.log(`✅ ADMIN IN: ${group.name}`);
+                                                    }
+                                                } catch (err) {
+                                                    errors++;
+                                                    console.log(`❌ ERROR IN: ${group.name} - ${err.message}`);
+                                                }
+                                            }
+                                            
+                                                    await message.reply(`📊 *Raw Results:*
+                                        • Total groups: ${totalGroups}
+                                        • Admin groups: ${adminCount}
+                                        • Errors: ${errors}
+                                        • Your ID: \`${selfId}\`
 
-                    Check console for detailed logs.`);
-                    } catch (error) {
-                        console.error('Error in listraw command:', error);
-                        await message.reply(`❌ Raw test failed: ${error.message}`);
-                    }
-                    break;
-                    
-                case 'listsimple':
-                    try {
-                        await message.reply('⏳ Simple admin group check...');
-                        const chats = await client.getChats();
-                        const groups = chats.filter(c => c.isGroup);
-                        
-                        if (groups.length === 0) {
-                            return await message.reply('❌ No groups found');
-                        }
-                        
-                        let adminGroups = [];
-                        for (let i = 0; i < Math.min(groups.length, 10); i++) {
-                            const group = groups[i];
-                            try {
-                                await group.fetchParticipants();
-                                const you = group.participants.find(p => p.id._serialized === selfId);
-                                
-                                if (you && you.isAdmin) {
-                                    adminGroups.push(group);
-                                }
-                            } catch (err) {
-                                console.log(`❌ Error in ${group.name}: ${err.message}`);
-                            }
-                        }
-                        
-                        if (adminGroups.length > 0) {
-                            const list = adminGroups.map((g, i) => `${i+1}. ${g.name}`).join('\n');
-                            await message.reply(`✅ Found ${adminGroups.length} admin groups:\n\n${list}`);
-                        } else {
-                            await message.reply(`❌ No admin groups found in first ${Math.min(groups.length, 10)} groups`);
-                        }
-                    } catch (error) {
-                        console.error('Error in listsimple command:', error);
-                        await message.reply(`❌ Simple test failed: ${error.message}`);
-                    }
-                    break;
-                    
-                case 'info':
-                    try {
-                        const chatInfo = await message.getChat();
-                        let info = `*Chat Info:*\n- Is Group: ${chatInfo.isGroup}\n- Participants: ${chatInfo.isGroup ? chatInfo.participants.length : 'N/A'}\n- Name: ${chatInfo.name || 'N/A'}`;
-                        
-                        if (chatInfo.isGroup) {
-                            info += `\n- Group Description: ${chatInfo.description || 'N/A'}`;
-                        }
-                        
-                        await message.reply(info);
-                    } catch (error) {
-                        console.error('Error in info command:', error);
-                        await message.reply('❌ Error getting chat info');
-                    }
-                    break;
-                    
-                default:
-                    await message.reply('❌ Unknown command. Try !help for available commands');
-                }
-                        } catch (error) {
-                            console.error('❌ BOT: Error processing bot command:', error);
-                        }
-                    });
+                                        Check console for detailed logs.`);
+                                        } catch (error) {
+                                            console.error('Error in listraw command:', error);
+                                            await message.reply(`❌ Raw test failed: ${error.message}`);
+                                        }
+                                        break;
+                                        
+                                    case 'listsimple':
+                                        try {
+                                            await message.reply('⏳ Simple admin group check...');
+                                            const chats = await client.getChats();
+                                            const groups = chats.filter(c => c.isGroup);
+                                            
+                                            if (groups.length === 0) {
+                                                return await message.reply('❌ No groups found');
+                                            }
+                                            
+                                            let adminGroups = [];
+                                            for (let i = 0; i < Math.min(groups.length, 10); i++) {
+                                                const group = groups[i];
+                                                try {
+                                                    await group.fetchParticipants();
+                                                    const you = group.participants.find(p => p.id._serialized === selfId);
+                                                    
+                                                    if (you && you.isAdmin) {
+                                                        adminGroups.push(group);
+                                                    }
+                                                } catch (err) {
+                                                    console.log(`❌ Error in ${group.name}: ${err.message}`);
+                                                }
+                                            }
+                                            
+                                            if (adminGroups.length > 0) {
+                                                const list = adminGroups.map((g, i) => `${i+1}. ${g.name}`).join('\n');
+                                                await message.reply(`✅ Found ${adminGroups.length} admin groups:\n\n${list}`);
+                                            } else {
+                                                await message.reply(`❌ No admin groups found in first ${Math.min(groups.length, 10)} groups`);
+                                            }
+                                        } catch (error) {
+                                            console.error('Error in listsimple command:', error);
+                                            await message.reply(`❌ Simple test failed: ${error.message}`);
+                                        }
+                                        break;
+                                        
+                                    case 'info':
+                                        try {
+                                            const chatInfo = await message.getChat();
+                                            let info = `*Chat Info:*\n- Is Group: ${chatInfo.isGroup}\n- Participants: ${chatInfo.isGroup ? chatInfo.participants.length : 'N/A'}\n- Name: ${chatInfo.name || 'N/A'}`;
+                                            
+                                            if (chatInfo.isGroup) {
+                                                info += `\n- Group Description: ${chatInfo.description || 'N/A'}`;
+                                            }
+                                            
+                                            await message.reply(info);
+                                        } catch (error) {
+                                            console.error('Error in info command:', error);
+                                            await message.reply('❌ Error getting chat info');
+                                        }
+                                        break;
+                                        
+                                    default:
+                                        await message.reply('❌ Unknown command. Try !help for available commands');
+                                    }
+                                            } catch (error) {
+                                                console.error('❌ BOT: Error processing bot command:', error);
+                                            }
+                                        });
                 
 
                 }
