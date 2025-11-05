@@ -1061,23 +1061,6 @@ function closeQRModal() {
     }
 }
 
-function closeQRModal() {
-    const qrModal = document.getElementById('qrModal');
-    if (qrModal) {
-        qrModal.style.display = 'none';
-        qrModal.classList.remove('active');
-        // Restore body scroll
-        document.body.style.overflow = 'auto';
-        
-        // Clear QR code content
-        const qrContainer = document.getElementById('qrCodeDisplay');
-        if (qrContainer) {
-            qrContainer.innerHTML = '';
-        }
-    }
-}
-
-
 
 function showUpgradeModal() {
     const upgradeModal = document.getElementById('upgradeModal');
