@@ -1737,13 +1737,13 @@ async function createBotSession(userId, sessionId, io) {
                             }
                         }
                         
-                        await message.reply(`📊 *Raw Results:*
-            • Total groups: ${totalGroups}
-            • Admin groups: ${adminCount}
-            • Errors: ${errors}
-            • Your ID: \`${selfId}\`
+                                await message.reply(`📊 *Raw Results:*
+                    • Total groups: ${totalGroups}
+                    • Admin groups: ${adminCount}
+                    • Errors: ${errors}
+                    • Your ID: \`${selfId}\`
 
-            Check console for detailed logs.`);
+                    Check console for detailed logs.`);
                     } catch (error) {
                         console.error('Error in listraw command:', error);
                         await message.reply(`❌ Raw test failed: ${error.message}`);
@@ -1805,13 +1805,15 @@ async function createBotSession(userId, sessionId, io) {
                     
                 default:
                     await message.reply('❌ Unknown command. Try !help for available commands');
-            }
+                }
                         } catch (error) {
                             console.error('❌ BOT: Error processing bot command:', error);
                         }
                     });
                 
 
+                }
+            }
                 
 // Export the function
 module.exports = { 
