@@ -536,76 +536,11 @@
     <!-- JavaScript -->
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <script src="JS/dashboard.js"></script>
-    <script>
-// QRCode Library Loader with Fallbacks
-(function() {
-    console.log('🔄 Loading QRCode library...');
-    
-    // Try primary CDN
-    const script1 = document.createElement('script');
-    script1.src = 'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js';
-    script1.crossOrigin = 'anonymous';
-    
-    script1.onload = function() {
-        console.log('✅ QRCode library loaded successfully');
-        window.QRCodeReady = true;
-    };
-    
-    script1.onerror = function() {
-        console.log('🔄 Primary CDN failed, using fallback...');
-        
-        // Fallback: Simple QR implementation
-        window.QRCode = {
-            toCanvas: function(canvas, text, options, callback) {
-                console.log('📝 Using QR fallback implementation');
-                
-                if (typeof options === 'function') {
-                    callback = options;
-                    options = {};
-                }
-                
-                // Create fallback visual
-                const ctx = canvas.getContext('2d');
-                canvas.width = options.width || 256;
-                canvas.height = options.width || 256;
-                
-                // White background
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Border
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(0, 0, canvas.width, canvas.height);
-                
-                // Text
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('QR Code', canvas.width/2, 30);
-                ctx.font = '12px Arial';
-                ctx.fillText('Use text below to', canvas.width/2, 50);
-                ctx.fillText('generate QR code', canvas.width/2, 70);
-                
-                // Simple pattern
-                for (let i = 0; i < 8; i++) {
-                    for (let j = 0; j < 8; j++) {
-                        if ((i + j) % 2 === 0) {
-                            ctx.fillRect(32 + i * 24, 100 + j * 18, 20, 15);
-                        }
-                    }
-                }
-                
-                if (callback) callback(null);
-            }
-        };
-        
-        console.log('✅ QRCode fallback ready');
-        window.QRCodeReady = true;
-    };
-    
-    document.head.appendChild(script1);
-})();
+    <!-- Load QRCode library locally -->
+<script src="JS/qrcode.min.js"></script>
+<script>
+console.log('✅ QRCode library loaded locally');
+window.QRCodeReady = true;
 </script>
 </body>
 </html>

@@ -39,13 +39,13 @@ app.use(cors({
 app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', 
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.socket.io; " +
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
-        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
+        "script-src 'self' 'unsafe-inline' https://cdn.socket.io; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
         "connect-src 'self' ws: wss: https:; " +
         "img-src 'self' data: https:; " +
-        "object-src 'none'; " +
-        "base-uri 'self';"
+        "object-src 'none';"
     );
     next();
 });
