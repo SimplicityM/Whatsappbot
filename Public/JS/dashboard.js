@@ -279,27 +279,47 @@ function connectToServer() {
                 token: currentUser.token
             },
             transports: ['websocket', 'polling'],
-            timeout: 10000 // 10 second timeout
+            timeout: 20000, // Increased timeout
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+        
+        // Set up QR event handler IMMEDIATELY
+        socket.on('qrCode', (data) => {
+            console.log('🎯 QR CODE EVENT RECEIVED:', {
+                sessionId: data.sessionId,
+                hasQRData: !!data.qr,
+                qrDataLength: data.qr?.length,
+                userId: data.userId,
+                broadcast: data.broadcast,
+                timestamp: new Date().toLocaleTimeString()
+            });
+            
+            if (data.qr && data.sessionId) {
+                displayQRCode(data.qr, data.sessionId);
+            } else {
+                console.error('❌ Invalid QR data:', data);
+                showNotification('Invalid QR code data received', 'error');
+            }
         });
         
         socket.on('connect', () => {
             console.log('✅ Connected to server, socket ID:', socket.id);
             updateConnectionStatus(true);
             
-            // Join user room after connection is fully established
-            if (userId) {
-                // Small delay to ensure connection is ready
-                setTimeout(() => {
-                    socket.emit('join-user-room', userId);
-                    console.log('👤 Joined user room: user-' + userId);
-                    
-                    // Setup debugging AFTER connection is fully established
-                    setupSocketDebugging();
-                }, 100);
-            }
+            // Join user room immediately
+            socket.emit('join-user-room', userId);
+            console.log('👤 Joined user room: user-' + userId);
+            
+            // Verify room membership
+            setTimeout(() => {
+                socket.emit('verify-room', userId, (response) => {
+                    console.log('🔍 Room verification:', response);
+                });
+            }, 1000);
         });
         
-       
         socket.on('sessionReady', (data) => {
             console.log('✅ Session ready:', data.sessionId);
             showNotification('WhatsApp session connected successfully!', 'success');
@@ -310,6 +330,7 @@ function connectToServer() {
         socket.on('disconnect', (reason) => {
             console.log('❌ Disconnected from server:', reason);
             updateConnectionStatus(false);
+            showNotification('Connection lost: ' + reason, 'warning');
         });
         
         socket.on('connect_error', (error) => {
@@ -318,19 +339,18 @@ function connectToServer() {
             showNotification('Connection error: ' + error.message, 'error');
         });
         
-        // Add timeout for connection
-        setTimeout(() => {
-            if (!socket.connected) {
-                console.error('❌ Socket connection timeout');
-                showNotification('Connection timeout - please refresh', 'error');
-            }
-        }, 5000);
+        socket.on('reconnect', (attemptNumber) => {
+            console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+            updateConnectionStatus(true);
+            socket.emit('join-user-room', userId);
+        });
         
     } catch (error) {
         console.error('Failed to connect to server:', error);
         updateConnectionStatus(false);
     }
 }
+
 function updateConnectionStatus(isConnected) {
     const statusElement = document.getElementById('connectionStatus');
     if (!statusElement) return;
@@ -526,15 +546,33 @@ async function createNewSession() {
         const userId = currentUser.user.id;
         console.log('🔄 Creating session for user ID:', userId);
         
-        // Ensure user is in socket room
-        if (socket && socket.connected) {
-            socket.emit('join-user-room', userId);
-            console.log('👤 Joined socket room: user-' + userId);
-        } else {
-            console.error('❌ Socket not connected!');
-            showNotification('Connection error. Please refresh the page.', 'error');
-            return;
+        // Enhanced socket connection check
+        if (!socket || !socket.connected) {
+            console.error('❌ Socket not connected! Attempting to reconnect...');
+            connectToServer(); // Reconnect
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            
+            if (!socket || !socket.connected) {
+                showNotification('Connection error. Please refresh the page.', 'error');
+                return;
+            }
         }
+        
+        // Set up QR event listener BEFORE making the API call
+        const qrEventHandler = (data) => {
+            console.log('🎯 QR EVENT RECEIVED IN CREATE SESSION:', data);
+            if (data.sessionId && data.qr) {
+                displayQRCode(data.qr, data.sessionId);
+            }
+        };
+        
+        // Remove any existing listeners and add new one
+        socket.off('qrCode', qrEventHandler);
+        socket.on('qrCode', qrEventHandler);
+        
+        // Ensure user is in socket room
+        socket.emit('join-user-room', userId);
+        console.log('👤 Joined socket room: user-' + userId);
         
         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/create`, {
             method: 'POST',
@@ -563,29 +601,71 @@ async function createNewSession() {
                         <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
                         <p>Generating QR Code...</p>
                         <p>Session: ${data.data.sessionId}</p>
+                        <p style="font-size: 12px; color: #666;">Socket ID: ${socket.id}</p>
+                        <p style="font-size: 12px; color: #666;">User Room: user-${userId}</p>
                         <div class="loading-spinner"></div>
                     </div>
                 `;
             }
             
-            // Set up timeout to check if QR code arrives
-            setTimeout(() => {
+            // Enhanced timeout with debugging
+            let timeoutCount = 0;
+            const checkInterval = setInterval(() => {
+                timeoutCount += 5;
+                console.log(`⏰ QR timeout check: ${timeoutCount}s`);
+                
                 const qrModal = document.getElementById('qrModal');
-                if (qrModal && qrModal.classList.contains('active')) {
-                    const qrDisplay = document.getElementById('qrCodeDisplay');
-                    if (qrDisplay && qrDisplay.innerHTML.includes('Generating QR Code')) {
-                        console.warn('⚠️ QR code not received after 10 seconds');
+                if (!qrModal || !qrModal.classList.contains('active')) {
+                    console.log('🚪 Modal closed, clearing timeout');
+                    clearInterval(checkInterval);
+                    return;
+                }
+                
+                const qrDisplay = document.getElementById('qrCodeDisplay');
+                if (qrDisplay && !qrDisplay.innerHTML.includes('Generating QR Code')) {
+                    console.log('✅ QR code received, clearing timeout');
+                    clearInterval(checkInterval);
+                    return;
+                }
+                
+                if (timeoutCount >= 45) { // 45 second timeout
+                    console.warn('⚠️ QR code not received after 45 seconds');
+                    clearInterval(checkInterval);
+                    
+                    if (qrDisplay) {
                         qrDisplay.innerHTML = `
                             <div style="text-align: center; padding: 20px;">
                                 <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f39c12; margin-bottom: 10px;"></i>
-                                <p>QR Code generation is taking longer than expected...</p>
-                                <p>Check server console for errors</p>
-                                <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin-top: 10px;">Refresh Page</button>
+                                <h4>QR Code Generation Failed</h4>
+                                <p>The WhatsApp session failed to generate a QR code.</p>
+                                <p style="font-size: 14px; color: #666;">This could be due to:</p>
+                                <ul style="text-align: left; color: #666; font-size: 14px;">
+                                    <li>Server overload</li>
+                                    <li>WhatsApp service issues</li>
+                                    <li>Network connectivity problems</li>
+                                    <li>Browser compatibility issues</li>
+                                </ul>
+                                <div style="margin-top: 20px;">
+                                    <button onclick="createNewSession()" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px;">
+                                        <i class="fas fa-redo"></i> Try Again
+                                    </button>
+                                    <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px;">
+                                        <i class="fas fa-refresh"></i> Refresh Page
+                                    </button>
+                                    <button onclick="checkServerStatus()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px;">
+                                        <i class="fas fa-heartbeat"></i> Check Server
+                                    </button>
+                                </div>
+                                <p style="font-size: 12px; color: #999; margin-top: 15px;">
+                                    Session: ${data.data.sessionId}<br>
+                                    Socket: ${socket?.connected ? 'Connected' : 'Disconnected'}<br>
+                                    Room: user-${userId}
+                                </p>
                             </div>
                         `;
                     }
                 }
-            }, 10000); // 10 second timeout
+            }, 5000); // Check every 5 seconds
             
         } else {
             console.error('❌ Session creation failed:', data.message);
@@ -596,6 +676,27 @@ async function createNewSession() {
         showNotification('Error creating session: ' + error.message, 'error');
     } finally {
         showLoading(false);
+    }
+}
+
+// Add server status check function
+async function checkServerStatus() {
+    try {
+        showNotification('Checking server status...', 'info');
+        const response = await fetch(`${CONFIG.API_BASE}/api/users/profile`, {
+            headers: {
+                'Authorization': `Bearer ${currentUser.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            showNotification('Server is responding normally', 'success');
+        } else {
+            showNotification(`Server responded with status: ${response.status}`, 'warning');
+        }
+    } catch (error) {
+        showNotification('Server is not responding: ' + error.message, 'error');
     }
 }
 
