@@ -35,21 +35,21 @@ app.use(cors({
     credentials: true
 }));
 
+
 // Content Security Policy
 app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', 
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' https://cdn.socket.io; " +
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-        "font-src 'self' https://fonts.gstatic.com; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
+        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
         "connect-src 'self' ws: wss: https:; " +
         "img-src 'self' data: https:; " +
         "object-src 'none';"
     );
     next();
 });
-
 // Database connection
 const connectDB = async () => {
     try {
