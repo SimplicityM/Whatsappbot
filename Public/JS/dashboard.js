@@ -1403,12 +1403,12 @@ function showNotification(message, type = 'info') {
 
     container.appendChild(notification);
 
-    // Auto remove after 5 seconds
+    // Auto remove after 10 seconds
     setTimeout(() => {
         if (notification.parentElement) {
             notification.remove();
         }
-    }, 5000);
+    }, 10000);
 
     console.log(`[${type.toUpperCase()}] ${message}`);
 }
