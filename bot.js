@@ -1830,10 +1830,13 @@ Check console for detailed logs.`);
             default:
                 await message.reply('❌ Unknown command. Try !help for available commands');
         }
+        
+    }); 
+    
     } catch (error) {
         console.error('❌ BOT: Error processing bot command:', error);
     }
-}); 
+} 
                 
 // Export the function
 module.exports = { 
