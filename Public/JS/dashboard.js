@@ -638,24 +638,24 @@ async function displayQRCode(qrData, sessionId) {
         // Create canvas element
         const canvas = document.createElement('canvas');
         qrCodeContainer.appendChild(canvas);
-        
-        // Generate QR code
-        await new Promise((resolve, reject) => {
-            QRCode.toCanvas(canvas, qrData, {
-                width: 256,
-                color: {
-                    dark: '#000000',
-                    light: '#ffffff'
-                },
-                errorCorrectionLevel: 'H'
-            }, function(error) {
-                if (error) reject(error);
-                else resolve();
+
+        // Generate QR code using QRious
+        try {
+            const qr = new QRious({
+                element: canvas,
+                value: qrData,
+                size: 256,
+                foreground: '#000000',
+                background: '#ffffff',
+                level: 'H'
             });
-        });
+            
+            console.log('✅ QR code generated successfully with QRious');
+        } catch (error) {
+            throw error;
+        }
         
-        console.log('✅ QR code generated successfully');
-        
+                
         // Add instructions
         const instructions = document.createElement('div');
         instructions.innerHTML = `
