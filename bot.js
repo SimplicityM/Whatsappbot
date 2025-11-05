@@ -517,85 +517,7 @@ function setupClientEvents(client, sessionId) {
         }
     });
     
-    client.on('ready', async () => {
-        logger.info(`Client ${sessionId} is ready`);
-        
-        const checkAuthState = async (attempts = 3) => {
-            try {
-                const state = await client.getState();
-                console.log("AUTH STATE CHECK:", { state, attempt: 4-attempts });
-                
-                if (state === 'CONNECTED') {
-                    console.log("CLIENT FULLY AUTHENTICATED");
-                    return true;
-                }
-                
-                if (attempts <= 0) {
-                    logger.error(`Failed to verify authentication after 3 attempts (state: ${state})`);
-                    return false;
-                }
-                
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                return checkAuthState(attempts - 1);
-            } catch (error) {
-                logger.error(`Error checking auth state: ${error.message}`);
-                return false;
-            }
-        };
-
-        const isAuthenticated = await checkAuthState();
-        
-        if (!isAuthenticated) {
-            logger.error(`Client ${sessionId} not properly authenticated`);
-            setTimeout(() => {
-                client.destroy().then(() => {
-                    clients.delete(sessionId);
-                    createNewSession();
-                });
-            }, 5000);
-            return;
-        }
-
-        logger.info(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
-        await refreshGroupsForSession(client, sessionId);
-        logger.info(`✅ Finished group refresh call for session ${sessionId}`);
-
-        groupRefreshIntervals.set(
-            sessionId,
-            setInterval(() => refreshGroupsForSession(client, sessionId), 600000)
-        );
-
-        try {
-            const selfId = client.info.wid._serialized;
-            const chat = await client.getChatById(selfId);
-            
-            const testMsg = await chat.sendMessage("Welcome, We are happy you joined us...");
-            await testMsg.delete(true);
-            
-            userSessions.set(selfId, sessionId);
-            
-            await chat.sendMessage(`🤖 *Bot Connected*\n\nYour session ID: \`${sessionId}\``);
-            await chat.sendMessage("👋 Hello, I'm a WhatsApp bot. Use !help to see available commands");    
-            
-            keepAliveInterval = setInterval(async () => {
-                try {
-                    await client.getState();
-                    logger.info(`Keep-alive ping for session ${sessionId}`);
-                } catch (error) {
-                    logger.error(`Keep-alive failed for session ${sessionId}:`, error);
-                }
-            }, 300000);
-        } catch (error) {
-            logger.error('Ready handler failed:', error);
-            setTimeout(() => {
-                client.destroy().then(() => {
-                    clients.delete(sessionId);
-                    createNewSession();
-                });
-            }, 5000);
-        }
-    });
-    
+  
     client.on('disconnected', (reason) => {
         logger.info(`Client ${sessionId} disconnected: ${reason}`);
         if (keepAliveInterval) clearInterval(keepAliveInterval);
@@ -2167,19 +2089,96 @@ async function createBotSession(userId, sessionId, io) {
         });
 
         // Ready event
-        client.on('ready', async () => {
+                client.on('ready', async () => {
             console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
             
-            const selfId = client.info.wid._serialized;
-            userSessions.set(selfId, sessionId);
-            
-            io.to(`user-${userId}`).emit('sessionReady', {
-                sessionId,
-                phone: client.info.wid.user,
-                message: 'WhatsApp connected successfully!'
-            });
-        });
+            try {
+                // Authentication state checking (from your line 520 handler)
+                const checkAuthState = async (attempts = 3) => {
+                    try {
+                        const state = await client.getState();
+                        console.log("AUTH STATE CHECK:", { state, attempt: 4-attempts });
+                        
+                        if (state === 'CONNECTED') {
+                            console.log("CLIENT FULLY AUTHENTICATED");
+                            return true;
+                        }
+                        
+                        if (attempts <= 0) {
+                            console.error(`Failed to verify authentication after 3 attempts (state: ${state})`);
+                            return false;
+                        }
+                        
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        return checkAuthState(attempts - 1);
+                    } catch (error) {
+                        console.error(`Error checking auth state: ${error.message}`);
+                        return false;
+                    }
+                };
 
+                const isAuthenticated = await checkAuthState();
+                
+                if (!isAuthenticated) {
+                    console.error(`Client ${sessionId} not properly authenticated`);
+                    // Emit failure to frontend
+                    io.to(`user-${userId}`).emit('authFailure', {
+                        sessionId,
+                        message: 'Authentication failed'
+                    });
+                    return;
+                }
+
+                // Group refresh functionality
+                console.log(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
+                await refreshGroupsForSession(client, sessionId);
+                console.log(`✅ Finished group refresh call for session ${sessionId}`);
+
+                groupRefreshIntervals.set(
+                    sessionId,
+                    setInterval(() => refreshGroupsForSession(client, sessionId), 600000)
+                );
+
+                // Welcome messages and session setup
+                const selfId = client.info.wid._serialized;
+                userSessions.set(selfId, sessionId);
+                
+                const chat = await client.getChatById(selfId);
+                
+                // Send welcome messages
+                const testMsg = await chat.sendMessage("Welcome, We are happy you joined us...");
+                await testMsg.delete(true);
+                
+                await chat.sendMessage(`🤖 *Bot Connected*\n\nYour session ID: \`${sessionId}\``);
+                await chat.sendMessage("👋 Hello, I'm a WhatsApp bot. Use !help to see available commands");
+                
+                // Keep-alive interval
+                const keepAliveInterval = setInterval(async () => {
+                    try {
+                        await client.getState();
+                        console.log(`Keep-alive ping for session ${sessionId}`);
+                    } catch (error) {
+                        console.error(`Keep-alive failed for session ${sessionId}:`, error);
+                    }
+                }, 300000);
+
+                // Emit success to frontend
+                io.to(`user-${userId}`).emit('sessionReady', {
+                    sessionId,
+                    phone: client.info.wid.user,
+                    message: 'WhatsApp connected successfully!'
+                });
+                
+                console.log('✅ BOT: Session fully ready with welcome messages sent');
+                
+            } catch (error) {
+                console.error('❌ BOT: Error in ready handler:', error);
+                io.to(`user-${userId}`).emit('authFailure', {
+                    sessionId,
+                    message: 'Session setup failed'
+                });
+            }
+        });
         // Disconnected event
         client.on('disconnected', (reason) => {
             console.log('❌ BOT: Client disconnected:', reason);
