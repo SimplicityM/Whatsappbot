@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
@@ -34,7 +35,9 @@
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "something-else": "^0.1.0",
+    "ts-node": "^10.9.2",
     "twilio": "^5.10.4",
+    "typescript": "^5.9.3",
     "whatsapp-web.js": "^1.26.0"
   }
 }
