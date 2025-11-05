@@ -1029,7 +1029,7 @@ function updatePaymentStats(stats) {
 function showQRModal() {
     const qrModal = document.getElementById('qrModal');
     if (qrModal) {
-        qrModal.style.display = 'block';  // ✅ SHOW the modal
+        qrModal.classList.add('active');  // ✅ Add the active class
         document.body.style.overflow = 'hidden';
         console.log('✅ QR modal opened');
     } else {
