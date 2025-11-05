@@ -1803,17 +1803,17 @@ async function createBotSession(userId, sessionId, io) {
                                         }
                                         break;
                                         
-                                    default:
-                                        await message.reply('❌ Unknown command. Try !help for available commands');
-                                    }
-                                            } catch (error) {
-                                                console.error('❌ BOT: Error processing bot command:', error);
-                                            }
-                                        });
+                                   default:
+                                 await message.reply('❌ Unknown command. Try !help for available commands');
+                                 }
+                             } catch (error) {                           // ← This catch block might be missing or malformed
+                             console.error('❌ BOT: Error processing bot command:', error);
+                             }
+                            });                
                 
 
                 }
-            }
+}
                 
 // Export the function
 module.exports = { 
