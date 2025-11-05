@@ -533,8 +533,6 @@ function renderFilteredSessions(sessions) {
 
 async function createNewSession() {
     console.log('🔍 DEBUG: Starting createNewSession');
-    console.log('🔍 DEBUG: Socket connected?', socket?.connected);
-    console.log('🔍 DEBUG: Current user:', currentUser);
     
     if (!currentUser) {
         showNotification('Please log in to create a session', 'error');
@@ -549,8 +547,8 @@ async function createNewSession() {
         // Enhanced socket connection check
         if (!socket || !socket.connected) {
             console.error('❌ Socket not connected! Attempting to reconnect...');
-            connectToServer(); // Reconnect
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            connectToServer();
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             if (!socket || !socket.connected) {
                 showNotification('Connection error. Please refresh the page.', 'error');
@@ -558,10 +556,14 @@ async function createNewSession() {
             }
         }
         
+        // Set up QR received flag
+        let qrReceived = false;
+        
         // Set up QR event listener BEFORE making the API call
         const qrEventHandler = (data) => {
             console.log('🎯 QR EVENT RECEIVED IN CREATE SESSION:', data);
             if (data.sessionId && data.qr) {
+                qrReceived = true; // Mark QR as received
                 displayQRCode(data.qr, data.sessionId);
             }
         };
@@ -608,11 +610,17 @@ async function createNewSession() {
                 `;
             }
             
-            // Enhanced timeout with debugging
+            // Check if QR was already received before modal opened
+            if (qrReceived) {
+                console.log('✅ QR code was already received before modal opened');
+                return; // Don't start timeout since QR is already displayed
+            }
+            
+            // Enhanced timeout with QR received check
             let timeoutCount = 0;
             const checkInterval = setInterval(() => {
                 timeoutCount += 5;
-                console.log(`⏰ QR timeout check: ${timeoutCount}s`);
+                console.log(`⏰ QR timeout check: ${timeoutCount}s - QR received: ${qrReceived}`);
                 
                 const qrModal = document.getElementById('qrModal');
                 if (!qrModal || !qrModal.classList.contains('active')) {
@@ -621,9 +629,16 @@ async function createNewSession() {
                     return;
                 }
                 
+                // Check if QR was received
+                if (qrReceived) {
+                    console.log('✅ QR code received, clearing timeout');
+                    clearInterval(checkInterval);
+                    return;
+                }
+                
                 const qrDisplay = document.getElementById('qrCodeDisplay');
                 if (qrDisplay && !qrDisplay.innerHTML.includes('Generating QR Code')) {
-                    console.log('✅ QR code received, clearing timeout');
+                    console.log('✅ QR code displayed, clearing timeout');
                     clearInterval(checkInterval);
                     return;
                 }
@@ -659,7 +674,8 @@ async function createNewSession() {
                                 <p style="font-size: 12px; color: #999; margin-top: 15px;">
                                     Session: ${data.data.sessionId}<br>
                                     Socket: ${socket?.connected ? 'Connected' : 'Disconnected'}<br>
-                                    Room: user-${userId}
+                                    Room: user-${userId}<br>
+                                    QR Received: ${qrReceived}
                                 </p>
                             </div>
                         `;
