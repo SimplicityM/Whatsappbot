@@ -299,11 +299,7 @@ function connectToServer() {
             }
         });
         
-        socket.on('qrCode', (data) => {
-            console.log('📱 QR Code received for session:', data.sessionId);
-            displayQRCode(data.qr, data.sessionId);
-        });
-        
+       
         socket.on('sessionReady', (data) => {
             console.log('✅ Session ready:', data.sessionId);
             showNotification('WhatsApp session connected successfully!', 'success');
