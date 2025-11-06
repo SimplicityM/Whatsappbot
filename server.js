@@ -552,10 +552,34 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
         }
         
         if (activeClients.has(sessionId)) {
-            const sessionData = activeClients.get(sessionId);
-            await sessionData.client.destroy();
-            activeClients.delete(sessionId);
+    const sessionData = activeClients.get(sessionId);
+    try {
+        // First disconnect gracefully
+        if (sessionData.client.pupPage) {
+            await sessionData.client.pupPage.close();
         }
+        
+        // Add delay before destroying
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Destroy with force flag
+        await sessionData.client.destroy();
+        
+        // Additional cleanup delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+    } catch (error) {
+        console.error(`Error during graceful session cleanup ${sessionId}:`, error);
+        // Force cleanup even if error occurs
+        try {
+            await sessionData.client.destroy();
+        } catch (forceError) {
+            console.error(`Force cleanup also failed for ${sessionId}:`, forceError);
+        }
+    } finally {
+        activeClients.delete(sessionId);
+    }
+}
         
         await Session.deleteOne({ sessionId });
         

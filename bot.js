@@ -9,6 +9,24 @@ const User = require('./models/User');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
+// Add this near the top of bot.js, after the requires
+process.on('unhandledRejection', (reason, promise) => {
+    console.log(`[${new Date().toISOString()}] ERROR: Unhandled Rejection at:`, promise);
+    console.log('Reason:', reason);
+    
+    // Don't crash the process for EBUSY errors during cleanup
+    if (reason && reason.message && reason.message.includes('EBUSY')) {
+        console.log('⚠️ File system cleanup error (Windows) - continuing operation');
+        return;
+    }
+    
+    // Don't crash for unlink errors either
+    if (reason && reason.message && reason.message.includes('unlink')) {
+        console.log('⚠️ File unlink error during cleanup - continuing operation');
+        return;
+    }
+});
+
 // --- START CONFIGURATION BLOCK ---
 const getDefaultPath = (dirName) => path.join(__dirname, dirName);
 
@@ -225,9 +243,6 @@ const matches =
         participantDigits.endsWith(senderDigits) ||
         senderDigits.endsWith(participantDigits)
     );
-
-
-
                     
                     if (matches) {
                         logger.info(`✅ Found participant match: ${participantId} (Admin: ${p.isAdmin})`);
@@ -257,6 +272,64 @@ const matches =
     } catch (error) {
         logger.error('❌ Critical error in getGroupsWhereSenderIsAdmin:', error);
         return [];
+    }
+}
+
+// Add this helper function for Windows file cleanup (add near top of bot.js)
+async function removeDirectoryWithRetry(dirPath, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            if (fs.existsSync(dirPath)) {
+                // On Windows, try to unlock files first
+                if (process.platform === 'win32') {
+                    try {
+                        // Small delay to let file handles close
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Force remove with more aggressive options
+                        fs.rmSync(dirPath, { 
+                            recursive: true, 
+                            force: true,
+                            maxRetries: 3,
+                            retryDelay: 1000
+                        });
+                    } catch (rmError) {
+                        // If rmSync fails, try alternative cleanup
+                        const files = fs.readdirSync(dirPath, { withFileTypes: true });
+                        for (const file of files) {
+                            const fullPath = path.join(dirPath, file.name);
+                            if (file.isDirectory()) {
+                                await removeDirectoryWithRetry(fullPath, 1); // Recursive cleanup
+                            } else {
+                                try {
+                                    fs.unlinkSync(fullPath);
+                                } catch (unlinkError) {
+                                    // Skip locked files
+                                    console.log(`⚠️ Skipping locked file: ${file.name}`);
+                                }
+                            }
+                        }
+                        fs.rmdirSync(dirPath);
+                    }
+                } else {
+                    // Non-Windows cleanup
+                    fs.rmSync(dirPath, { recursive: true, force: true });
+                }
+                
+                console.log(`✅ Successfully cleaned up session directory: ${dirPath}`);
+                return;
+            }
+        } catch (error) {
+            console.log(`⚠️ Cleanup attempt ${i + 1}/${maxRetries} failed:`, error.message);
+            
+            if (i === maxRetries - 1) {
+                console.log('⚠️ Final cleanup attempt failed - this is usually non-critical on Windows');
+                return; // Don't throw, just log and continue
+            }
+            
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+        }
     }
 }
 
@@ -503,7 +576,7 @@ function createClient(sessionId) {
 let isShuttingDown = false;
     
 process.on('uncaughtException', (err) => logger.error('Uncaught Exception:', err));
-process.on('unhandledRejection', (reason, promise) => logger.error('Unhandled Rejection at:', promise, 'reason:', reason));
+
     
 process.on('SIGTERM', () => {
     if (isShuttingDown) return;
@@ -1188,38 +1261,48 @@ async function createBotSession(userId, sessionId, io) {
         console.log('📱 Session ID:', sessionId);
         console.log('🔍 BOT: io object exists?', !!io);
 
-                const client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `user-${userId}-${sessionId}` 
-            }),
-            puppeteer: {
-                ...clientConfig.puppeteer,
-                args: [
-                    ...clientConfig.puppeteer.args,
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
-                ]
-            },
-            // Add these sync optimization options
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 5000,
-            
-            // Skip initial sync to speed up connection
-            syncFullHistory: false,
-            markOnlineOnConnect: false,
-            
-            // Reduce chat loading timeout
-            chatLoadingTimeoutMs: 15000, // Reduced from default 60000
-            
-            // Optimize session loading
-            sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
-            
-            // Keep existing config values
-            qrMaxRetries: clientConfig.qrMaxRetries,
-            authTimeoutMs: clientConfig.authTimeoutMs,
-            restartOnAuthFail: clientConfig.restartOnAuthFail
-        });
-
+            const client = new Client({
+    authStrategy: new LocalAuth({ 
+        clientId: `user-${userId}-${sessionId}`,
+        dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
+    }),
+    puppeteer: {
+        ...clientConfig.puppeteer,
+        args: [
+            ...clientConfig.puppeteer.args,
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            // Add Windows-specific cleanup optimizations
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--no-first-run'
+        ],
+        // Add these options for better cleanup on Windows
+        handleSIGINT: false,
+        handleSIGTERM: false,
+    },
+    // Add these sync optimization options
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 5000,
+    
+    // Skip initial sync to speed up connection
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    
+    // Reduce chat loading timeout
+    chatLoadingTimeoutMs: 15000, // Reduced from default 60000
+    
+    // Optimize session loading
+    sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
+    
+    // Keep existing config values
+    qrMaxRetries: clientConfig.qrMaxRetries,
+    authTimeoutMs: clientConfig.authTimeoutMs,
+    restartOnAuthFail: clientConfig.restartOnAuthFail
+});
         // Store client in existing maps
         clients.set(sessionId, client);
 
@@ -1413,15 +1496,33 @@ async function createBotSession(userId, sessionId, io) {
     }
 });
 
-        // Disconnected event
-        client.on('disconnected', (reason) => {
-            console.log('❌ BOT: Client disconnected:', reason);
-            io.to(`user-${userId}`).emit('sessionDisconnected', {
-                sessionId,
-                reason,
-                message: 'WhatsApp session disconnected'
-            });
-        });
+        // Enhanced disconnected event with cleanup
+client.on('disconnected', async (reason) => {
+    console.log('❌ BOT: Client disconnected:', reason);
+    
+    // Emit disconnect event to frontend
+    io.to(`user-${userId}`).emit('sessionDisconnected', {
+        sessionId,
+        reason,
+        message: 'WhatsApp session disconnected'
+    });
+    
+    // Remove from clients map immediately
+    clients.delete(sessionId);
+    
+    // Clean up session files with delay for Windows file system
+    setTimeout(async () => {
+        try {
+            const authPath = path.join('./.wwebjs_auth', `user-${userId}-${sessionId}`);
+            if (fs.existsSync(authPath)) {
+                console.log(`🧹 Attempting cleanup of session directory: ${authPath}`);
+                await removeDirectoryWithRetry(authPath, 3);
+            }
+        } catch (cleanupError) {
+            console.log('⚠️ Session cleanup warning (non-critical):', cleanupError.message);
+        }
+    }, 5000); // 5 second delay to allow file handles to close
+});
 
         // Authentication failure event
         client.on('auth_failure', (message) => {
