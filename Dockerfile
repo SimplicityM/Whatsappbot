@@ -65,4 +65,4 @@ ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 EXPOSE 3000
 
 # Start the WhatsApp bot
-CMD ["node", "index.js"]
+CMD ["node", "bot.js"]
