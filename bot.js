@@ -1263,140 +1263,155 @@ async function createBotSession(userId, sessionId, io) {
         });
 
         // In bot.js, update the ready event handler (around line 1236)
-            client.on('ready', async () => {
-            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-            
-            // Emit sync start notification
-            io.to(`user-${userId}`).emit('syncStarted', {
+          client.on('ready', async () => {
+    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+    
+    // Emit sync start notification
+    io.to(`user-${userId}`).emit('syncStarted', {
+        sessionId,
+        message: 'WhatsApp connected! Syncing data...',
+        stage: 'syncing'
+    });
+    
+    try {
+        // Reduced authentication checking time
+        const checkAuthState = async (attempts = 3) => { // Reduced from 5
+            try {
+                const state = await client.getState();
+                console.log(`🔍 AUTH STATE CHECK (attempt ${4-attempts}):`, { 
+                    state, 
+                    sessionId,
+                    hasInfo: !!client.info 
+                });
+                
+                if (state === 'CONNECTED' && client.info && client.info.wid) {
+                    console.log("✅ CLIENT FULLY AUTHENTICATED");
+                    return true;
+                }
+                
+                if (attempts <= 0) {
+                    console.error(`❌ Failed to verify authentication after 3 attempts (state: ${state})`);
+                    return false;
+                }
+                
+                // Shorter wait between attempts
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 3000
+                return checkAuthState(attempts - 1);
+            } catch (error) {
+                console.error(`❌ Error checking auth state: ${error.message}`);
+                if (attempts <= 0) return false;
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return checkAuthState(attempts - 1);
+            }
+        };
+
+        const isAuthenticated = await checkAuthState();
+        
+        if (!isAuthenticated) {
+            console.error(`❌ Client ${sessionId} not properly authenticated`);
+            io.to(`user-${userId}`).emit('authFailure', {
                 sessionId,
-                message: 'WhatsApp connected! Syncing data...',
-                stage: 'syncing'
+                message: 'Authentication failed - please try again'
+            });
+            return;
+        }
+
+        // Emit sync progress
+        io.to(`user-${userId}`).emit('syncProgress', {
+            sessionId,
+            message: 'Loading chats and contacts...',
+            stage: 'loading_chats'
+        });
+
+        // Reduced wait time for WhatsApp to load
+        console.log('⏳ Waiting for WhatsApp to load essential data...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 5000
+
+        // Quick chat verification (don't wait for all chats)
+        try {
+            const chats = await Promise.race([
+                client.getChats(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Chat loading timeout')), 10000)
+                )
+            ]);
+            console.log(`📱 Successfully loaded ${chats.length} chats`);
+            
+            // Emit sync completion
+            io.to(`user-${userId}`).emit('syncCompleted', {
+                sessionId,
+                message: 'Sync completed! Bot is ready.',
+                stage: 'completed',
+                chatCount: chats.length
             });
             
+        } catch (chatError) {
+            console.log('⚠️ Chat loading taking longer, proceeding anyway...');
+            // Don't wait, proceed with setup
+            
+            io.to(`user-${userId}`).emit('syncCompleted', {
+                sessionId,
+                message: 'Bot is ready! (Sync continuing in background)',
+                stage: 'partial'
+            });
+        }
+
+        // Rest of your setup code...
+        const selfId = client.info.wid._serialized;
+        userSessions.set(selfId, sessionId);
+        
+        // Send welcome messages immediately (don't wait for full sync)
+        try {
+            const selfChat = await client.getChatById(selfId);
+            
+            await selfChat.sendMessage("🤖 *Bot Connected!*");
+            await selfChat.sendMessage(`📱 Session: \`${sessionId}\``);
+            await selfChat.sendMessage("⚡ Ready for commands! Type !help");
+            
+            console.log('✅ Welcome messages sent');
+            
+        } catch (messageError) {
+            console.error('❌ Error sending welcome messages:', messageError);
+            
+            // Fallback method - direct message sending
             try {
-                // Reduced authentication checking time
-                const checkAuthState = async (attempts = 3) => { // Reduced from 5
-                    try {
-                        const state = await client.getState();
-                        console.log(`🔍 AUTH STATE CHECK (attempt ${4-attempts}):`, { 
-                            state, 
-                            sessionId,
-                            hasInfo: !!client.info 
-                        });
-                        
-                        if (state === 'CONNECTED' && client.info && client.info.wid) {
-                            console.log("✅ CLIENT FULLY AUTHENTICATED");
-                            return true;
-                        }
-                        
-                        if (attempts <= 0) {
-                            console.error(`❌ Failed to verify authentication after 3 attempts (state: ${state})`);
-                            return false;
-                        }
-                        
-                        // Shorter wait between attempts
-                        await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 3000
-                        return checkAuthState(attempts - 1);
-                    } catch (error) {
-                        console.error(`❌ Error checking auth state: ${error.message}`);
-                        if (attempts <= 0) return false;
-                        
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        return checkAuthState(attempts - 1);
-                    }
-                };
-
-                const isAuthenticated = await checkAuthState();
-                
-                if (!isAuthenticated) {
-                    console.error(`❌ Client ${sessionId} not properly authenticated`);
-                    io.to(`user-${userId}`).emit('authFailure', {
-                        sessionId,
-                        message: 'Authentication failed - please try again'
-                    });
-                    return;
-                }
-
-                // Emit sync progress
-                io.to(`user-${userId}`).emit('syncProgress', {
-                    sessionId,
-                    message: 'Loading chats and contacts...',
-                    stage: 'loading_chats'
-                });
-
-                // Reduced wait time for WhatsApp to load
-                console.log('⏳ Waiting for WhatsApp to load essential data...');
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 5000
-
-                // Quick chat verification (don't wait for all chats)
-                try {
-                    const chats = await Promise.race([
-                        client.getChats(),
-                        new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Chat loading timeout')), 10000)
-                        )
-                    ]);
-                    console.log(`📱 Successfully loaded ${chats.length} chats`);
-                    
-                    // Emit sync completion
-                    io.to(`user-${userId}`).emit('syncCompleted', {
-                        sessionId,
-                        message: 'Sync completed! Bot is ready.',
-                        stage: 'completed',
-                        chatCount: chats.length
-                    });
-                    
-                } catch (chatError) {
-                    console.log('⚠️ Chat loading taking longer, proceeding anyway...');
-                    // Don't wait, proceed with setup
-                    
-                    io.to(`user-${userId}`).emit('syncCompleted', {
-                        sessionId,
-                        message: 'Bot is ready! (Sync continuing in background)',
-                        stage: 'partial'
-                    });
-                }
-
-                // Rest of your setup code...
-                const selfId = client.info.wid._serialized;
-                userSessions.set(selfId, sessionId);
-                
-                // Send welcome messages immediately (don't wait for full sync)
-                try {
-                    const selfChat = await client.getChatById(selfId);
-                    
-                    await selfChat.sendMessage("🤖 *Bot Connected!*");
-                    await selfChat.sendMessage(`📱 Session: \`${sessionId}\``);
-                    await selfChat.sendMessage("⚡ Ready for commands! Type !help");
-                    
-                    console.log('✅ Welcome messages sent');
-                    
-                } catch (messageError) {
-                    console.error('❌ Error sending welcome messages:', messageError);
-                }
-
-                // Start group refresh in background (don't block)
-                setTimeout(() => {
-                    refreshGroupsForSession(client, sessionId);
-                }, 5000);
-
-                // Emit final ready state
-                io.to(`user-${userId}`).emit('sessionReady', {
-                    sessionId,
-                    phone: client.info.wid.user,
-                    message: 'WhatsApp bot is fully operational!'
-                });
-                
-                console.log('✅ BOT: Session setup completed quickly');
-                
-            } catch (error) {
-                console.error('❌ BOT: Error in ready handler:', error);
-                io.to(`user-${userId}`).emit('authFailure', {
-                    sessionId,
-                    message: 'Session setup failed'
-                });
+                await client.sendMessage(selfId, "🤖 *Bot Connected!*");
+                await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
+                await client.sendMessage(selfId, "⚡ Ready for commands! Type !help");
+                console.log('✅ Fallback welcome messages sent');
+            } catch (fallbackError) {
+                console.error('❌ Fallback welcome messages also failed:', fallbackError);
             }
+        }
+
+        // Start background sync
+        setTimeout(() => {
+            handleBackgroundSync(client, sessionId, userId, io);
+        }, 10000);
+
+        // Start group refresh in background (don't block)
+        setTimeout(() => {
+            refreshGroupsForSession(client, sessionId);
+        }, 5000);
+
+        // Emit final ready state
+        io.to(`user-${userId}`).emit('sessionReady', {
+            sessionId,
+            phone: client.info.wid.user,
+            message: 'WhatsApp bot is fully operational!'
         });
+        
+        console.log('✅ BOT: Session setup completed quickly');
+        
+    } catch (error) {
+        console.error('❌ BOT: Error in ready handler:', error);
+        io.to(`user-${userId}`).emit('authFailure', {
+            sessionId,
+            message: 'Session setup failed'
+        });
+    }
+});
 
         // Disconnected event
         client.on('disconnected', (reason) => {
@@ -1617,10 +1632,7 @@ async function handleBackgroundSync(client, sessionId, userId, io) {
     }
 }
 
-// Call this in your ready handler
-setTimeout(() => {
-    handleBackgroundSync(client, sessionId, userId, io);
-}, 10000); // Start background sync after 10 seconds
+
 
 // Add this function in bot.js
 function debugClientState(client, sessionId) {
