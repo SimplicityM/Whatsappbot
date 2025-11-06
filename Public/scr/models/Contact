@@ -1,0 +1,15 @@
+// src/models/Contact.js
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const ContactSchema = new Schema({
+  ownerUserId: { type: String, required: true },
+  ownerEmail: { type: String, required: true },
+  contactNumber: { type: String, required: true },
+  contactName: { type: String },
+  firstContactedAt: { type: Date, default: Date.now },
+  lastContactedAt: { type: Date, default: Date.now },
+  advertConsent: { type: Boolean, default: true }
+});
+ContactSchema.index({ ownerUserId: 1, contactNumber: 1 }, { unique: true });
+ContactSchema.pre('save', function(next){ this.lastContactedAt = Date.now(); next(); });
+module.exports = mongoose.models.Contact || mongoose.model('Contact', ContactSchema);
