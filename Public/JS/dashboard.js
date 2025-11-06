@@ -1841,3 +1841,30 @@ function setupSocketDebugging() {
     }
 }
 
+
+// Add to your dashboard.html or dashboard JavaScript
+socket.on('syncStarted', (data) => {
+    console.log('Sync started:', data);
+    updateSessionStatus(data.sessionId, 'Syncing WhatsApp data...', 'syncing');
+});
+
+socket.on('syncProgress', (data) => {
+    console.log('Sync progress:', data);
+    updateSessionStatus(data.sessionId, data.message, 'syncing');
+});
+
+socket.on('syncCompleted', (data) => {
+    console.log('Sync completed:', data);
+    updateSessionStatus(data.sessionId, data.message, 'ready');
+});
+
+function updateSessionStatus(sessionId, message, status) {
+    const sessionElement = document.querySelector(`[data-session-id="${sessionId}"]`);
+    if (sessionElement) {
+        const statusElement = sessionElement.querySelector('.session-status');
+        if (statusElement) {
+            statusElement.textContent = message;
+            statusElement.className = `session-status ${status}`;
+        }
+    }
+}

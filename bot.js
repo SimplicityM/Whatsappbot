@@ -111,16 +111,27 @@ const clientConfig = {
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-web-security'
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-field-trial-config', // Faster startup
+            '--disable-ipc-flooding-protection'
         ],
         defaultViewport: null
     },
-    qrMaxRetries: 5,
-    authTimeoutMs: 180000,
+    qrMaxRetries: 3, // Reduced from 5
+    authTimeoutMs: 120000, // Reduced from 180000
     restartOnAuthFail: true,
     takeoverOnConflict: true,
-    takeoverTimeoutMs: 10000,
-    chatLoadingTimeoutMs: 60000
+    takeoverTimeoutMs: 5000, // Reduced from 10000
+    chatLoadingTimeoutMs: 15000, // Reduced from 60000
+    
+    // Add these new options
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    sessionBackupSyncIntervalMs: 300000
 };
 
 // Initialize authorized numbers
@@ -1177,17 +1188,36 @@ async function createBotSession(userId, sessionId, io) {
         console.log('📱 Session ID:', sessionId);
         console.log('🔍 BOT: io object exists?', !!io);
 
-        const client = new Client({
+                const client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `user-${userId}-${sessionId}` 
             }),
-            puppeteer: clientConfig.puppeteer,
+            puppeteer: {
+                ...clientConfig.puppeteer,
+                args: [
+                    ...clientConfig.puppeteer.args,
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor'
+                ]
+            },
+            // Add these sync optimization options
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 5000,
+            
+            // Skip initial sync to speed up connection
+            syncFullHistory: false,
+            markOnlineOnConnect: false,
+            
+            // Reduce chat loading timeout
+            chatLoadingTimeoutMs: 15000, // Reduced from default 60000
+            
+            // Optimize session loading
+            sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
+            
+            // Keep existing config values
             qrMaxRetries: clientConfig.qrMaxRetries,
             authTimeoutMs: clientConfig.authTimeoutMs,
-            restartOnAuthFail: clientConfig.restartOnAuthFail,
-            takeoverOnConflict: clientConfig.takeoverOnConflict,
-            takeoverTimeoutMs: clientConfig.takeoverTimeoutMs,
-            chatLoadingTimeoutMs: clientConfig.chatLoadingTimeoutMs
+            restartOnAuthFail: clientConfig.restartOnAuthFail
         });
 
         // Store client in existing maps
@@ -1233,135 +1263,140 @@ async function createBotSession(userId, sessionId, io) {
         });
 
         // In bot.js, update the ready event handler (around line 1236)
-client.on('ready', async () => {
-    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-    
-    try {
-        // Enhanced authentication state checking with retries
-        const checkAuthState = async (attempts = 5) => {
+            client.on('ready', async () => {
+            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+            
+            // Emit sync start notification
+            io.to(`user-${userId}`).emit('syncStarted', {
+                sessionId,
+                message: 'WhatsApp connected! Syncing data...',
+                stage: 'syncing'
+            });
+            
             try {
-                const state = await client.getState();
-                console.log(`🔍 AUTH STATE CHECK (attempt ${6-attempts}):`, { 
-                    state, 
+                // Reduced authentication checking time
+                const checkAuthState = async (attempts = 3) => { // Reduced from 5
+                    try {
+                        const state = await client.getState();
+                        console.log(`🔍 AUTH STATE CHECK (attempt ${4-attempts}):`, { 
+                            state, 
+                            sessionId,
+                            hasInfo: !!client.info 
+                        });
+                        
+                        if (state === 'CONNECTED' && client.info && client.info.wid) {
+                            console.log("✅ CLIENT FULLY AUTHENTICATED");
+                            return true;
+                        }
+                        
+                        if (attempts <= 0) {
+                            console.error(`❌ Failed to verify authentication after 3 attempts (state: ${state})`);
+                            return false;
+                        }
+                        
+                        // Shorter wait between attempts
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 3000
+                        return checkAuthState(attempts - 1);
+                    } catch (error) {
+                        console.error(`❌ Error checking auth state: ${error.message}`);
+                        if (attempts <= 0) return false;
+                        
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        return checkAuthState(attempts - 1);
+                    }
+                };
+
+                const isAuthenticated = await checkAuthState();
+                
+                if (!isAuthenticated) {
+                    console.error(`❌ Client ${sessionId} not properly authenticated`);
+                    io.to(`user-${userId}`).emit('authFailure', {
+                        sessionId,
+                        message: 'Authentication failed - please try again'
+                    });
+                    return;
+                }
+
+                // Emit sync progress
+                io.to(`user-${userId}`).emit('syncProgress', {
                     sessionId,
-                    hasInfo: !!client.info 
+                    message: 'Loading chats and contacts...',
+                    stage: 'loading_chats'
+                });
+
+                // Reduced wait time for WhatsApp to load
+                console.log('⏳ Waiting for WhatsApp to load essential data...');
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 5000
+
+                // Quick chat verification (don't wait for all chats)
+                try {
+                    const chats = await Promise.race([
+                        client.getChats(),
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Chat loading timeout')), 10000)
+                        )
+                    ]);
+                    console.log(`📱 Successfully loaded ${chats.length} chats`);
+                    
+                    // Emit sync completion
+                    io.to(`user-${userId}`).emit('syncCompleted', {
+                        sessionId,
+                        message: 'Sync completed! Bot is ready.',
+                        stage: 'completed',
+                        chatCount: chats.length
+                    });
+                    
+                } catch (chatError) {
+                    console.log('⚠️ Chat loading taking longer, proceeding anyway...');
+                    // Don't wait, proceed with setup
+                    
+                    io.to(`user-${userId}`).emit('syncCompleted', {
+                        sessionId,
+                        message: 'Bot is ready! (Sync continuing in background)',
+                        stage: 'partial'
+                    });
+                }
+
+                // Rest of your setup code...
+                const selfId = client.info.wid._serialized;
+                userSessions.set(selfId, sessionId);
+                
+                // Send welcome messages immediately (don't wait for full sync)
+                try {
+                    const selfChat = await client.getChatById(selfId);
+                    
+                    await selfChat.sendMessage("🤖 *Bot Connected!*");
+                    await selfChat.sendMessage(`📱 Session: \`${sessionId}\``);
+                    await selfChat.sendMessage("⚡ Ready for commands! Type !help");
+                    
+                    console.log('✅ Welcome messages sent');
+                    
+                } catch (messageError) {
+                    console.error('❌ Error sending welcome messages:', messageError);
+                }
+
+                // Start group refresh in background (don't block)
+                setTimeout(() => {
+                    refreshGroupsForSession(client, sessionId);
+                }, 5000);
+
+                // Emit final ready state
+                io.to(`user-${userId}`).emit('sessionReady', {
+                    sessionId,
+                    phone: client.info.wid.user,
+                    message: 'WhatsApp bot is fully operational!'
                 });
                 
-                if (state === 'CONNECTED' && client.info && client.info.wid) {
-                    console.log("✅ CLIENT FULLY AUTHENTICATED");
-                    return true;
-                }
+                console.log('✅ BOT: Session setup completed quickly');
                 
-                if (attempts <= 0) {
-                    console.error(`❌ Failed to verify authentication after 5 attempts (state: ${state})`);
-                    return false;
-                }
-                
-                // Wait longer between attempts
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                return checkAuthState(attempts - 1);
             } catch (error) {
-                console.error(`❌ Error checking auth state: ${error.message}`);
-                if (attempts <= 0) return false;
-                
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                return checkAuthState(attempts - 1);
+                console.error('❌ BOT: Error in ready handler:', error);
+                io.to(`user-${userId}`).emit('authFailure', {
+                    sessionId,
+                    message: 'Session setup failed'
+                });
             }
-        };
-
-        const isAuthenticated = await checkAuthState();
-        
-        if (!isAuthenticated) {
-            console.error(`❌ Client ${sessionId} not properly authenticated`);
-            io.to(`user-${userId}`).emit('authFailure', {
-                sessionId,
-                message: 'Authentication failed - please try again'
-            });
-            return;
-        }
-
-        // Additional wait to ensure all WhatsApp data is loaded
-        console.log('⏳ Waiting for WhatsApp to fully load...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Verify we can get chats (indicates full readiness)
-        try {
-            const chats = await client.getChats();
-            console.log(`📱 Successfully loaded ${chats.length} chats`);
-        } catch (chatError) {
-            console.error('❌ Cannot load chats yet, waiting more...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-
-        // Now proceed with session setup
-        const selfId = client.info.wid._serialized;
-        userSessions.set(selfId, sessionId);
-        
-        console.log(`🤖 Bot self ID: ${selfId}`);
-        
-        // Group refresh functionality
-        console.log(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
-        await refreshGroupsForSession(client, sessionId);
-        
-        // Set up periodic group refresh
-        groupRefreshIntervals.set(
-            sessionId,
-            setInterval(() => refreshGroupsForSession(client, sessionId), 600000)
-        );
-
-        // Send welcome messages to self-chat
-        try {
-            const selfChat = await client.getChatById(selfId);
-            console.log(`💬 Got self chat: ${selfChat.id._serialized}`);
-            
-            // Send welcome messages with delays
-            await selfChat.sendMessage("🤖 *Bot Connected Successfully!*");
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            await selfChat.sendMessage(`📱 Your session ID: \`${sessionId}\``);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            await selfChat.sendMessage("👋 Hello! I'm your WhatsApp bot. Type !help to see available commands.");
-            
-            console.log('✅ Welcome messages sent successfully');
-            
-        } catch (messageError) {
-            console.error('❌ Error sending welcome messages:', messageError);
-            // Try alternative approach
-            try {
-                await client.sendMessage(selfId, "🤖 Bot connected! Type !help for commands.");
-            } catch (altError) {
-                console.error('❌ Alternative message sending also failed:', altError);
-            }
-        }
-
-        // Keep-alive interval
-        const keepAliveInterval = setInterval(async () => {
-            try {
-                await client.getState();
-                console.log(`💓 Keep-alive ping for session ${sessionId}`);
-            } catch (error) {
-                console.error(`❌ Keep-alive failed for session ${sessionId}:`, error);
-            }
-        }, 300000);
-
-        // Emit success to frontend
-        io.to(`user-${userId}`).emit('sessionReady', {
-            sessionId,
-            phone: client.info.wid.user,
-            message: 'WhatsApp connected successfully!'
         });
-        
-        console.log('✅ BOT: Session fully ready with welcome messages sent');
-        
-    } catch (error) {
-        console.error('❌ BOT: Error in ready handler:', error);
-        io.to(`user-${userId}`).emit('authFailure', {
-            sessionId,
-            message: 'Session setup failed'
-        });
-    }
-});
 
         // Disconnected event
         client.on('disconnected', (reason) => {
@@ -1385,25 +1420,32 @@ client.on('ready', async () => {
         // Message handler for bot commands
        client.on('message_create', async (message) => {
     try {
-        // Wait a bit to ensure client.info is available
+        // Add more logging
+        console.log(`📨 RAW MESSAGE:`, {
+            body: message.body,
+            from: message.from,
+            to: message.to,
+            fromMe: message.fromMe,
+            type: message.type
+        });
+
+        // Wait for client info to be available
         if (!client.info || !client.info.wid) {
             console.log('⏳ Client info not ready yet, skipping message');
             return;
         }
 
         const selfId = client.info.wid._serialized;
-        console.log(`📨 Message received: ${message.body}`);
-        console.log(`📨 From: ${message.from}, To: ${message.to}`);
-        console.log(`📨 FromMe: ${message.fromMe}, SelfId: ${selfId}`);
+        console.log(`📨 Self ID: ${selfId}`);
         
-        // Enhanced self-chat detection
-        const isSelfChat = (message.from === selfId && message.to === selfId) || 
-                          (message.fromMe && message.to === selfId);
+        // Check if this is a self-chat message
+        const isSelfMessage = message.from === selfId || message.to === selfId;
+        const isCommand = message.body.startsWith('!');
         
-        console.log(`📨 Is self chat: ${isSelfChat}`);
+        console.log(`📨 Is self message: ${isSelfMessage}, Is command: ${isCommand}, From me: ${message.fromMe}`);
         
-        // Only process self-chat commands from the user
-        if (!isSelfChat || !message.body.startsWith('!')) {
+        // Only process commands in self-chat
+        if (!isSelfMessage || !isCommand) {
             return;
         }
         
@@ -1411,51 +1453,28 @@ client.on('ready', async () => {
         
         const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
         
-        // React to command to show it's being processed
+        // React to show command received
         try {
             await message.react('🤖');
+            await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            console.error("Failed to react:", error);
+            console.error("Failed to react:", error.message);
         }
-
-        // Add a small delay to ensure reaction is sent
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Helper function to get admin groups
-        const getAdminGroups = async () => {
-            try {
-                const chats = await client.getChats();
-                const groupChats = chats.filter(chat => chat.isGroup);
-                const adminGroups = [];
-                
-                for (const chat of groupChats) {
-                    try {
-                        await chat.fetchParticipants();
-                        const userParticipant = chat.participants.find(p => p.id._serialized === selfId);
-                        
-                        if (userParticipant && userParticipant.isAdmin) {
-                            adminGroups.push(chat);
-                        }
-                    } catch (err) {
-                        console.log(`Error checking ${chat.name}:`, err.message);
-                    }
-                }
-                
-                return adminGroups;
-            } catch (error) {
-                console.error('Error getting admin groups:', error);
-                return [];
-            }
-        };
 
         // Process commands
         switch (command.toLowerCase()) {
             case 'ping':
-                await message.reply('🏓 Pong! Bot is working correctly.');
+                try {
+                    await message.reply('🏓 Pong! Bot is working correctly.');
+                    console.log('✅ Ping command executed');
+                } catch (error) {
+                    console.error('❌ Ping command failed:', error.message);
+                }
                 break;
                 
             case 'help':
-                const helpText = `🤖 *WhatsApp Bot Commands*
+                try {
+                    const helpText = `🤖 *WhatsApp Bot Commands*
 
 *Basic Commands:*
 • !ping - Test bot response
@@ -1466,65 +1485,99 @@ client.on('ready', async () => {
 *Group Management:*
 • !list - List groups where you are admin
 • !tagall [group_number] - Tag all members in a group
-• !tagallexcept [group_number] [phone_numbers] - Tag all except specified numbers
 
-*Usage Examples:*
-• !tagall 1 - Tag all members in group #1
-• !tagallexcept 1 2341234567 - Tag all in group #1 except specified number
-
-💡 Use !list first to see your admin groups and their numbers.`;
-                
-                await message.reply(helpText);
+💡 Bot is working! Try !ping to test.`;
+                    
+                    await message.reply(helpText);
+                    console.log('✅ Help command executed');
+                } catch (error) {
+                    console.error('❌ Help command failed:', error.message);
+                }
                 break;
                 
             case 'status':
-                const statusMsg = `🤖 *Bot Status Report*
+                try {
+                    const statusMsg = `🤖 *Bot Status*
 
-✅ *Connection:* Active
-📱 *Session:* ${sessionId}
-👤 *User:* ${userId}
-⏱️ *Uptime:* ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
-🔢 *Active Sessions:* ${clients.size}
-💾 *Memory Usage:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB
-📞 *Phone:* ${client.info.wid.user}
+✅ Status: Active
+📱 Session: ${sessionId}
+⏱️ Uptime: ${Math.floor(process.uptime() / 60)} minutes
+📞 Phone: ${client.info.wid.user}
 
-🟢 All systems operational!`;
-                await message.reply(statusMsg);
+🟢 All systems working!`;
+                    await message.reply(statusMsg);
+                    console.log('✅ Status command executed');
+                } catch (error) {
+                    console.error('❌ Status command failed:', error.message);
+                }
                 break;
         
             case 'sessionid':
-                const sessionIdFromMap = userSessions.get(selfId) || sessionId;
-                await message.reply(`📱 Your session ID: \`${sessionIdFromMap}\``);
+                try {
+                    await message.reply(`📱 Your session ID: \`${sessionId}\``);
+                    console.log('✅ SessionID command executed');
+                } catch (error) {
+                    console.error('❌ SessionID command failed:', error.message);
+                }
                 break;
 
             case 'list':
-                await message.reply('⚡ Fetching your admin groups...');
-                const groups = await getAdminGroups();
-                
-                if (!groups.length) {
-                    return message.reply('❌ You are not admin in any groups');
+                try {
+                    await message.reply('⚡ Fetching your admin groups...');
+                    
+                    const chats = await client.getChats();
+                    const groupChats = chats.filter(chat => chat.isGroup);
+                    const adminGroups = [];
+                    
+                    for (const chat of groupChats) {
+                        try {
+                            await chat.fetchParticipants();
+                            const userParticipant = chat.participants.find(p => p.id._serialized === selfId);
+                            
+                            if (userParticipant && userParticipant.isAdmin) {
+                                adminGroups.push(chat);
+                            }
+                        } catch (err) {
+                            console.log(`Error checking ${chat.name}:`, err.message);
+                        }
+                    }
+                    
+                    if (!adminGroups.length) {
+                        return message.reply('❌ You are not admin in any groups');
+                    }
+
+                    const listText = adminGroups
+                        .map((g, i) => `${i + 1}. ${g.name} (${g.participants?.length || 0} members)`)
+                        .join('\n');
+
+                    await message.reply(
+                        `📋 *Groups Where You Are Admin (${adminGroups.length})*\n\n` +
+                        listText +
+                        `\n\n💡 Use !tagall [number] to tag all members in a group.`
+                    );
+                    
+                    console.log('✅ List command executed');
+                } catch (error) {
+                    console.error('❌ List command failed:', error.message);
+                    await message.reply('❌ Error fetching groups. Please try again.');
                 }
-
-                const listText = groups
-                    .map((g, i) => `${i + 1}. ${g.name} (${g.participants?.length || 0} members)`)
-                    .join('\n');
-
-                return message.reply(
-                    `📋 *Groups Where You Are Admin (${groups.length})*\n\n` +
-                    listText +
-                    `\n\n💡 Use !tagall [number] to tag all members in a group.`
-                );
+                break;
                 
             default:
-                await message.reply(`❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
+                try {
+                    await message.reply(`❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
+                    console.log('✅ Unknown command response sent');
+                } catch (error) {
+                    console.error('❌ Unknown command response failed:', error.message);
+                }
         }
         
     } catch (error) {
-        console.error('❌ BOT: Error processing bot command:', error);
+        console.error('❌ BOT: Error processing message:', error);
         try {
-            await message.reply('❌ Sorry, there was an error processing your command. Please try again.');
+            await message.reply('❌ Sorry, there was an error. Please try again.');
         } catch (replyError) {
-            console.error('❌ Could not send error reply:', replyError);
+            console.error('❌ Could not send error reply:', replyError.message);
         }
     }
 });
@@ -1542,6 +1595,32 @@ client.on('ready', async () => {
         throw error;
     }
 }
+
+// Add this function to handle background sync
+async function handleBackgroundSync(client, sessionId, userId, io) {
+    console.log('🔄 Starting background sync...');
+    
+    try {
+        // Load chats in batches
+        const chats = await client.getChats();
+        console.log(`📱 Background sync: ${chats.length} chats loaded`);
+        
+        // Update frontend with progress
+        io.to(`user-${userId}`).emit('backgroundSyncUpdate', {
+            sessionId,
+            message: `Background sync: ${chats.length} chats processed`,
+            progress: 100
+        });
+        
+    } catch (error) {
+        console.error('Background sync error:', error);
+    }
+}
+
+// Call this in your ready handler
+setTimeout(() => {
+    handleBackgroundSync(client, sessionId, userId, io);
+}, 10000); // Start background sync after 10 seconds
 
 // Add this function in bot.js
 function debugClientState(client, sessionId) {
