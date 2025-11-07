@@ -690,7 +690,32 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
 
         if (user) {
             console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
-            res.json({ success: true, message: 'Payment processed successfully' });
+            
+            // 🔑 KEY ADDITION: Try to resume suspended sessions
+            const { resumeUserSession } = require('./bot');
+            const Session = require('./models/Session');
+            
+            // Find suspended sessions for this user
+            const suspendedSessions = await Session.find({ 
+                userId: userId, 
+                status: 'suspended' 
+            });
+
+            let resumedCount = 0;
+            for (const session of suspendedSessions) {
+                const resumed = await resumeUserSession(userId, session.sessionId, io);
+                if (resumed) {
+                    resumedCount++;
+                }
+            }
+
+            console.log(`✅ Resumed ${resumedCount} suspended sessions for user ${userId}`);
+            
+            res.json({ 
+                success: true, 
+                message: 'Payment processed successfully',
+                resumedSessions: resumedCount
+            });
         } else {
             res.status(404).json({ success: false, message: 'User not found' });
         }

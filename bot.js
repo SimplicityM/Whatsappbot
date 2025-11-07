@@ -390,7 +390,7 @@ async function checkUserSubscriptionStatus(userId) {
     }
 }
 
-// Function to suspend a user's bot session
+// Function to suspend a user's bot session (IMPROVED VERSION)
 async function suspendUserSession(userId, sessionId, reason, client, io) {
     try {
         console.log(`🚫 Suspending session ${sessionId} for user ${userId}: ${reason}`);
@@ -403,6 +403,7 @@ async function suspendUserSession(userId, sessionId, reason, client, io) {
                     `Reason: ${reason}\n\n` +
                     `💳 Please renew your subscription to continue using the bot.\n` +
                     `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment\n\n` +
+                    `✅ Your session will automatically resume after payment - no need to scan QR again!\n\n` +
                     `📞 Contact support if you believe this is an error.`;
                 
                 await client.sendMessage(selfId, suspensionMessage);
@@ -421,7 +422,7 @@ async function suspendUserSession(userId, sessionId, reason, client, io) {
             });
         }
 
-        // Update session status in database
+        // Update session status in database (but keep session data)
         const Session = require('./models/Session');
         await Session.findOneAndUpdate(
             { sessionId },
@@ -432,18 +433,93 @@ async function suspendUserSession(userId, sessionId, reason, client, io) {
             }
         );
 
-        // Destroy the client connection
-        if (client) {
-            await client.destroy();
-        }
+        // 🔑 KEY CHANGE: Don't destroy client, just mark as suspended
+        // Store the client in a suspended state instead of destroying it
+        const suspendedClients = global.suspendedClients || new Map();
+        suspendedClients.set(sessionId, {
+            client,
+            userId,
+            suspendedAt: new Date(),
+            reason
+        });
+        global.suspendedClients = suspendedClients;
 
-        // Remove from active clients
+        // Remove from active clients but don't destroy
         clients.delete(sessionId);
         
-        console.log(`✅ Session ${sessionId} successfully suspended`);
+        console.log(`✅ Session ${sessionId} suspended (not destroyed) - can be resumed after payment`);
         
     } catch (error) {
         console.error('❌ Error suspending user session:', error);
+    }
+}
+
+// Function to resume a suspended session after payment
+async function resumeUserSession(userId, sessionId, io) {
+    try {
+        console.log(`🟢 Resuming session ${sessionId} for user ${userId} after payment`);
+        
+        const suspendedClients = global.suspendedClients || new Map();
+        const suspendedSession = suspendedClients.get(sessionId);
+        
+        if (!suspendedSession) {
+            console.log(`⚠️ No suspended session found for ${sessionId}`);
+            return false;
+        }
+
+        const { client } = suspendedSession;
+        
+        // Verify client is still valid
+        if (!client || !client.info || !client.info.wid) {
+            console.log(`❌ Suspended client is no longer valid for ${sessionId}`);
+            suspendedClients.delete(sessionId);
+            return false;
+        }
+
+        // Move client back to active clients
+        clients.set(sessionId, client);
+        suspendedClients.delete(sessionId);
+
+        // Update session status in database
+        const Session = require('./models/Session');
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'connected',
+                errorMessage: null,
+                suspendedAt: null,
+                resumedAt: new Date()
+            }
+        );
+
+        // Send resume notification to user
+        try {
+            const selfId = client.info.wid._serialized;
+            const resumeMessage = `🟢 *Bot Resumed!*\n\n` +
+                `✅ Your subscription is now active.\n` +
+                `🤖 Bot is ready for commands!\n\n` +
+                `Type !help to see available commands.`;
+            
+            await client.sendMessage(selfId, resumeMessage);
+            console.log('✅ Resume notification sent to user');
+        } catch (msgError) {
+            console.error('❌ Failed to send resume message:', msgError);
+        }
+
+        // Emit resume event to frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionResumed', {
+                sessionId,
+                message: 'Bot resumed after payment confirmation'
+            });
+        }
+
+        console.log(`✅ Session ${sessionId} successfully resumed`);
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Error resuming user session:', error);
+        return false;
     }
 }
 
@@ -1961,6 +2037,7 @@ function debugClientState(client, sessionId) {
 // Export the function
 module.exports = { 
     createBotSession,
+    resumeUserSession,  // Add this new export
     clients,
     userSessions
 }
