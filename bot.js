@@ -1948,25 +1948,38 @@ if (!client.isSyncComplete) {
             return;
         }
 
+        const selfId = client.info.wid._serialized;
+        console.log(`📨 Self ID: ${selfId}`);
+        
+        const isCommand = message.body.startsWith('!');
+        const isSelfChat = message.from === selfId;
+
+        console.log(`📨 Is command: ${isCommand}, Is self-chat: ${isSelfChat}, From me: ${message.fromMe}, From: ${message.from}`);
+
+        // ONLY process commands in self-chat
+        if (!isSelfChat || !isCommand) {
+            if (isCommand && !isSelfChat) {
+                console.log('🚫 Command attempted from non-self-chat, ignoring');
+            }
+            return;
+        }
+        
+        console.log('🤖 BOT: Processing self-chat command:', message.body);
+
         // 🔑 SUBSCRIPTION CHECK: Check subscription status before processing any commands
         const subscriptionCheck = await checkUserSubscriptionStatus(userId);
         
         if (!subscriptionCheck.isValid) {
             console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
             
-            // Send subscription warning to user
+            // Send subscription warning to self-chat
             const subscriptionWarning = `🚫 *Subscription Required*\n\n` +
                 `Reason: ${subscriptionCheck.reason}\n\n` +
                 `💳 Please renew your subscription to continue using the bot.\n` +
                 `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
             
             try {
-                const selfId = client.info.wid._serialized;
-                if (message.from === selfId) {
-                    await client.sendMessage(selfId, subscriptionWarning);
-                } else {
-                    await message.reply(subscriptionWarning);
-                }
+                await client.sendMessage(selfId, subscriptionWarning);
             } catch (msgError) {
                 console.error('❌ Failed to send subscription warning:', msgError);
             }
@@ -1975,20 +1988,6 @@ if (!client.isSyncComplete) {
             await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
             return; // Stop processing
         }
-
-        const selfId = client.info.wid._serialized;
-        console.log(`📨 Self ID: ${selfId}`);
-        
-        const isCommand = message.body.startsWith('!');
-
-        console.log(`📨 Is command: ${isCommand}, From me: ${message.fromMe}, From: ${message.from}`);
-
-        // Process commands from any chat (including self-chat)
-        if (!isCommand) {
-            return;
-        }
-        
-        console.log('🤖 BOT: Processing command:', message.body);
         
         const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
         
@@ -2000,17 +1999,11 @@ if (!client.isSyncComplete) {
             console.error("Failed to react:", error.message);
         }
 
-        // Process commands
+        // Process commands (all responses go to self-chat)
         switch (command.toLowerCase()) {
             case 'ping':
                 try {
-                    if (message.from === selfId) {
-                        // Self-chat - use direct send method
-                        await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
-                    } else {
-                        // Other chats - use reply
-                        await message.reply('🏓 Pong! Bot is working correctly.');
-                    }
+                    await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
                     console.log('✅ Ping command executed');
                 } catch (error) {
                     console.error('❌ Ping command failed:', error.message);
@@ -2031,26 +2024,18 @@ if (!client.isSyncComplete) {
                         `💰 Payment: ${sub.paymentStatus || user.paymentStatus || 'Unknown'}\n\n` +
                         `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
                     
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, subMessage);
-                    } else {
-                        await message.reply(subMessage);
-                    }
+                    await client.sendMessage(selfId, subMessage);
                     console.log('✅ Subscription command executed');
                 } catch (error) {
                     console.error('❌ Subscription command failed:', error.message);
-                    const errorMsg = '❌ Error checking subscription status';
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, errorMsg);
-                    } else {
-                        await message.reply(errorMsg);
-                    }
+                    await client.sendMessage(selfId, '❌ Error checking subscription status');
                 }
                 break;
                 
             case 'help':
                 try {
                     const helpText = `🤖 *WhatsApp Bot Commands*
+(Self-Chat Only)
 
 *Basic Commands:*
 • !ping - Test bot response
@@ -2063,13 +2048,9 @@ if (!client.isSyncComplete) {
 • !list - List groups where you are admin
 • !tagall [group_number] - Tag all members in a group
 
-💡 Bot is working! Try !ping to test.`;
+💡 Commands only work in self-chat for security!`;
                     
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, helpText);
-                    } else {
-                        await message.reply(helpText);
-                    }
+                    await client.sendMessage(selfId, helpText);
                     console.log('✅ Help command executed');
                 } catch (error) {
                     console.error('❌ Help command failed:', error.message);
@@ -2087,11 +2068,7 @@ if (!client.isSyncComplete) {
 
 🟢 All systems working!`;
                     
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, statusMsg);
-                    } else {
-                        await message.reply(statusMsg);
-                    }
+                    await client.sendMessage(selfId, statusMsg);
                     console.log('✅ Status command executed');
                 } catch (error) {
                     console.error('❌ Status command failed:', error.message);
@@ -2100,12 +2077,7 @@ if (!client.isSyncComplete) {
         
             case 'sessionid':
                 try {
-                    const sessionMsg = `📱 Your session ID: \`${sessionId}\``;
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, sessionMsg);
-                    } else {
-                        await message.reply(sessionMsg);
-                    }
+                    await client.sendMessage(selfId, `📱 Your session ID: \`${sessionId}\``);
                     console.log('✅ SessionID command executed');
                 } catch (error) {
                     console.error('❌ SessionID command failed:', error.message);
@@ -2114,12 +2086,7 @@ if (!client.isSyncComplete) {
 
             case 'list':
                 try {
-                    const loadingMsg = '⚡ Fetching your admin groups...';
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, loadingMsg);
-                    } else {
-                        await message.reply(loadingMsg);
-                    }
+                    await client.sendMessage(selfId, '⚡ Fetching your admin groups...');
                     
                     const chats = await client.getChats();
                     const groupChats = chats.filter(chat => chat.isGroup);
@@ -2139,12 +2106,7 @@ if (!client.isSyncComplete) {
                     }
                     
                     if (!adminGroups.length) {
-                        const noGroupsMsg = '❌ You are not admin in any groups';
-                        if (message.from === selfId) {
-                            await client.sendMessage(selfId, noGroupsMsg);
-                        } else {
-                            await message.reply(noGroupsMsg);
-                        }
+                        await client.sendMessage(selfId, '❌ You are not admin in any groups');
                         return;
                     }
 
@@ -2156,32 +2118,17 @@ if (!client.isSyncComplete) {
                         listText +
                         `\n\n💡 Use !tagall [number] to tag all members in a group.`;
                     
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, listMsg);
-                    } else {
-                        await message.reply(listMsg);
-                    }
-                    
+                    await client.sendMessage(selfId, listMsg);
                     console.log('✅ List command executed');
                 } catch (error) {
                     console.error('❌ List command failed:', error.message);
-                    const errorMsg = '❌ Error fetching groups. Please try again.';
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, errorMsg);
-                    } else {
-                        await message.reply(errorMsg);
-                    }
+                    await client.sendMessage(selfId, '❌ Error fetching groups. Please try again.');
                 }
                 break;
                 
             default:
                 try {
-                    const unknownMsg = `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`;
-                    if (message.from === selfId) {
-                        await client.sendMessage(selfId, unknownMsg);
-                    } else {
-                        await message.reply(unknownMsg);
-                    }
+                    await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
                     console.log('✅ Unknown command response sent');
                 } catch (error) {
                     console.error('❌ Unknown command response failed:', error.message);
@@ -2191,11 +2138,8 @@ if (!client.isSyncComplete) {
     } catch (error) {
         console.error('❌ BOT: Error processing message:', error);
         try {
-            const errorMsg = '❌ Sorry, there was an error. Please try again.';
-            if (client.info && client.info.wid && message.from === client.info.wid._serialized) {
-                await client.sendMessage(client.info.wid._serialized, errorMsg);
-            } else {
-                await message.reply(errorMsg);
+            if (client.info && client.info.wid) {
+                await client.sendMessage(client.info.wid._serialized, '❌ Sorry, there was an error. Please try again.');
             }
         } catch (replyError) {
             console.error('❌ Could not send error reply:', replyError.message);
