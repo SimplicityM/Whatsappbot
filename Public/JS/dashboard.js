@@ -345,6 +345,51 @@ function connectToServer() {
             socket.emit('join-user-room', userId);
         });
         
+ // Add these sync event listeners INSIDE the socket connection function
+        socket.on('syncStarted', (data) => {
+            console.log('🔄 Sync started:', data);
+            updateSessionStatus(data.sessionId, 'Syncing WhatsApp data...', 'syncing');
+        });
+
+        socket.on('syncProgress', (data) => {
+            console.log('📊 Sync progress:', data);
+            updateSessionStatus(data.sessionId, data.message, 'syncing');
+        });
+
+        socket.on('syncCompleted', (data) => {
+            console.log('✅ Sync completed:', data);
+            updateSessionStatus(data.sessionId, data.message, 'ready');
+        });
+
+        socket.on('backgroundSyncUpdate', (data) => {
+            console.log('🔄 Background sync update:', data);
+            updateSessionStatus(data.sessionId, data.message, 'syncing');
+        });
+
+        socket.on('authFailure', (data) => {
+            console.log('❌ Auth failure:', data);
+            updateSessionStatus(data.sessionId, 'Authentication failed', 'error');
+            showNotification('WhatsApp authentication failed', 'error');
+        });
+
+        socket.on('sessionDisconnected', (data) => {
+            console.log('❌ Session disconnected:', data);
+            updateSessionStatus(data.sessionId, 'Disconnected', 'disconnected');
+            showNotification('WhatsApp session disconnected: ' + data.reason, 'warning');
+        });
+
+        socket.on('sessionSuspended', (data) => {
+            console.log('🚫 Session suspended:', data);
+            updateSessionStatus(data.sessionId, 'Suspended', 'suspended');
+            showNotification('Session suspended: ' + data.reason, 'error');
+        });
+
+        socket.on('sessionResumed', (data) => {
+            console.log('🟢 Session resumed:', data);
+            updateSessionStatus(data.sessionId, 'Resumed', 'connected');
+            showNotification('Session resumed successfully!', 'success');
+        });
+
     } catch (error) {
         console.error('Failed to connect to server:', error);
         updateConnectionStatus(false);
@@ -1842,29 +1887,36 @@ function setupSocketDebugging() {
 }
 
 
-// Add to your dashboard.html or dashboard JavaScript
-socket.on('syncStarted', (data) => {
-    console.log('Sync started:', data);
-    updateSessionStatus(data.sessionId, 'Syncing WhatsApp data...', 'syncing');
-});
 
-socket.on('syncProgress', (data) => {
-    console.log('Sync progress:', data);
-    updateSessionStatus(data.sessionId, data.message, 'syncing');
-});
-
-socket.on('syncCompleted', (data) => {
-    console.log('Sync completed:', data);
-    updateSessionStatus(data.sessionId, data.message, 'ready');
-});
 
 function updateSessionStatus(sessionId, message, status) {
+    console.log(`📱 Updating session ${sessionId}: ${message} (${status})`);
+    
+    // Find the session element in the UI
     const sessionElement = document.querySelector(`[data-session-id="${sessionId}"]`);
     if (sessionElement) {
         const statusElement = sessionElement.querySelector('.session-status');
+        const messageElement = sessionElement.querySelector('.session-message');
+        
         if (statusElement) {
-            statusElement.textContent = message;
-            statusElement.className = `session-status ${status}`;
+            statusElement.textContent = status;
+            statusElement.className = `session-status status-${status}`;
+        }
+        
+        if (messageElement) {
+            messageElement.textContent = message;
+        }
+    }
+    
+    // Also update any QR modal if it's showing for this session
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal && qrModal.style.display !== 'none') {
+        const modalSessionId = qrModal.getAttribute('data-session-id');
+        if (modalSessionId === sessionId) {
+            const statusText = qrModal.querySelector('.sync-status');
+            if (statusText) {
+                statusText.textContent = message;
+            }
         }
     }
 }
