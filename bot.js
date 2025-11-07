@@ -346,12 +346,18 @@ async function checkUserSubscriptionStatus(userId) {
             };
         }
 
+        console.log(`🔍 Checking subscription for user: ${userId}`);
+        console.log(`📱 User WhatsApp: ${user.whatsappNumber}`);
+        console.log(`👑 Config Owner: ${CONFIG.owner}`);
+
         // 🔑 OWNER EXEMPTION: Check if this is the bot owner
         const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
         const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
         
+        console.log(`🔍 Owner check - Config: ${ownerNumber}, User: ${userNumber}`);
+        
         if (ownerNumber && userNumber && userNumber === ownerNumber) {
-            console.log(`👑 Owner detected: ${userId} - bypassing subscription check`);
+            console.log(`👑 OWNER DETECTED: ${userId} - bypassing subscription check`);
             return { 
                 isValid: true, 
                 reason: 'Owner privileges',
@@ -383,8 +389,11 @@ async function checkUserSubscriptionStatus(userId) {
             };
         }
 
+        console.log(`⚠️ Regular user - checking subscription status`);
+
         // Regular subscription checks for normal users
         if (!user.subscription || user.subscription.status !== 'active') {
+            console.log(`❌ No active subscription for user: ${userId}`);
             return { 
                 isValid: false, 
                 reason: 'No active subscription',
@@ -418,7 +427,7 @@ async function checkUserSubscriptionStatus(userId) {
         };
         
     } catch (error) {
-        console.error('Error checking subscription status:', error);
+        console.error('❌ Error checking subscription status:', error);
         return { 
             isValid: false, 
             reason: 'System error',
@@ -576,6 +585,13 @@ async function periodicSubscriptionCheck() {
                 if (!session) {
                     console.log(`⚠️ Session ${sessionId} not found in database, removing...`);
                     clients.delete(sessionId);
+                    continue;
+                }
+
+                // 🔑 SKIP CHECK for recently created sessions (give them 5 minutes to set up)
+                const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+                if (sessionAge < 5 * 60 * 1000) { // 5 minutes
+                    console.log(`⏳ Skipping subscription check for new session ${sessionId} (${Math.round(sessionAge/1000)}s old)`);
                     continue;
                 }
 
@@ -1853,16 +1869,16 @@ client.on('disconnected', async (reason) => {
         // Message handler for bot commands
     client.on('message_create', async (message) => {
     try {
-        // 🚫 FIRST: Check subscription status before processing any commands
-        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
+        // // 🚫 FIRST: Check subscription status before processing any commands
+        // const subscriptionCheck = await checkUserSubscriptionStatus(userId);
         
-        if (!subscriptionCheck.isValid) {
-            console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
+        // if (!subscriptionCheck.isValid) {
+        //     console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
             
-            // Suspend the session
-            await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
-            return; // Stop processing
-        }
+        //     // Suspend the session
+        //     await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
+        //     return; // Stop processing
+        // }
 
         // Add more logging
         console.log(`📨 RAW MESSAGE:`, {

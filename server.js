@@ -168,32 +168,43 @@ async function createWhatsAppSession(userId, sessionId) {
 
         // Enhanced event handlers with better error handling
         client.on('ready', async () => {
-            console.log('✅ SERVER: Client ready event received for session:', sessionId);
-            
-            try {
-                await Session.findOneAndUpdate(
-                    { sessionId },
-                    { 
-                        status: 'connected',
-                        phone: client.info.wid.user,
-                        connectedAt: new Date(),
-                        updatedAt: new Date()
-                    }
-                );
-                console.log('✅ SERVER: Session status updated to connected');
-                console.log('📱 SERVER: Phone number:', client.info.wid.user);
-                
-                // Emit success to frontend
-                io.to(`user-${userId}`).emit('sessionReady', {
-                    sessionId,
-                    phone: client.info.wid.user,
-                    message: 'WhatsApp connected successfully!'
-                });
-                
-            } catch (dbError) {
-                console.error('❌ SERVER: Error updating session status:', dbError);
-            }
+    console.log('✅ SERVER: Client ready event received for session:', sessionId);
+    
+    try {
+        // 🔑 IMPORTANT: Save user's WhatsApp number to database
+        const userWhatsAppNumber = client.info.wid.user;
+        console.log(`📱 Saving WhatsApp number for user ${userId}: ${userWhatsAppNumber}`);
+        
+        await User.findByIdAndUpdate(userId, {
+            whatsappNumber: userWhatsAppNumber,
+            phone: userWhatsAppNumber
         });
+        
+        console.log(`✅ WhatsApp number saved for user ${userId}`);
+        
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'connected',
+                phone: userWhatsAppNumber,
+                connectedAt: new Date(),
+                updatedAt: new Date()
+            }
+        );
+        console.log('✅ SERVER: Session status updated to connected');
+        console.log('📱 SERVER: Phone number:', userWhatsAppNumber);
+        
+        // Emit success to frontend
+        io.to(`user-${userId}`).emit('sessionReady', {
+            sessionId,
+            phone: userWhatsAppNumber,
+            message: 'WhatsApp connected successfully!'
+        });
+        
+    } catch (dbError) {
+        console.error('❌ SERVER: Error updating session status:', dbError);
+    }
+});
 
         // Add QR event handler with detailed logging
         client.on('qr', (qr) => {
