@@ -1925,7 +1925,7 @@ if (!client.isSyncComplete) {
         });
 
         // Message handler for bot commands
-   client.on('message_create', async (message) => {
+client.on('message_create', async (message) => {
     try {
         // Add more logging
         console.log(`📨 RAW MESSAGE:`, {
@@ -1951,14 +1951,15 @@ if (!client.isSyncComplete) {
         const selfId = client.info.wid._serialized;
         console.log(`📨 Self ID: ${selfId}`);
         
+        // Check if this is a self-chat message
+        const isSelfMessage = message.from === selfId;
         const isCommand = message.body.startsWith('!');
-        const isSelfChat = message.from === selfId;
-
-        console.log(`📨 Is command: ${isCommand}, Is self-chat: ${isSelfChat}, From me: ${message.fromMe}, From: ${message.from}`);
-
-        // ONLY process commands in self-chat
-        if (!isSelfChat || !isCommand) {
-            if (isCommand && !isSelfChat) {
+        
+        console.log(`📨 Is self message: ${isSelfMessage}, Is command: ${isCommand}, From me: ${message.fromMe}`);
+        
+        // Only process commands in self-chat
+        if (!isSelfMessage || !isCommand) {
+            if (isCommand && !isSelfMessage) {
                 console.log('🚫 Command attempted from non-self-chat, ignoring');
             }
             return;
@@ -1966,10 +1967,11 @@ if (!client.isSyncComplete) {
         
         console.log('🤖 BOT: Processing self-chat command:', message.body);
 
-        // 🔑 SUBSCRIPTION CHECK: Check subscription status before processing any commands
+        // 🔑 SUBSCRIPTION CHECK: Check subscription status before processing commands
+        // BUT SKIP for owner and exempted users
         const subscriptionCheck = await checkUserSubscriptionStatus(userId);
         
-        if (!subscriptionCheck.isValid) {
+        if (!subscriptionCheck.isValid && !subscriptionCheck.isOwner && !subscriptionCheck.isExempted && !subscriptionCheck.isAdmin) {
             console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
             
             // Send subscription warning to self-chat
@@ -1988,6 +1990,9 @@ if (!client.isSyncComplete) {
             await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
             return; // Stop processing
         }
+
+        // Store admin groups for tagall commands
+        let adminGroups = [];
         
         const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
         
@@ -2017,12 +2022,19 @@ if (!client.isSyncComplete) {
                     const user = subscriptionCheck.user;
                     const sub = subscriptionCheck.subscription || {};
                     
-                    const subMessage = `💳 *Subscription Status*\n\n` +
-                        `📋 Plan: ${sub.planType || user.subscription || 'Free'}\n` +
-                        `✅ Status: ${sub.status || user.status || 'Active'}\n` +
-                        `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : (user.subscriptionExpiry ? user.subscriptionExpiry.toLocaleDateString() : 'Never')}\n` +
-                        `💰 Payment: ${sub.paymentStatus || user.paymentStatus || 'Unknown'}\n\n` +
-                        `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
+                    let subMessage = `💳 *Subscription Status*\n\n`;
+                    
+                    if (subscriptionCheck.isOwner) {
+                        subMessage += `👑 *Owner Account*\n✅ Status: Unlimited Access\n📋 Plan: Owner Privileges\n💰 Payment: Not Required\n\n🎯 You have full access to all features!`;
+                    } else if (subscriptionCheck.isExempted) {
+                        subMessage += `🛡️ *Exempted Account*\n✅ Status: Admin Exemption\n📋 Plan: ${user.subscription || 'Free'}\n💰 Payment: Exempted\n\n🎯 You have been exempted from payment requirements!`;
+                    } else {
+                        subMessage += `📋 Plan: ${sub.planType || user.subscription || 'Free'}\n` +
+                            `✅ Status: ${sub.status || user.status || 'Active'}\n` +
+                            `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : (user.subscriptionExpiry ? user.subscriptionExpiry.toLocaleDateString() : 'Never')}\n` +
+                            `💰 Payment: ${sub.paymentStatus || user.paymentStatus || 'Unknown'}\n\n` +
+                            `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
+                    }
                     
                     await client.sendMessage(selfId, subMessage);
                     console.log('✅ Subscription command executed');
@@ -2046,9 +2058,10 @@ if (!client.isSyncComplete) {
 
 *Group Management:*
 • !list - List groups where you are admin
-• !tagall [group_number] - Tag all members in a group
+• !tagall[number] - Tag all members in group [number]
+  Example: !tagall1 (tags all in group 1)
 
-💡 Commands only work in self-chat for security!`;
+💡 All commands work only in self-chat for security!`;
                     
                     await client.sendMessage(selfId, helpText);
                     console.log('✅ Help command executed');
@@ -2090,7 +2103,7 @@ if (!client.isSyncComplete) {
                     
                     const chats = await client.getChats();
                     const groupChats = chats.filter(chat => chat.isGroup);
-                    const adminGroups = [];
+                    adminGroups = []; // Reset admin groups
                     
                     for (const chat of groupChats) {
                         try {
@@ -2105,6 +2118,10 @@ if (!client.isSyncComplete) {
                         }
                     }
                     
+                    // Store admin groups globally for tagall commands
+                    global.userAdminGroups = global.userAdminGroups || new Map();
+                    global.userAdminGroups.set(selfId, adminGroups);
+                    
                     if (!adminGroups.length) {
                         await client.sendMessage(selfId, '❌ You are not admin in any groups');
                         return;
@@ -2116,7 +2133,7 @@ if (!client.isSyncComplete) {
 
                     const listMsg = `📋 *Groups Where You Are Admin (${adminGroups.length})*\n\n` +
                         listText +
-                        `\n\n💡 Use !tagall [number] to tag all members in a group.`;
+                        `\n\n💡 Use !tagall[number] to tag all members in a group.\nExample: !tagall1 for "${adminGroups[0].name}"`;
                     
                     await client.sendMessage(selfId, listMsg);
                     console.log('✅ List command executed');
@@ -2127,11 +2144,74 @@ if (!client.isSyncComplete) {
                 break;
                 
             default:
-                try {
-                    await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
-                    console.log('✅ Unknown command response sent');
-                } catch (error) {
-                    console.error('❌ Unknown command response failed:', error.message);
+                // Check if this is a tagall command with number (e.g., !tagall1, !tagall2)
+                if (command.toLowerCase().startsWith('tagall')) {
+                    try {
+                        const groupNumberMatch = command.match(/tagall(\d+)/);
+                        if (!groupNumberMatch) {
+                            await client.sendMessage(selfId, '❌ Invalid tagall format. Use !tagall[number] (e.g., !tagall1)');
+                            break;
+                        }
+                        
+                        const groupNumber = parseInt(groupNumberMatch[1]) - 1; // Convert to 0-based index
+                        
+                        // Get stored admin groups
+                        global.userAdminGroups = global.userAdminGroups || new Map();
+                        let userGroups = global.userAdminGroups.get(selfId);
+                        
+                        if (!userGroups || userGroups.length === 0) {
+                            await client.sendMessage(selfId, '❌ No admin groups found. Use !list first to load your groups.');
+                            break;
+                        }
+                        
+                        if (groupNumber < 0 || groupNumber >= userGroups.length) {
+                            await client.sendMessage(selfId, `❌ Invalid group number. You have ${userGroups.length} admin groups. Use !list to see them.`);
+                            break;
+                        }
+                        
+                        const targetGroup = userGroups[groupNumber];
+                        await client.sendMessage(selfId, `⚡ Tagging all members in "${targetGroup.name}"...`);
+                        
+                        // Refresh group participants
+                        await targetGroup.fetchParticipants();
+                        
+                        // Verify user is still admin
+                        const userParticipant = targetGroup.participants.find(p => p.id._serialized === selfId);
+                        if (!userParticipant || !userParticipant.isAdmin) {
+                            await client.sendMessage(selfId, `❌ You are no longer admin in "${targetGroup.name}"`);
+                            break;
+                        }
+                        
+                        // Create mention text
+                        let mentions = [];
+                        let mentionText = `📢 *Tagged by admin from self-chat*\n\n`;
+                        
+                        for (const participant of targetGroup.participants) {
+                            if (participant.id._serialized !== selfId) { // Don't tag yourself
+                                mentions.push(participant.id._serialized);
+                                mentionText += `@${participant.id.user} `;
+                            }
+                        }
+                        
+                        // Send the tag message to the group
+                        await client.sendMessage(targetGroup.id._serialized, mentionText, { mentions });
+                        
+                        // Confirm in self-chat
+                        await client.sendMessage(selfId, `✅ Successfully tagged ${mentions.length} members in "${targetGroup.name}"`);
+                        console.log(`✅ TagAll executed for group: ${targetGroup.name}`);
+                        
+                    } catch (error) {
+                        console.error('❌ TagAll command failed:', error.message);
+                        await client.sendMessage(selfId, '❌ Error tagging members. Please try again.');
+                    }
+                } else {
+                    // Unknown command
+                    try {
+                        await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
+                        console.log('✅ Unknown command response sent');
+                    } catch (error) {
+                        console.error('❌ Unknown command response failed:', error.message);
+                    }
                 }
         }
         
@@ -2146,6 +2226,7 @@ if (!client.isSyncComplete) {
         }
     }
 });
+   
 
         // *** THIS IS THE MISSING CRITICAL LINE ***
         console.log('🔄 BOT: Initializing WhatsApp client...');
