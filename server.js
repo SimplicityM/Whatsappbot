@@ -673,6 +673,34 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
     }
 });
 
+// Add this route to server.js
+app.post('/api/webhooks/payment-success', async (req, res) => {
+    try {
+        const { userId, planType, transactionId, expiresAt } = req.body;
+        
+        // Update user subscription
+        const user = await User.findByIdAndUpdate(userId, {
+            'subscription.status': 'active',
+            'subscription.planType': planType,
+            'subscription.paymentStatus': 'paid',
+            'subscription.expiresAt': new Date(expiresAt),
+            'subscription.lastPaymentDate': new Date(),
+            'subscription.nextBillingDate': new Date(expiresAt)
+        }, { new: true });
+
+        if (user) {
+            console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
+            res.json({ success: true, message: 'Payment processed successfully' });
+        } else {
+            res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+    } catch (error) {
+        console.error('❌ Payment webhook error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {

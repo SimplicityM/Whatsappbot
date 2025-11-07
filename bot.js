@@ -333,6 +333,158 @@ async function removeDirectoryWithRetry(dirPath, maxRetries = 3) {
     }
 }
 
+// Subscription validation functions
+async function checkUserSubscriptionStatus(userId) {
+    try {
+        const user = await User.findById(userId).populate('subscription');
+        
+        if (!user) {
+            return { 
+                isValid: false, 
+                reason: 'User not found',
+                action: 'suspend'
+            };
+        }
+
+        // Check if user has an active subscription
+        if (!user.subscription || user.subscription.status !== 'active') {
+            return { 
+                isValid: false, 
+                reason: 'No active subscription',
+                action: 'suspend'
+            };
+        }
+
+        // Check if subscription has expired
+        if (user.subscription.expiresAt && new Date() > user.subscription.expiresAt) {
+            return { 
+                isValid: false, 
+                reason: 'Subscription expired',
+                action: 'suspend',
+                expiredDate: user.subscription.expiresAt
+            };
+        }
+
+        // Check if payment is overdue
+        if (user.subscription.paymentStatus === 'failed' || user.subscription.paymentStatus === 'overdue') {
+            return { 
+                isValid: false, 
+                reason: 'Payment failed or overdue',
+                action: 'suspend'
+            };
+        }
+
+        return { 
+            isValid: true, 
+            subscription: user.subscription,
+            user: user
+        };
+        
+    } catch (error) {
+        console.error('Error checking subscription status:', error);
+        return { 
+            isValid: false, 
+            reason: 'System error',
+            action: 'suspend'
+        };
+    }
+}
+
+// Function to suspend a user's bot session
+async function suspendUserSession(userId, sessionId, reason, client, io) {
+    try {
+        console.log(`🚫 Suspending session ${sessionId} for user ${userId}: ${reason}`);
+        
+        // Send notification to user's self-chat
+        if (client && client.info && client.info.wid) {
+            try {
+                const selfId = client.info.wid._serialized;
+                const suspensionMessage = `🚫 *Bot Suspended*\n\n` +
+                    `Reason: ${reason}\n\n` +
+                    `💳 Please renew your subscription to continue using the bot.\n` +
+                    `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment\n\n` +
+                    `📞 Contact support if you believe this is an error.`;
+                
+                await client.sendMessage(selfId, suspensionMessage);
+                console.log('✅ Suspension notification sent to user');
+            } catch (msgError) {
+                console.error('❌ Failed to send suspension message:', msgError);
+            }
+        }
+
+        // Emit suspension event to frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionSuspended', {
+                sessionId,
+                reason,
+                message: 'Bot suspended due to subscription issues'
+            });
+        }
+
+        // Update session status in database
+        const Session = require('./models/Session');
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'suspended',
+                errorMessage: `Suspended: ${reason}`,
+                suspendedAt: new Date()
+            }
+        );
+
+        // Destroy the client connection
+        if (client) {
+            await client.destroy();
+        }
+
+        // Remove from active clients
+        clients.delete(sessionId);
+        
+        console.log(`✅ Session ${sessionId} successfully suspended`);
+        
+    } catch (error) {
+        console.error('❌ Error suspending user session:', error);
+    }
+}
+
+// Periodic subscription checking function
+async function periodicSubscriptionCheck() {
+    console.log('🔍 Running periodic subscription check...');
+    
+    try {
+        const activeClients = Array.from(clients.entries());
+        
+        for (const [sessionId, client] of activeClients) {
+            try {
+                // Get userId from session
+                const Session = require('./models/Session');
+                const session = await Session.findOne({ sessionId });
+                
+                if (!session) {
+                    console.log(`⚠️ Session ${sessionId} not found in database, removing...`);
+                    clients.delete(sessionId);
+                    continue;
+                }
+
+                // Check subscription status
+                const subscriptionCheck = await checkUserSubscriptionStatus(session.userId);
+                
+                if (!subscriptionCheck.isValid) {
+                    console.log(`🚫 Periodic check: Suspending session ${sessionId} for user ${session.userId}`);
+                    await suspendUserSession(session.userId, sessionId, subscriptionCheck.reason, client, null);
+                }
+                
+            } catch (sessionError) {
+                console.error(`❌ Error checking session ${sessionId}:`, sessionError);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in periodic subscription check:', error);
+    }
+}
+
+
 function createNewSession() {
     try {
         const sessionId = Date.now().toString();
@@ -1534,8 +1686,19 @@ client.on('disconnected', async (reason) => {
         });
 
         // Message handler for bot commands
-       client.on('message_create', async (message) => {
+    client.on('message_create', async (message) => {
     try {
+        // 🚫 FIRST: Check subscription status before processing any commands
+        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
+        
+        if (!subscriptionCheck.isValid) {
+            console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
+            
+            // Suspend the session
+            await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
+            return; // Stop processing
+        }
+
         // Add more logging
         console.log(`📨 RAW MESSAGE:`, {
             body: message.body,
@@ -1588,6 +1751,27 @@ client.on('disconnected', async (reason) => {
                 }
                 break;
                 
+            // 💳 NEW: Add subscription status command
+            case 'subscription':
+            case 'sub':
+                try {
+                    const user = subscriptionCheck.user;
+                    const sub = subscriptionCheck.subscription;
+                    
+                    const subMessage = `💳 *Subscription Status*\n\n` +
+                        `📋 Plan: ${sub.planType || 'Free'}\n` +
+                        `✅ Status: ${sub.status}\n` +
+                        `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : 'Never'}\n` +
+                        `💰 Payment: ${sub.paymentStatus || 'Unknown'}\n\n` +
+                        `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
+                    
+                    await message.reply(subMessage);
+                    console.log('✅ Subscription command executed');
+                } catch (error) {
+                    console.error('❌ Subscription command failed:', error.message);
+                }
+                break;
+                
             case 'help':
                 try {
                     const helpText = `🤖 *WhatsApp Bot Commands*
@@ -1597,6 +1781,7 @@ client.on('disconnected', async (reason) => {
 • !help - Show this help message
 • !status - Show bot status
 • !sessionid - Get your session ID
+• !subscription - Check subscription status
 
 *Group Management:*
 • !list - List groups where you are admin
@@ -1703,6 +1888,27 @@ client.on('disconnected', async (reason) => {
         await client.initialize();
         console.log('✅ BOT: Client initialization completed');
         
+// Start periodic subscription checking
+        const subscriptionCheckInterval = setInterval(async () => {
+            try {
+                const subscriptionCheck = await checkUserSubscriptionStatus(userId);
+                if (!subscriptionCheck.isValid) {
+                    console.log(`🚫 Periodic check: Suspending session ${sessionId} for user ${userId}`);
+                    await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
+                    clearInterval(subscriptionCheckInterval); // Stop checking after suspension
+                }
+            } catch (error) {
+                console.error('❌ Periodic subscription check error:', error);
+            }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+
+        // Clean up interval when client disconnects
+        client.on('disconnected', () => {
+            clearInterval(subscriptionCheckInterval);
+            console.log('🧹 Cleared subscription check interval for disconnected session');
+        });
+        // 👆 ADD ALL THE ABOVE CODE HERE (before line 1706)
+        
         return client;
 
     } catch (error) {
@@ -1711,6 +1917,8 @@ client.on('disconnected', async (reason) => {
         throw error;
     }
 }
+        
+  
 
 // Add this function to handle background sync
 async function handleBackgroundSync(client, sessionId, userId, io) {
@@ -1756,3 +1964,10 @@ module.exports = {
     clients,
     userSessions
 }
+
+
+// Start global periodic subscription checking (add at the very end)
+setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
+
+// Also check on startup
+setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup
