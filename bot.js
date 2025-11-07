@@ -1892,6 +1892,12 @@ client.on('disconnected', async (reason) => {
         message: 'WhatsApp session disconnected'
     });
     
+    // Add after client.info check
+if (!client.isSyncComplete) {
+    console.log('⏳ Bot sync not complete, ignoring message');
+    return;
+}
+
     // Remove from clients map immediately
     clients.delete(sessionId);
     
@@ -1919,19 +1925,8 @@ client.on('disconnected', async (reason) => {
         });
 
         // Message handler for bot commands
-    client.on('message_create', async (message) => {
+   client.on('message_create', async (message) => {
     try {
-        // // 🚫 FIRST: Check subscription status before processing any commands
-        // const subscriptionCheck = await checkUserSubscriptionStatus(userId);
-        
-        // if (!subscriptionCheck.isValid) {
-        //     console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
-            
-        //     // Suspend the session
-        //     await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
-        //     return; // Stop processing
-        // }
-
         // Add more logging
         console.log(`📨 RAW MESSAGE:`, {
             body: message.body,
@@ -1947,21 +1942,53 @@ client.on('disconnected', async (reason) => {
             return;
         }
 
+        // Check if sync is complete
+        if (!client.isSyncComplete) {
+            console.log('⏳ Bot sync not complete, ignoring message');
+            return;
+        }
+
+        // 🔑 SUBSCRIPTION CHECK: Check subscription status before processing any commands
+        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
+        
+        if (!subscriptionCheck.isValid) {
+            console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
+            
+            // Send subscription warning to user
+            const subscriptionWarning = `🚫 *Subscription Required*\n\n` +
+                `Reason: ${subscriptionCheck.reason}\n\n` +
+                `💳 Please renew your subscription to continue using the bot.\n` +
+                `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
+            
+            try {
+                const selfId = client.info.wid._serialized;
+                if (message.from === selfId) {
+                    await client.sendMessage(selfId, subscriptionWarning);
+                } else {
+                    await message.reply(subscriptionWarning);
+                }
+            } catch (msgError) {
+                console.error('❌ Failed to send subscription warning:', msgError);
+            }
+            
+            // Suspend the session
+            await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
+            return; // Stop processing
+        }
+
         const selfId = client.info.wid._serialized;
         console.log(`📨 Self ID: ${selfId}`);
         
-        // Check if this is a self-chat message
-        const isSelfMessage = message.from === selfId || message.to === selfId;
         const isCommand = message.body.startsWith('!');
-        
-        console.log(`📨 Is self message: ${isSelfMessage}, Is command: ${isCommand}, From me: ${message.fromMe}`);
-        
-        // Only process commands in self-chat
-        if (!isSelfMessage || !isCommand) {
+
+        console.log(`📨 Is command: ${isCommand}, From me: ${message.fromMe}, From: ${message.from}`);
+
+        // Process commands from any chat (including self-chat)
+        if (!isCommand) {
             return;
         }
         
-        console.log('🤖 BOT: Processing self-chat command:', message.body);
+        console.log('🤖 BOT: Processing command:', message.body);
         
         const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
         
@@ -1977,31 +2004,47 @@ client.on('disconnected', async (reason) => {
         switch (command.toLowerCase()) {
             case 'ping':
                 try {
-                    await message.reply('🏓 Pong! Bot is working correctly.');
+                    if (message.from === selfId) {
+                        // Self-chat - use direct send method
+                        await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
+                    } else {
+                        // Other chats - use reply
+                        await message.reply('🏓 Pong! Bot is working correctly.');
+                    }
                     console.log('✅ Ping command executed');
                 } catch (error) {
                     console.error('❌ Ping command failed:', error.message);
                 }
                 break;
                 
-            // 💳 NEW: Add subscription status command
             case 'subscription':
             case 'sub':
                 try {
+                    // Use the subscription data from the check above
                     const user = subscriptionCheck.user;
-                    const sub = subscriptionCheck.subscription;
+                    const sub = subscriptionCheck.subscription || {};
                     
                     const subMessage = `💳 *Subscription Status*\n\n` +
-                        `📋 Plan: ${sub.planType || 'Free'}\n` +
-                        `✅ Status: ${sub.status}\n` +
-                        `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : 'Never'}\n` +
-                        `💰 Payment: ${sub.paymentStatus || 'Unknown'}\n\n` +
+                        `📋 Plan: ${sub.planType || user.subscription || 'Free'}\n` +
+                        `✅ Status: ${sub.status || user.status || 'Active'}\n` +
+                        `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : (user.subscriptionExpiry ? user.subscriptionExpiry.toLocaleDateString() : 'Never')}\n` +
+                        `💰 Payment: ${sub.paymentStatus || user.paymentStatus || 'Unknown'}\n\n` +
                         `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
                     
-                    await message.reply(subMessage);
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, subMessage);
+                    } else {
+                        await message.reply(subMessage);
+                    }
                     console.log('✅ Subscription command executed');
                 } catch (error) {
                     console.error('❌ Subscription command failed:', error.message);
+                    const errorMsg = '❌ Error checking subscription status';
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, errorMsg);
+                    } else {
+                        await message.reply(errorMsg);
+                    }
                 }
                 break;
                 
@@ -2022,7 +2065,11 @@ client.on('disconnected', async (reason) => {
 
 💡 Bot is working! Try !ping to test.`;
                     
-                    await message.reply(helpText);
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, helpText);
+                    } else {
+                        await message.reply(helpText);
+                    }
                     console.log('✅ Help command executed');
                 } catch (error) {
                     console.error('❌ Help command failed:', error.message);
@@ -2039,7 +2086,12 @@ client.on('disconnected', async (reason) => {
 📞 Phone: ${client.info.wid.user}
 
 🟢 All systems working!`;
-                    await message.reply(statusMsg);
+                    
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, statusMsg);
+                    } else {
+                        await message.reply(statusMsg);
+                    }
                     console.log('✅ Status command executed');
                 } catch (error) {
                     console.error('❌ Status command failed:', error.message);
@@ -2048,7 +2100,12 @@ client.on('disconnected', async (reason) => {
         
             case 'sessionid':
                 try {
-                    await message.reply(`📱 Your session ID: \`${sessionId}\``);
+                    const sessionMsg = `📱 Your session ID: \`${sessionId}\``;
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, sessionMsg);
+                    } else {
+                        await message.reply(sessionMsg);
+                    }
                     console.log('✅ SessionID command executed');
                 } catch (error) {
                     console.error('❌ SessionID command failed:', error.message);
@@ -2057,7 +2114,12 @@ client.on('disconnected', async (reason) => {
 
             case 'list':
                 try {
-                    await message.reply('⚡ Fetching your admin groups...');
+                    const loadingMsg = '⚡ Fetching your admin groups...';
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, loadingMsg);
+                    } else {
+                        await message.reply(loadingMsg);
+                    }
                     
                     const chats = await client.getChats();
                     const groupChats = chats.filter(chat => chat.isGroup);
@@ -2077,29 +2139,49 @@ client.on('disconnected', async (reason) => {
                     }
                     
                     if (!adminGroups.length) {
-                        return message.reply('❌ You are not admin in any groups');
+                        const noGroupsMsg = '❌ You are not admin in any groups';
+                        if (message.from === selfId) {
+                            await client.sendMessage(selfId, noGroupsMsg);
+                        } else {
+                            await message.reply(noGroupsMsg);
+                        }
+                        return;
                     }
 
                     const listText = adminGroups
                         .map((g, i) => `${i + 1}. ${g.name} (${g.participants?.length || 0} members)`)
                         .join('\n');
 
-                    await message.reply(
-                        `📋 *Groups Where You Are Admin (${adminGroups.length})*\n\n` +
+                    const listMsg = `📋 *Groups Where You Are Admin (${adminGroups.length})*\n\n` +
                         listText +
-                        `\n\n💡 Use !tagall [number] to tag all members in a group.`
-                    );
+                        `\n\n💡 Use !tagall [number] to tag all members in a group.`;
+                    
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, listMsg);
+                    } else {
+                        await message.reply(listMsg);
+                    }
                     
                     console.log('✅ List command executed');
                 } catch (error) {
                     console.error('❌ List command failed:', error.message);
-                    await message.reply('❌ Error fetching groups. Please try again.');
+                    const errorMsg = '❌ Error fetching groups. Please try again.';
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, errorMsg);
+                    } else {
+                        await message.reply(errorMsg);
+                    }
                 }
                 break;
                 
             default:
                 try {
-                    await message.reply(`❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
+                    const unknownMsg = `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`;
+                    if (message.from === selfId) {
+                        await client.sendMessage(selfId, unknownMsg);
+                    } else {
+                        await message.reply(unknownMsg);
+                    }
                     console.log('✅ Unknown command response sent');
                 } catch (error) {
                     console.error('❌ Unknown command response failed:', error.message);
@@ -2109,7 +2191,12 @@ client.on('disconnected', async (reason) => {
     } catch (error) {
         console.error('❌ BOT: Error processing message:', error);
         try {
-            await message.reply('❌ Sorry, there was an error. Please try again.');
+            const errorMsg = '❌ Sorry, there was an error. Please try again.';
+            if (client.info && client.info.wid && message.from === client.info.wid._serialized) {
+                await client.sendMessage(client.info.wid._serialized, errorMsg);
+            } else {
+                await message.reply(errorMsg);
+            }
         } catch (replyError) {
             console.error('❌ Could not send error reply:', replyError.message);
         }
