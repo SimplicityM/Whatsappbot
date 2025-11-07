@@ -726,6 +726,104 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
     }
 });
 
+// Admin route to exempt users from payment
+app.post('/api/admin/exempt-user', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId, reason, exempt } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        const user = await User.findByIdAndUpdate(userId, {
+            exemptFromPayment: exempt === true,
+            exemptedBy: exempt === true ? req.user.id : null,
+            exemptedAt: exempt === true ? new Date() : null,
+            exemptionReason: exempt === true ? reason : null
+        }, { new: true });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        console.log(`🛡️ Admin ${req.user.email} ${exempt ? 'exempted' : 'removed exemption for'} user ${userId}`);
+
+        res.json({
+            success: true,
+            message: `User ${exempt ? 'exempted from' : 'exemption removed from'} payment requirements`,
+            user: {
+                id: user._id,
+                email: user.email,
+                exemptFromPayment: user.exemptFromPayment,
+                exemptionReason: user.exemptionReason
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Admin exemption error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating user exemption'
+        });
+    }
+});
+
+// Admin route to get all users with exemption status
+app.get('/api/admin/users-exemption-status', authenticateAdmin, async (req, res) => {
+    try {
+        const users = await User.find({}, {
+            email: 1,
+            whatsappNumber: 1,
+            exemptFromPayment: 1,
+            exemptionReason: 1,
+            exemptedAt: 1,
+            subscription: 1,
+            createdAt: 1
+        }).populate('exemptedBy', 'email');
+
+        res.json({
+            success: true,
+            data: { users }
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching users exemption status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching users'
+        });
+    }
+});
+
+// Admin route to get owner information
+app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
+    try {
+        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        
+        res.json({
+            success: true,
+            data: {
+                ownerNumber: ownerNumber,
+                configOwner: CONFIG.owner,
+                isOwnerConfigured: !!ownerNumber
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching owner info:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching owner information'
+        });
+    }
+});
+
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {

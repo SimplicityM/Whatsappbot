@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign Up | AutoPay</title>
+    <title>Admin | AutoPay</title>
    <link rel="stylesheet" href="CSS/admin.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -76,6 +76,14 @@
                     <span>Settings</span>
                 </a>
             </li>
+            <!-- 🔑 ADD THIS NEW NAV ITEM -->
+            <li class="nav-item">
+                <a href="#exemptions" class="nav-link" data-section="exemptions">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Payment Exemptions</span>
+                </a>
+            </li>
+    
         </ul>
     </nav>
 
@@ -453,6 +461,78 @@
                     </div>
 
                     <!-- Other settings tabs... -->
+                </div>
+            </div>
+        </section>
+          <!-- Payment Exemptions Section -->
+        <section id="exemptions-section" class="content-section">
+            <div class="section-header">
+                <h2>🛡️ Payment Exemptions</h2>
+                <button class="btn-primary" onclick="refreshExemptions()">
+                    <i class="fas fa-sync"></i>
+                    Refresh
+                </button>
+            </div>
+
+            <!-- Owner Information -->
+            <div class="owner-info-card">
+                <h3>👑 Bot Owner</h3>
+                <div class="owner-details">
+                    <p><strong>Owner Number:</strong> <span id="ownerNumber">Loading...</span></p>
+                    <p><strong>Status:</strong> <span id="ownerStatus">Loading...</span></p>
+                    <p><strong>Privileges:</strong> <span class="privilege-badge">Unlimited Access</span></p>
+                </div>
+            </div>
+            
+            <!-- User Exemption Controls -->
+            <div class="exemption-controls">
+                <h3>User Payment Exemptions</h3>
+                
+                <!-- Exempt User Form -->
+                <div class="exempt-form-card">
+                    <h4>Grant/Remove Exemption</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exemptUserId">User ID</label>
+                            <input type="text" id="exemptUserId" placeholder="Enter User ID">
+                        </div>
+                        <div class="form-group">
+                            <label for="exemptReason">Reason for Exemption</label>
+                            <input type="text" id="exemptReason" placeholder="e.g., VIP Customer, Staff Member">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn-success" onclick="exemptUser(true)">
+                            <i class="fas fa-shield-alt"></i>
+                            Grant Exemption
+                        </button>
+                        <button class="btn-danger" onclick="exemptUser(false)">
+                            <i class="fas fa-shield-alt"></i>
+                            Remove Exemption
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Users List with Exemption Status -->
+                <div class="users-exemption-list">
+                    <h4>All Users - Exemption Status</h4>
+                    <div class="table-container">
+                        <table id="usersExemptionTable" class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>WhatsApp Number</th>
+                                    <th>Exempted</th>
+                                    <th>Reason</th>
+                                    <th>Exempted Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersExemptionTableBody">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>

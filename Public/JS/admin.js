@@ -950,3 +950,111 @@ socket.on('userSessions', (sessions) => {
     // Only show this user's sessions
     renderUserSessions(sessions);
 });
+
+
+// Add this to your admin dashboard JS file
+async function loadOwnerInfo() {
+    try {
+        const response = await fetch('/api/admin/owner-info', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('ownerNumber').textContent = result.data.ownerNumber || 'Not configured';
+            document.getElementById('ownerStatus').textContent = result.data.isOwnerConfigured ? '✅ Configured' : '❌ Not configured';
+        }
+    } catch (error) {
+        console.error('Error loading owner info:', error);
+    }
+}
+
+async function loadUsersExemptionStatus() {
+    try {
+        const response = await fetch('/api/admin/users-exemption-status', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const tbody = document.getElementById('usersExemptionTableBody');
+            tbody.innerHTML = '';
+            
+            result.data.users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${user.email}</td>
+                    <td>${user.whatsappNumber || 'N/A'}</td>
+                    <td>${user.exemptFromPayment ? '✅ Yes' : '❌ No'}</td>
+                    <td>${user.exemptionReason || 'N/A'}</td>
+                    <td>${user.exemptedAt ? new Date(user.exemptedAt).toLocaleDateString() : 'N/A'}</td>
+                    <td>
+                        <button onclick="exemptUserById('${user._id}', ${!user.exemptFromPayment})">
+                            ${user.exemptFromPayment ? 'Remove Exemption' : 'Exempt User'}
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading users exemption status:', error);
+    }
+}
+
+async function exemptUser(exempt) {
+    const userId = document.getElementById('exemptUserId').value;
+    const reason = document.getElementById('exemptReason').value;
+    
+    if (!userId) {
+        alert('Please enter a User ID');
+        return;
+    }
+    
+    await exemptUserById(userId, exempt, reason);
+}
+
+async function exemptUserById(userId, exempt, reason = null) {
+    try {
+        const response = await fetch('/api/admin/exempt-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+            },
+            body: JSON.stringify({
+                userId,
+                exempt,
+                reason: reason || (exempt ? 'Admin exemption' : null)
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            loadUsersExemptionStatus(); // Refresh the table
+            
+            // Clear form
+            document.getElementById('exemptUserId').value = '';
+            document.getElementById('exemptReason').value = '';
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error exempting user:', error);
+        alert('Error exempting user');
+    }
+}
+
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadOwnerInfo();
+    loadUsersExemptionStatus();
+});

@@ -336,7 +336,7 @@ async function removeDirectoryWithRetry(dirPath, maxRetries = 3) {
 // Subscription validation functions
 async function checkUserSubscriptionStatus(userId) {
     try {
-        const user = await User.findById(userId).populate('subscription');
+        const user = await User.findById(userId);
         
         if (!user) {
             return { 
@@ -346,7 +346,44 @@ async function checkUserSubscriptionStatus(userId) {
             };
         }
 
-        // Check if user has an active subscription
+        // 🔑 OWNER EXEMPTION: Check if this is the bot owner
+        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
+        
+        if (ownerNumber && userNumber && userNumber === ownerNumber) {
+            console.log(`👑 Owner detected: ${userId} - bypassing subscription check`);
+            return { 
+                isValid: true, 
+                reason: 'Owner privileges',
+                isOwner: true,
+                user: user
+            };
+        }
+
+        // 🔑 ADMIN EXEMPTION: Check if user is exempted by admin
+        if (user.exemptFromPayment === true) {
+            console.log(`🛡️ Payment exemption detected for user: ${userId}`);
+            return { 
+                isValid: true, 
+                reason: 'Admin exemption',
+                isExempted: true,
+                user: user
+            };
+        }
+
+        // 🔑 ADMIN USERS: Check if user is a secondary admin
+        const userPhone = user.whatsappNumber || user.phone;
+        if (userPhone && isSecondaryAdmin(userPhone)) {
+            console.log(`👨‍💼 Secondary admin detected: ${userId} - bypassing subscription check`);
+            return { 
+                isValid: true, 
+                reason: 'Admin privileges',
+                isAdmin: true,
+                user: user
+            };
+        }
+
+        // Regular subscription checks for normal users
         if (!user.subscription || user.subscription.status !== 'active') {
             return { 
                 isValid: false, 
