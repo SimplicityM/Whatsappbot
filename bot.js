@@ -1542,48 +1542,40 @@ async function createBotSession(userId, sessionId, io) {
         console.log('📱 Session ID:', sessionId);
         console.log('🔍 BOT: io object exists?', !!io);
 
-        const client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `user-${userId}-${sessionId}`,
-                dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
-            }),
-            puppeteer: {
-                ...clientConfig.puppeteer,
-                args: [
-                    ...clientConfig.puppeteer.args,
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    // Add Windows-specific cleanup optimizations
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-extensions',
-                    '--disable-plugins',
-                    '--no-first-run'
-                ],
-                // Add these options for better cleanup on Windows
-                handleSIGINT: false,
-                handleSIGTERM: false,
-            },
-            // Add these sync optimization options
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 5000,
-            
-            // Skip initial sync to speed up connection
-            syncFullHistory: false,
-            markOnlineOnConnect: false,
-            
-            // Reduce chat loading timeout
-            chatLoadingTimeoutMs: 15000, // Reduced from default 60000
-            
-            // Optimize session loading
-            sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
-            
-            // Keep existing config values
-            qrMaxRetries: clientConfig.qrMaxRetries,
-            authTimeoutMs: clientConfig.authTimeoutMs,
-            restartOnAuthFail: clientConfig.restartOnAuthFail
-        });
+        const clientConfig = {
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-field-trial-config',
+            '--disable-ipc-flooding-protection'
+        ],
+        defaultViewport: null
+    },
+    qrMaxRetries: 10, // Increased from 3
+    authTimeoutMs: 300000, // Increased to 5 minutes (from 2 minutes)
+    restartOnAuthFail: true,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 10000, // Increased from 5000
+    chatLoadingTimeoutMs: 30000, // Increased from 15000
+    
+    // Add these new options
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    sessionBackupSyncIntervalMs: 300000
+};
 
         // Store client in existing maps
         clients.set(sessionId, client);
@@ -1672,6 +1664,18 @@ async function createBotSession(userId, sessionId, io) {
         // Ready event handler
       client.on('ready', async () => {
     console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+    console.log('📱 BOT: Phone number:', client.info.wid.user);
+    console.log('📱 BOT: Full ID:', client.info.wid._serialized);
+    console.log('🔍 BOT: Client state after ready:', await client.getState());
+    
+    // Test self-chat immediately
+    try {
+        const selfId = client.info.wid._serialized;
+        await client.sendMessage(selfId, "🔧 DEBUG: Bot ready event triggered");
+        console.log('✅ DEBUG: Self-chat test message sent from ready event');
+    } catch (debugError) {
+        console.error('❌ DEBUG: Self-chat test failed in ready event:', debugError.message);
+    }
     
     // Simple client info check with fallback
     if (!client.info || !client.info.wid) {
@@ -1777,7 +1781,7 @@ async function createBotSession(userId, sessionId, io) {
     });
     
     console.log('✅ BOT: Session setup completed');
-});
+        });
         // Disconnected event handler
         client.on('disconnected', async (reason) => {
             console.log('❌ BOT: Client disconnected:', reason);
@@ -1952,6 +1956,41 @@ async function createBotSession(userId, sessionId, io) {
     }
 }    
   
+// Add these debug event listeners right after client creation
+client.on('authenticated', () => {
+    console.log('🔐 BOT: Client authenticated successfully');
+});
+
+client.on('auth_failure', (msg) => {
+    console.log('❌ BOT: Authentication failed:', msg);
+});
+
+client.on('loading_screen', (percent, message) => {
+    console.log(`📱 DEBUG: Loading screen: ${percent}% ${message}`);
+    if (percent === 100) {
+        console.log('✅ DEBUG: Loading appears complete at 100%');
+    }
+});
+
+client.on('change_state', (state) => {
+    console.log('🔄 BOT: State changed to:', state);
+});
+
+client.on('auth_failure', (msg) => {
+    console.log('❌ BOT: Authentication failed:', msg);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('❌ BOT: Client disconnected:', reason);
+});
+
+client.on('loading_screen', (percent, message) => {
+    console.log(`📱 DEBUG: Loading screen: ${percent}% ${message}`);
+    if (percent === 100) {
+        console.log('✅ DEBUG: Loading appears complete at 100%');
+    }
+});
+
 
 // Add this function to handle background sync
 async function handleBackgroundSync(client, sessionId, userId, io) {
