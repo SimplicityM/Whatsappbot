@@ -1670,56 +1670,114 @@ async function createBotSession(userId, sessionId, io) {
         });
 
         // Ready event handler
-        client.on('ready', async () => {
-            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+      client.on('ready', async () => {
+    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+    
+    // Simple client info check with fallback
+    if (!client.info || !client.info.wid) {
+        console.log('⚠️ Client info missing, creating fallback');
+        client.info = {
+            wid: {
+                _serialized: '2347067012884@c.us',
+                user: '2347067012884'
+            },
+            pushname: 'Bot Owner'
+        };
+    }
+    
+    const selfId = client.info.wid._serialized;
+    console.log('📱 Self ID:', selfId);
+    
+    // 🔑 WAIT FOR SYNC TO COMPLETE
+    console.log('⏳ Waiting for WhatsApp sync to complete...');
+    
+    let syncComplete = false;
+    let syncAttempts = 0;
+    const maxSyncAttempts = 10;
+    
+    while (!syncComplete && syncAttempts < maxSyncAttempts) {
+        syncAttempts++;
+        console.log(`🔄 Sync check attempt ${syncAttempts}/${maxSyncAttempts}`);
+        
+        try {
+            // Test if we can get chats (indicates sync is complete)
+            const chats = await Promise.race([
+                client.getChats(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Chat loading timeout')), 8000)
+                )
+            ]);
             
-            // Simple client info check with fallback
-            if (!client.info || !client.info.wid) {
-                console.log('⚠️ Client info missing, creating fallback');
-                client.info = {
-                    wid: {
-                        _serialized: '2347067012884@c.us',
-                        user: '2347067012884'
-                    },
-                    pushname: 'Bot Owner'
-                };
+            if (chats && chats.length >= 0) {
+                console.log(`✅ Sync complete - ${chats.length} chats loaded`);
+                syncComplete = true;
             }
             
-            const selfId = client.info.wid._serialized;
-            console.log('📱 Self ID:', selfId);
+        } catch (error) {
+            console.log(`⏳ Sync not ready yet (attempt ${syncAttempts}): ${error.message}`);
             
-            // Send welcome messages
-            try {
-                console.log('📤 Sending welcome messages...');
-                
-                await client.sendMessage(selfId, '🤖 *Bot Connected Successfully!*');
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                await client.sendMessage(selfId, '⚡ Ready for commands! Type !ping to test');
-                
-                console.log('✅ Welcome messages sent!');
-                
-            } catch (error) {
-                console.error('❌ Welcome message failed:', error.message);
+            if (syncAttempts < maxSyncAttempts) {
+                console.log('⏳ Waiting 8 seconds before retry...');
+                await new Promise(resolve => setTimeout(resolve, 8000));
             }
+        }
+    }
+    
+    if (!syncComplete) {
+        console.log('⚠️ Sync timeout, but proceeding with message attempts...');
+    }
+    
+    // Send welcome messages with retry logic
+    let welcomeSuccess = false;
+    let welcomeAttempts = 0;
+    const maxWelcomeAttempts = 5;
+    
+    while (!welcomeSuccess && welcomeAttempts < maxWelcomeAttempts) {
+        welcomeAttempts++;
+        console.log(`📤 Welcome message attempt ${welcomeAttempts}/${maxWelcomeAttempts}`);
+        
+        try {
+            // Test message first
+            await client.sendMessage(selfId, '🔄 Testing connection...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
-            // Set flags
-            client.isSyncComplete = true;
-            userSessions.set(selfId, sessionId);
+            // Send actual welcome messages
+            await client.sendMessage(selfId, '🤖 *Bot Connected Successfully!*');
+            await new Promise(resolve => setTimeout(resolve, 1500));
             
-            // Emit ready to frontend
-            io.to(`user-${userId}`).emit('sessionReady', {
-                sessionId,
-                phone: client.info.wid.user,
-                message: 'WhatsApp bot is fully operational!'
-            });
+            await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
+            await new Promise(resolve => setTimeout(resolve, 1500));
             
-            console.log('✅ BOT: Session setup completed');
-        });
-
+            await client.sendMessage(selfId, '⚡ Ready for commands! Type !ping to test');
+            
+            console.log('✅ Welcome messages sent successfully!');
+            welcomeSuccess = true;
+            
+        } catch (error) {
+            console.error(`❌ Welcome attempt ${welcomeAttempts} failed:`, error.message);
+            
+            if (welcomeAttempts < maxWelcomeAttempts) {
+                console.log(`⏳ Waiting 10 seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            } else {
+                console.error('❌ All welcome attempts failed - but bot is ready for commands');
+            }
+        }
+    }
+    
+    // Set flags
+    client.isSyncComplete = true;
+    userSessions.set(selfId, sessionId);
+    
+    // Emit ready to frontend
+    io.to(`user-${userId}`).emit('sessionReady', {
+        sessionId,
+        phone: client.info.wid.user,
+        message: 'WhatsApp bot is ready!'
+    });
+    
+    console.log('✅ BOT: Session setup completed');
+});
         // Disconnected event handler
         client.on('disconnected', async (reason) => {
             console.log('❌ BOT: Client disconnected:', reason);
