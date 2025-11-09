@@ -1542,52 +1542,95 @@ async function createBotSession(userId, sessionId, io) {
         console.log('📱 Session ID:', sessionId);
         console.log('🔍 BOT: io object exists?', !!io);
 
-            const client = new Client({
-    authStrategy: new LocalAuth({ 
-        clientId: `user-${userId}-${sessionId}`,
-        dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
-    }),
-    puppeteer: {
-        ...clientConfig.puppeteer,
-        args: [
-            ...clientConfig.puppeteer.args,
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-            // Add Windows-specific cleanup optimizations
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-extensions',
-            '--disable-plugins',
-            '--no-first-run'
-        ],
-        // Add these options for better cleanup on Windows
-        handleSIGINT: false,
-        handleSIGTERM: false,
-    },
-    // Add these sync optimization options
-    takeoverOnConflict: true,
-    takeoverTimeoutMs: 5000,
-    
-    // Skip initial sync to speed up connection
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-    
-    // Reduce chat loading timeout
-    chatLoadingTimeoutMs: 15000, // Reduced from default 60000
-    
-    // Optimize session loading
-    sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
-    
-    // Keep existing config values
-    qrMaxRetries: clientConfig.qrMaxRetries,
-    authTimeoutMs: clientConfig.authTimeoutMs,
-    restartOnAuthFail: clientConfig.restartOnAuthFail
-});
+        const client = new Client({
+            authStrategy: new LocalAuth({ 
+                clientId: `user-${userId}-${sessionId}`,
+                dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
+            }),
+            puppeteer: {
+                ...clientConfig.puppeteer,
+                args: [
+                    ...clientConfig.puppeteer.args,
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    // Add Windows-specific cleanup optimizations
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--no-first-run'
+                ],
+                // Add these options for better cleanup on Windows
+                handleSIGINT: false,
+                handleSIGTERM: false,
+            },
+            // Add these sync optimization options
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 5000,
+            
+            // Skip initial sync to speed up connection
+            syncFullHistory: false,
+            markOnlineOnConnect: false,
+            
+            // Reduce chat loading timeout
+            chatLoadingTimeoutMs: 15000, // Reduced from default 60000
+            
+            // Optimize session loading
+            sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
+            
+            // Keep existing config values
+            qrMaxRetries: clientConfig.qrMaxRetries,
+            authTimeoutMs: clientConfig.authTimeoutMs,
+            restartOnAuthFail: clientConfig.restartOnAuthFail
+        });
+
         // Store client in existing maps
         clients.set(sessionId, client);
 
-        // QR Code event with enhanced debugging
+        // Loading and authentication handlers
+        let loadingComplete = false;
+        let authComplete = false;
+        
+        client.on('loading_screen', (percent, message) => {
+            console.log('📱 DEBUG: Loading screen:', percent + '%', message);
+            
+            // If we reach 95% or higher, consider loading complete
+            if (percent >= 95 && !loadingComplete) {
+                loadingComplete = true;
+                console.log('✅ DEBUG: Loading appears complete at', percent + '%');
+                
+                // Wait a bit then force ready if not already fired
+                setTimeout(() => {
+                    if (authComplete && !client.readyFired) {
+                        console.log('🔧 FORCE: Triggering ready event manually');
+                        client.readyFired = true;
+                        client.emit('ready');
+                    }
+                }, 3000);
+            }
+        });
+
+        client.on('authenticated', (session) => {
+            console.log('🔑 DEBUG: Authentication event fired!');
+            console.log('📱 DEBUG: Session data received');
+            console.log('⏳ DEBUG: Waiting for ready event...');
+            authComplete = true;
+            
+            // Also set a backup timer
+            setTimeout(() => {
+                if (!client.readyFired && loadingComplete) {
+                    console.log('🔧 BACKUP: Forcing ready after 10 seconds');
+                    client.readyFired = true;
+                    client.emit('ready');
+                }
+            }, 10000);
+        });
+
+        client.on('change_state', (state) => {
+            console.log('📱 DEBUG: State changed to:', state);
+        });
+
         client.on('qr', async (qr) => {
             console.log('📱 BOT: QR CODE GENERATED!');
             console.log('📱 Session:', sessionId);
@@ -1626,294 +1669,84 @@ async function createBotSession(userId, sessionId, io) {
             console.log('✅ BOT: QR code also broadcasted to all sockets');
         });
 
-        // In bot.js, update the ready event handler (around line 1236)
-   client.on('ready', async () => {
-    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-    
-    // Emit sync start notification
-    io.to(`user-${userId}`).emit('syncStarted', {
-        sessionId,
-        message: 'WhatsApp connected! Syncing data...',
-        stage: 'syncing'
-    });
-    
-    try {
-        // Wait for authentication to be fully complete
-        const checkAuthState = async (attempts = 3) => {
-            try {
-                const state = await client.getState();
-                console.log(`🔍 AUTH STATE CHECK (attempt ${4-attempts}):`, { 
-                    state, 
-                    sessionId,
-                    hasInfo: !!client.info 
-                });
-                
-                if (state === 'CONNECTED' && client.info && client.info.wid) {
-                    console.log("✅ CLIENT FULLY AUTHENTICATED");
-                    return true;
-                }
-                
-                if (attempts <= 0) {
-                    console.error(`❌ Failed to verify authentication after 3 attempts (state: ${state})`);
-                    return false;
-                }
-                
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return checkAuthState(attempts - 1);
-            } catch (error) {
-                console.error(`❌ Error checking auth state: ${error.message}`);
-                if (attempts <= 0) return false;
-                
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return checkAuthState(attempts - 1);
+        // Ready event handler
+        client.on('ready', async () => {
+            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+            
+            // Simple client info check with fallback
+            if (!client.info || !client.info.wid) {
+                console.log('⚠️ Client info missing, creating fallback');
+                client.info = {
+                    wid: {
+                        _serialized: '2347067012884@c.us',
+                        user: '2347067012884'
+                    },
+                    pushname: 'Bot Owner'
+                };
             }
-        };
-
-        const isAuthenticated = await checkAuthState();
-        
-        if (!isAuthenticated) {
-            console.error(`❌ Client ${sessionId} not properly authenticated`);
-            io.to(`user-${userId}`).emit('authFailure', {
+            
+            const selfId = client.info.wid._serialized;
+            console.log('📱 Self ID:', selfId);
+            
+            // Send welcome messages
+            try {
+                console.log('📤 Sending welcome messages...');
+                
+                await client.sendMessage(selfId, '🤖 *Bot Connected Successfully!*');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                await client.sendMessage(selfId, '⚡ Ready for commands! Type !ping to test');
+                
+                console.log('✅ Welcome messages sent!');
+                
+            } catch (error) {
+                console.error('❌ Welcome message failed:', error.message);
+            }
+            
+            // Set flags
+            client.isSyncComplete = true;
+            userSessions.set(selfId, sessionId);
+            
+            // Emit ready to frontend
+            io.to(`user-${userId}`).emit('sessionReady', {
                 sessionId,
-                message: 'Authentication failed - please try again'
+                phone: client.info.wid.user,
+                message: 'WhatsApp bot is fully operational!'
             });
-            return;
-        }
-
-        // 🔑 KEY CHANGE: Wait for WhatsApp sync to complete
-        console.log('⏳ Waiting for WhatsApp sync to complete...');
-        
-        // Emit sync progress
-        io.to(`user-${userId}`).emit('syncProgress', {
-            sessionId,
-            message: 'Syncing with WhatsApp servers...',
-            stage: 'syncing_data'
+            
+            console.log('✅ BOT: Session setup completed');
         });
 
-        // Wait for sync to complete by checking if we can successfully get chats
-        let syncComplete = false;
-        let syncAttempts = 0;
-        const maxSyncAttempts = 15; // Increased from 12 to 15
-        
-        while (!syncComplete && syncAttempts < maxSyncAttempts) {
-            try {
-                syncAttempts++;
-                console.log(`🔄 Sync check attempt ${syncAttempts}/${maxSyncAttempts}`);
-                
-                // Try to get chats - this will fail if sync is not complete
-                const chats = await Promise.race([
-                    client.getChats(),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Chat loading timeout')), 10000)
-                    )
-                ]);
-                
-                // If we can get chats and there are some, sync is likely complete
-                if (chats && chats.length >= 0) { // Changed > 0 to >= 0 to handle new accounts
-                    console.log(`✅ Sync appears complete - ${chats.length} chats loaded`);
-                    syncComplete = true;
-                } else {
-                    throw new Error('No chats returned');
-                }
-                
-            } catch (error) {
-                console.log(`⏳ Sync not ready yet (attempt ${syncAttempts}): ${error.message}`);
-                
-                // Update progress
-                io.to(`user-${userId}`).emit('syncProgress', {
-                    sessionId,
-                    message: `Syncing... (${syncAttempts}/${maxSyncAttempts})`,
-                    stage: 'syncing_data',
-                    progress: Math.round((syncAttempts / maxSyncAttempts) * 100)
-                });
-                
-                // Wait 10 seconds before next attempt
-                await new Promise(resolve => setTimeout(resolve, 10000));
-            }
-        }
-
-        if (!syncComplete) {
-            console.log('⚠️ Sync taking longer than expected, proceeding anyway...');
-            io.to(`user-${userId}`).emit('syncCompleted', {
+        // Disconnected event handler
+        client.on('disconnected', async (reason) => {
+            console.log('❌ BOT: Client disconnected:', reason);
+            
+            // Emit disconnect event to frontend
+            io.to(`user-${userId}`).emit('sessionDisconnected', {
                 sessionId,
-                message: 'Bot ready! (Sync may still be continuing)',
-                stage: 'partial'
+                reason,
+                message: 'WhatsApp session disconnected'
             });
-        } else {
-            io.to(`user-${userId}`).emit('syncCompleted', {
-                sessionId,
-                message: 'Sync completed! Bot is fully ready.',
-                stage: 'completed'
-            });
-        }
-
-        // Now it's safe to send welcome messages
-        const selfId = client.info.wid._serialized;
-        userSessions.set(selfId, sessionId);
-        
-        console.log('📱 Sending welcome messages after sync completion...');
-        
-        // Additional sync verification specifically for self-chat
-        console.log('🔍 Performing final self-chat sync verification...');
-        let selfChatReady = false;
-        let selfChatAttempts = 0;
-
-        while (!selfChatReady && selfChatAttempts < 5) {
-            try {
-                selfChatAttempts++;
-                const testSelfChat = await client.getChatById(selfId);
-                
-                // Try to access chat properties to ensure it's fully loaded
-                const chatName = testSelfChat.name;
-                const isGroup = testSelfChat.isGroup;
-                
-                console.log(`✅ Self-chat verified (attempt ${selfChatAttempts}): Ready for messages`);
-                selfChatReady = true;
-                
-            } catch (error) {
-                console.log(`⏳ Self-chat not ready (attempt ${selfChatAttempts}/5): ${error.message}`);
-                if (selfChatAttempts < 5) {
-                    await new Promise(resolve => setTimeout(resolve, 8000));
-                }
-            }
-        }
-
-        if (!selfChatReady) {
-            console.log('⚠️ Self-chat verification failed, but proceeding with welcome attempts...');
-        }
-        
-        // Send welcome messages with retry logic
-        let welcomeMessagesSent = false;
-        let welcomeAttempts = 0;
-        const maxWelcomeAttempts = 5; // Increased from 3 to 5
-        
-        while (!welcomeMessagesSent && welcomeAttempts < maxWelcomeAttempts) {
-            try {
-                welcomeAttempts++;
-                console.log(`📤 Welcome message attempt ${welcomeAttempts}/${maxWelcomeAttempts}`);
-                
-                // Enhanced welcome message with self-chat verification
+            
+            // Remove from clients map immediately
+            clients.delete(sessionId);
+            
+            // Clean up session files with delay for Windows file system
+            setTimeout(async () => {
                 try {
-                    // First, verify self-chat is accessible with a test message
-                    console.log('🔍 Testing self-chat accessibility...');
-                    const selfChat = await client.getChatById(selfId);
-                    
-                    // Send a test message and wait for confirmation
-                    await selfChat.sendMessage("🔄 Testing self-chat...");
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    console.log('✅ Self-chat test successful, sending welcome messages...');
-                    
-                    // Now send the actual welcome messages
-                    await selfChat.sendMessage("🤖 *Bot Connected & Synced!*");
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    await selfChat.sendMessage(`📱 Session: \`${sessionId}\``);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    await selfChat.sendMessage("⚡ Ready for commands! Type !help");
-                    
-                    console.log('✅ Welcome messages sent via self-chat');
-                    welcomeMessagesSent = true;
-                    
-                } catch (selfChatError) {
-                    console.log('⚠️ Self-chat method failed, trying direct send after delay...');
-                    
-                    // Wait longer before fallback attempt
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    
-                    try {
-                        // Fallback to direct message sending with verification
-                        await client.sendMessage(selfId, "🔄 Testing direct send...");
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        
-                        await client.sendMessage(selfId, "🤖 *Bot Connected & Synced!*");
-                        await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
-                        await client.sendMessage(selfId, "⚡ Ready for commands! Type !help");
-                        
-                        console.log('✅ Welcome messages sent via direct method');
-                        welcomeMessagesSent = true;
-                        
-                    } catch (directError) {
-                        console.error('❌ Both self-chat and direct methods failed:', directError.message);
-                        // Don't set welcomeMessagesSent = true, let it retry
+                    const authPath = path.join('./.wwebjs_auth', `user-${userId}-${sessionId}`);
+                    if (fs.existsSync(authPath)) {
+                        console.log(`🧹 Attempting cleanup of session directory: ${authPath}`);
+                        await removeDirectoryWithRetry(authPath, 3);
                     }
+                } catch (cleanupError) {
+                    console.log('⚠️ Session cleanup warning (non-critical):', cleanupError.message);
                 }
-                
-            } catch (error) {
-                console.error(`❌ Welcome message attempt ${welcomeAttempts} failed:`, error.message);
-                
-                if (welcomeAttempts < maxWelcomeAttempts) {
-                    console.log('⏳ Waiting 10 seconds before retry...');
-                    await new Promise(resolve => setTimeout(resolve, 10000)); // Increased from 5000 to 10000
-                } else {
-                    console.error('❌ All welcome message attempts failed');
-                }
-            }
-        }
-
-        // Set sync completion flag for message handler
-        client.isSyncComplete = true;
-
-        // Start background processes
-        setTimeout(() => {
-            handleBackgroundSync(client, sessionId, userId, io);
-        }, 15000); // Increased delay
-
-        setTimeout(() => {
-            refreshGroupsForSession(client, sessionId);
-        }, 10000); // Increased delay
-
-        // Emit final ready state
-        io.to(`user-${userId}`).emit('sessionReady', {
-            sessionId,
-            phone: client.info.wid.user,
-            message: 'WhatsApp bot is fully operational!'
+            }, 5000); // 5 second delay to allow file handles to close
         });
-        
-        console.log('✅ BOT: Session setup completed after sync');
-        
-    } catch (error) {
-        console.error('❌ BOT: Error in ready handler:', error);
-        io.to(`user-${userId}`).emit('authFailure', {
-            sessionId,
-            message: 'Session setup failed'
-        });
-    }
-});
-        // Enhanced disconnected event with cleanup
-client.on('disconnected', async (reason) => {
-    console.log('❌ BOT: Client disconnected:', reason);
-    
-    // Emit disconnect event to frontend
-    io.to(`user-${userId}`).emit('sessionDisconnected', {
-        sessionId,
-        reason,
-        message: 'WhatsApp session disconnected'
-    });
-    
-    // Add after client.info check
-if (!client.isSyncComplete) {
-    console.log('⏳ Bot sync not complete, ignoring message');
-    return;
-}
-
-    // Remove from clients map immediately
-    clients.delete(sessionId);
-    
-    // Clean up session files with delay for Windows file system
-    setTimeout(async () => {
-        try {
-            const authPath = path.join('./.wwebjs_auth', `user-${userId}-${sessionId}`);
-            if (fs.existsSync(authPath)) {
-                console.log(`🧹 Attempting cleanup of session directory: ${authPath}`);
-                await removeDirectoryWithRetry(authPath, 3);
-            }
-        } catch (cleanupError) {
-            console.log('⚠️ Session cleanup warning (non-critical):', cleanupError.message);
-        }
-    }, 5000); // 5 second delay to allow file handles to close
-});
 
         // Authentication failure event
         client.on('auth_failure', (message) => {
@@ -1925,154 +1758,91 @@ if (!client.isSyncComplete) {
         });
 
         // Message handler for bot commands
-client.on('message_create', async (message) => {
-    try {
-        // Add more logging
-        console.log(`📨 RAW MESSAGE:`, {
-            body: message.body,
-            from: message.from,
-            to: message.to,
-            fromMe: message.fromMe,
-            type: message.type
-        });
-
-        // Wait for client info to be available
-        if (!client.info || !client.info.wid) {
-            console.log('⏳ Client info not ready yet, skipping message');
-            return;
-        }
-
-        // Check if sync is complete
-        if (!client.isSyncComplete) {
-            console.log('⏳ Bot sync not complete, ignoring message');
-            return;
-        }
-
-        const selfId = client.info.wid._serialized;
-        console.log(`📨 Self ID: ${selfId}`);
-        
-        // Check if this is a self-chat message
-        const isSelfMessage = message.from === selfId;
-        const isCommand = message.body.startsWith('!');
-        
-        console.log(`📨 Is self message: ${isSelfMessage}, Is command: ${isCommand}, From me: ${message.fromMe}`);
-        
-        // Only process commands in self-chat
-        if (!isSelfMessage || !isCommand) {
-            if (isCommand && !isSelfMessage) {
-                console.log('🚫 Command attempted from non-self-chat, ignoring');
-            }
-            return;
-        }
-        
-        console.log('🤖 BOT: Processing self-chat command:', message.body);
-
-        // 🔑 SUBSCRIPTION CHECK: Check subscription status before processing commands
-        // BUT SKIP for owner and exempted users
-        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
-        
-        if (!subscriptionCheck.isValid && !subscriptionCheck.isOwner && !subscriptionCheck.isExempted && !subscriptionCheck.isAdmin) {
-            console.log(`🚫 Subscription check failed for user ${userId}: ${subscriptionCheck.reason}`);
-            
-            // Send subscription warning to self-chat
-            const subscriptionWarning = `🚫 *Subscription Required*\n\n` +
-                `Reason: ${subscriptionCheck.reason}\n\n` +
-                `💳 Please renew your subscription to continue using the bot.\n` +
-                `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
-            
+        client.on('message_create', async (message) => {
             try {
-                await client.sendMessage(selfId, subscriptionWarning);
-            } catch (msgError) {
-                console.error('❌ Failed to send subscription warning:', msgError);
-            }
-            
-            // Suspend the session
-            await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
-            return; // Stop processing
-        }
+                // Add more logging
+                console.log(`📨 RAW MESSAGE:`, {
+                    body: message.body,
+                    from: message.from,
+                    to: message.to,
+                    fromMe: message.fromMe,
+                    type: message.type
+                });
 
-        // Store admin groups for tagall commands
-        let adminGroups = [];
-        
-        const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
-        
-        // React to show command received
-        try {
-            await message.react('🤖');
-            await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (error) {
-            console.error("Failed to react:", error.message);
-        }
-
-        // Process commands (all responses go to self-chat)
-        switch (command.toLowerCase()) {
-            case 'ping':
-                try {
-                    await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
-                    console.log('✅ Ping command executed');
-                } catch (error) {
-                    console.error('❌ Ping command failed:', error.message);
+                // Wait for client info to be available
+                if (!client.info || !client.info.wid) {
+                    console.log('⏳ Client info not ready yet, skipping message');
+                    return;
                 }
-                break;
+
+                // Check if sync is complete
+                if (!client.isSyncComplete) {
+                    console.log('⏳ Bot sync not complete, ignoring message');
+                    return;
+                }
+
+                const selfId = client.info.wid._serialized;
+                console.log(`📨 Self ID: ${selfId}`);
                 
-            case 'subscription':
-            case 'sub':
-                try {
-                    // Use the subscription data from the check above
-                    const user = subscriptionCheck.user;
-                    const sub = subscriptionCheck.subscription || {};
-                    
-                    let subMessage = `💳 *Subscription Status*\n\n`;
-                    
-                    if (subscriptionCheck.isOwner) {
-                        subMessage += `👑 *Owner Account*\n✅ Status: Unlimited Access\n📋 Plan: Owner Privileges\n💰 Payment: Not Required\n\n🎯 You have full access to all features!`;
-                    } else if (subscriptionCheck.isExempted) {
-                        subMessage += `🛡️ *Exempted Account*\n✅ Status: Admin Exemption\n📋 Plan: ${user.subscription || 'Free'}\n💰 Payment: Exempted\n\n🎯 You have been exempted from payment requirements!`;
-                    } else {
-                        subMessage += `📋 Plan: ${sub.planType || user.subscription || 'Free'}\n` +
-                            `✅ Status: ${sub.status || user.status || 'Active'}\n` +
-                            `📅 Expires: ${sub.expiresAt ? sub.expiresAt.toLocaleDateString() : (user.subscriptionExpiry ? user.subscriptionExpiry.toLocaleDateString() : 'Never')}\n` +
-                            `💰 Payment: ${sub.paymentStatus || user.paymentStatus || 'Unknown'}\n\n` +
-                            `🔄 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`;
+                // Check if this is a self-chat message
+                const isSelfMessage = message.from === selfId;
+                const isCommand = message.body.startsWith('!');
+                
+                console.log(`📨 Is self message: ${isSelfMessage}, Is command: ${isCommand}, From me: ${message.fromMe}`);
+                
+                // Only process commands in self-chat
+                if (!isSelfMessage || !isCommand) {
+                    if (isCommand && !isSelfMessage) {
+                        console.log('🚫 Command attempted from non-self-chat, ignoring');
                     }
-                    
-                    await client.sendMessage(selfId, subMessage);
-                    console.log('✅ Subscription command executed');
-                } catch (error) {
-                    console.error('❌ Subscription command failed:', error.message);
-                    await client.sendMessage(selfId, '❌ Error checking subscription status');
+                    return;
                 }
-                break;
                 
-            case 'help':
+                console.log('🤖 BOT: Processing self-chat command:', message.body);
+
+                const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
+                
+                // React to show command received
                 try {
-                    const helpText = `🤖 *WhatsApp Bot Commands*
+                    await message.react('🤖');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                    console.error("Failed to react:", error.message);
+                }
+
+                // Process commands (all responses go to self-chat)
+                switch (command.toLowerCase()) {
+                    case 'ping':
+                        try {
+                            await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
+                            console.log('✅ Ping command executed');
+                        } catch (error) {
+                            console.error('❌ Ping command failed:', error.message);
+                        }
+                        break;
+                        
+                    case 'help':
+                        try {
+                            const helpText = `🤖 *WhatsApp Bot Commands*
 (Self-Chat Only)
 
 *Basic Commands:*
 • !ping - Test bot response
 • !help - Show this help message
 • !status - Show bot status
-• !sessionid - Get your session ID
-• !subscription - Check subscription status
-
-*Group Management:*
-• !list - List groups where you are admin
-• !tagall[number] - Tag all members in group [number]
-  Example: !tagall1 (tags all in group 1)
 
 💡 All commands work only in self-chat for security!`;
-                    
-                    await client.sendMessage(selfId, helpText);
-                    console.log('✅ Help command executed');
-                } catch (error) {
-                    console.error('❌ Help command failed:', error.message);
-                }
-                break;
-                
-            case 'status':
-                try {
-                    const statusMsg = `🤖 *Bot Status*
+                            
+                            await client.sendMessage(selfId, helpText);
+                            console.log('✅ Help command executed');
+                        } catch (error) {
+                            console.error('❌ Help command failed:', error.message);
+                        }
+                        break;
+                        
+                    case 'status':
+                        try {
+                            const statusMsg = `🤖 *Bot Status*
 
 ✅ Status: Active
 📱 Session: ${sessionId}
@@ -2080,179 +1850,40 @@ client.on('message_create', async (message) => {
 📞 Phone: ${client.info.wid.user}
 
 🟢 All systems working!`;
-                    
-                    await client.sendMessage(selfId, statusMsg);
-                    console.log('✅ Status command executed');
-                } catch (error) {
-                    console.error('❌ Status command failed:', error.message);
-                }
-                break;
-        
-            case 'sessionid':
-                try {
-                    await client.sendMessage(selfId, `📱 Your session ID: \`${sessionId}\``);
-                    console.log('✅ SessionID command executed');
-                } catch (error) {
-                    console.error('❌ SessionID command failed:', error.message);
-                }
-                break;
-
-            case 'list':
-                try {
-                    await client.sendMessage(selfId, '⚡ Fetching your admin groups...');
-                    
-                    const chats = await client.getChats();
-                    const groupChats = chats.filter(chat => chat.isGroup);
-                    adminGroups = []; // Reset admin groups
-                    
-                    for (const chat of groupChats) {
-                        try {
-                            await chat.fetchParticipants();
-                            const userParticipant = chat.participants.find(p => p.id._serialized === selfId);
                             
-                            if (userParticipant && userParticipant.isAdmin) {
-                                adminGroups.push(chat);
-                            }
-                        } catch (err) {
-                            console.log(`Error checking ${chat.name}:`, err.message);
+                            await client.sendMessage(selfId, statusMsg);
+                            console.log('✅ Status command executed');
+                        } catch (error) {
+                            console.error('❌ Status command failed:', error.message);
                         }
-                    }
-                    
-                    // Store admin groups globally for tagall commands
-                    global.userAdminGroups = global.userAdminGroups || new Map();
-                    global.userAdminGroups.set(selfId, adminGroups);
-                    
-                    if (!adminGroups.length) {
-                        await client.sendMessage(selfId, '❌ You are not admin in any groups');
-                        return;
-                    }
-
-                    const listText = adminGroups
-                        .map((g, i) => `${i + 1}. ${g.name} (${g.participants?.length || 0} members)`)
-                        .join('\n');
-
-                    const listMsg = `📋 *Groups Where You Are Admin (${adminGroups.length})*\n\n` +
-                        listText +
-                        `\n\n💡 Use !tagall[number] to tag all members in a group.\nExample: !tagall1 for "${adminGroups[0].name}"`;
-                    
-                    await client.sendMessage(selfId, listMsg);
-                    console.log('✅ List command executed');
-                } catch (error) {
-                    console.error('❌ List command failed:', error.message);
-                    await client.sendMessage(selfId, '❌ Error fetching groups. Please try again.');
+                        break;
+                        
+                    default:
+                        // Unknown command
+                        try {
+                            await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
+                            console.log('✅ Unknown command response sent');
+                        } catch (error) {
+                            console.error('❌ Unknown command response failed:', error.message);
+                        }
                 }
-                break;
                 
-            default:
-                // Check if this is a tagall command with number (e.g., !tagall1, !tagall2)
-                if (command.toLowerCase().startsWith('tagall')) {
-                    try {
-                        const groupNumberMatch = command.match(/tagall(\d+)/);
-                        if (!groupNumberMatch) {
-                            await client.sendMessage(selfId, '❌ Invalid tagall format. Use !tagall[number] (e.g., !tagall1)');
-                            break;
-                        }
-                        
-                        const groupNumber = parseInt(groupNumberMatch[1]) - 1; // Convert to 0-based index
-                        
-                        // Get stored admin groups
-                        global.userAdminGroups = global.userAdminGroups || new Map();
-                        let userGroups = global.userAdminGroups.get(selfId);
-                        
-                        if (!userGroups || userGroups.length === 0) {
-                            await client.sendMessage(selfId, '❌ No admin groups found. Use !list first to load your groups.');
-                            break;
-                        }
-                        
-                        if (groupNumber < 0 || groupNumber >= userGroups.length) {
-                            await client.sendMessage(selfId, `❌ Invalid group number. You have ${userGroups.length} admin groups. Use !list to see them.`);
-                            break;
-                        }
-                        
-                        const targetGroup = userGroups[groupNumber];
-                        await client.sendMessage(selfId, `⚡ Tagging all members in "${targetGroup.name}"...`);
-                        
-                        // Refresh group participants
-                        await targetGroup.fetchParticipants();
-                        
-                        // Verify user is still admin
-                        const userParticipant = targetGroup.participants.find(p => p.id._serialized === selfId);
-                        if (!userParticipant || !userParticipant.isAdmin) {
-                            await client.sendMessage(selfId, `❌ You are no longer admin in "${targetGroup.name}"`);
-                            break;
-                        }
-                        
-                        // Create mention text
-                        let mentions = [];
-                        let mentionText = `📢 *Tagged by admin from self-chat*\n\n`;
-                        
-                        for (const participant of targetGroup.participants) {
-                            if (participant.id._serialized !== selfId) { // Don't tag yourself
-                                mentions.push(participant.id._serialized);
-                                mentionText += `@${participant.id.user} `;
-                            }
-                        }
-                        
-                        // Send the tag message to the group
-                        await client.sendMessage(targetGroup.id._serialized, mentionText, { mentions });
-                        
-                        // Confirm in self-chat
-                        await client.sendMessage(selfId, `✅ Successfully tagged ${mentions.length} members in "${targetGroup.name}"`);
-                        console.log(`✅ TagAll executed for group: ${targetGroup.name}`);
-                        
-                    } catch (error) {
-                        console.error('❌ TagAll command failed:', error.message);
-                        await client.sendMessage(selfId, '❌ Error tagging members. Please try again.');
+            } catch (error) {
+                console.error('❌ BOT: Error processing message:', error);
+                try {
+                    if (client.info && client.info.wid) {
+                        await client.sendMessage(client.info.wid._serialized, '❌ Sorry, there was an error. Please try again.');
                     }
-                } else {
-                    // Unknown command
-                    try {
-                        await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\n💡 Type !help to see available commands.`);
-                        console.log('✅ Unknown command response sent');
-                    } catch (error) {
-                        console.error('❌ Unknown command response failed:', error.message);
-                    }
+                } catch (replyError) {
+                    console.error('❌ Could not send error reply:', replyError.message);
                 }
-        }
-        
-    } catch (error) {
-        console.error('❌ BOT: Error processing message:', error);
-        try {
-            if (client.info && client.info.wid) {
-                await client.sendMessage(client.info.wid._serialized, '❌ Sorry, there was an error. Please try again.');
             }
-        } catch (replyError) {
-            console.error('❌ Could not send error reply:', replyError.message);
-        }
-    }
-});
-   
+        });
 
-        // *** THIS IS THE MISSING CRITICAL LINE ***
+        // Initialize the client
         console.log('🔄 BOT: Initializing WhatsApp client...');
         await client.initialize();
         console.log('✅ BOT: Client initialization completed');
-        
-// Start periodic subscription checking
-        const subscriptionCheckInterval = setInterval(async () => {
-            try {
-                const subscriptionCheck = await checkUserSubscriptionStatus(userId);
-                if (!subscriptionCheck.isValid) {
-                    console.log(`🚫 Periodic check: Suspending session ${sessionId} for user ${userId}`);
-                    await suspendUserSession(userId, sessionId, subscriptionCheck.reason, client, io);
-                    clearInterval(subscriptionCheckInterval); // Stop checking after suspension
-                }
-            } catch (error) {
-                console.error('❌ Periodic subscription check error:', error);
-            }
-        }, 5 * 60 * 1000); // Check every 5 minutes
-
-        // Clean up interval when client disconnects
-        client.on('disconnected', () => {
-            clearInterval(subscriptionCheckInterval);
-            console.log('🧹 Cleared subscription check interval for disconnected session');
-        });
-        // 👆 ADD ALL THE ABOVE CODE HERE (before line 1706)
         
         return client;
 
@@ -2261,8 +1892,7 @@ client.on('message_create', async (message) => {
         console.error('❌ BOT: Error stack:', error.stack);
         throw error;
     }
-}
-        
+}    
   
 
 // Add this function to handle background sync
