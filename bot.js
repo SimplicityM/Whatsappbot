@@ -1810,36 +1810,35 @@ client.on('ready', async () => {
         // Message handler for bot commands
 client.on('message_create', async (message) => {
     try {
-        console.log(`📨 MESSAGE RECEIVED:`, {
+        console.log(`📨 MESSAGE:`, {
             body: message.body,
             from: message.from,
-            fromMe: message.fromMe,
-            type: message.type
+            fromMe: message.fromMe
         });
 
-        // Basic validation
+        // Skip non-commands
         if (!message.body || !message.body.startsWith('!')) {
-            return; // Not a command
-        }
-
-        // Wait for client info if needed
-        if (!client.info || !client.info.wid) {
-            console.log('⏳ Client info not ready, skipping message');
             return;
         }
 
-        const selfId = client.info.wid._serialized;
+        // Get self ID
+        let selfId = null;
+        if (client.info && client.info.wid) {
+            selfId = client.info.wid._serialized;
+        } else if (botSelfId) {
+            selfId = botSelfId;
+        } else {
+            console.log('❌ No self ID available');
+            return;
+        }
         
-        // Check if this is from self-chat
+        console.log(`📨 Self ID: ${selfId}, Message from: ${message.from}`);
+        
+        // Check if from self-chat
         const isSelfMessage = message.from === selfId;
         
-        console.log(`📨 Self ID: ${selfId}`);
-        console.log(`📨 Message from: ${message.from}`);
-        console.log(`📨 Is self message: ${isSelfMessage}`);
-        console.log(`📨 From me: ${message.fromMe}`);
-        
         if (!isSelfMessage) {
-            console.log('🚫 Command from non-self-chat, ignoring');
+            console.log('🚫 Not from self-chat, ignoring');
             return;
         }
         
@@ -1850,71 +1849,57 @@ client.on('message_create', async (message) => {
         // Process commands
         switch (command.toLowerCase()) {
             case 'ping':
-                console.log('🏓 Executing ping command');
-                await client.sendMessage(selfId, '🏓 Pong! Bot is working correctly.');
-                console.log('✅ Ping response sent');
+                console.log('🏓 Executing ping...');
+                await client.sendMessage(selfId, '🏓 Pong! Bot is working!');
+                console.log('✅ Ping sent');
                 break;
                 
             case 'help':
-                const helpText = `🤖 *WhatsApp Bot Commands*
+                const helpText = `🤖 *Bot Commands*
 
-*Available Commands:*
-• !ping - Test bot response
-• !help - Show this help
-• !status - Bot status
-• !debug - Debug information
+• !ping - Test response
+• !help - This help
+• !status - Bot status  
+• !debug - Debug info
 
-💡 Commands work only in self-chat!`;
+💡 Self-chat only!`;
                 
                 await client.sendMessage(selfId, helpText);
-                console.log('✅ Help response sent');
+                console.log('✅ Help sent');
                 break;
                 
             case 'status':
-                const statusMsg = `🤖 *Bot Status*
+                const statusMsg = `🤖 *Status*
 
-✅ Status: Active
+✅ Active
 📱 Session: ${sessionId}
-📞 Phone: ${client.info.wid.user}
-⏱️ Uptime: ${Math.floor(process.uptime() / 60)} minutes
-
-🟢 All systems operational!`;
+📞 Phone: ${selfId.split('@')[0]}
+⏱️ Uptime: ${Math.floor(process.uptime() / 60)}m`;
                 
                 await client.sendMessage(selfId, statusMsg);
-                console.log('✅ Status response sent');
+                console.log('✅ Status sent');
                 break;
                 
             case 'debug':
-                const debugInfo = `🔍 *Debug Information*
+                const debugInfo = `🔍 *Debug*
 
-📱 Self ID: ${selfId}
-📨 Message From: ${message.from}
-✅ Is Self Message: ${isSelfMessage}
-🤖 From Me: ${message.fromMe}
-📞 Phone: ${client.info.wid.user}
-⏰ Time: ${new Date().toISOString()}`;
+📱 Self: ${selfId}
+📨 From: ${message.from}
+✅ Match: ${message.from === selfId}
+🤖 FromMe: ${message.fromMe}`;
 
                 await client.sendMessage(selfId, debugInfo);
-                console.log('✅ Debug response sent');
+                console.log('✅ Debug sent');
                 break;
                 
             default:
-                await client.sendMessage(selfId, `❌ Unknown command: "${command}"\n\nType !help for available commands.`);
-                console.log('✅ Unknown command response sent');
+                await client.sendMessage(selfId, `❌ Unknown: "${command}"\nType !help`);
         }
         
     } catch (error) {
-        console.error('❌ Error processing message:', error);
-        try {
-            if (client.info && client.info.wid) {
-                await client.sendMessage(client.info.wid._serialized, '❌ Error processing command. Please try again.');
-            }
-        } catch (replyError) {
-            console.error('❌ Could not send error reply:', replyError);
-        }
+        console.error('❌ Message error:', error.message);
     }
-});
-        
+});  
         // Initialize the client
         console.log('🔄 BOT: Initializing WhatsApp client...');
         await client.initialize();
