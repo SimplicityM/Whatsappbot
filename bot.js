@@ -1623,7 +1623,6 @@ client.on('authenticated', (session) => {
     // Extract phone number from session data
     try {
         if (session && session.WABrowserId) {
-            // Try to extract phone number from session
             const sessionString = JSON.stringify(session);
             const phoneMatch = sessionString.match(/(\d{10,15})/);
             if (phoneMatch) {
@@ -1691,67 +1690,77 @@ client.on('authenticated', (session) => {
 client.on('ready', async () => {
     console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
     
-    // Create client info if it doesn't exist
-    if (!client.info || !client.info.wid) {
-        if (botPhoneNumber && botSelfId) {
-            console.log('🔧 BOT: Creating client info from extracted data');
-            client.info = {
-                wid: {
-                    _serialized: botSelfId,
-                    user: botPhoneNumber
-                },
-                pushname: 'WhatsApp Bot'
-            };
-        } else {
-            console.error('❌ BOT: No phone number available - cannot create client info');
-            return;
-        }
+    // Use the extracted phone number from authentication
+    let selfId;
+    if (botSelfId) {
+        selfId = botSelfId;
+        // Create client info using extracted data
+        client.info = {
+            wid: {
+                _serialized: botSelfId,
+                user: botPhoneNumber
+            },
+            pushname: 'WhatsApp Bot'
+        };
+        console.log('📱 Using extracted Self ID:', selfId);
+    } else {
+        // Fallback to owner number
+        const ownerPhone = CONFIG.owner.replace(/[^0-9]/g, '');
+        selfId = `${ownerPhone}@c.us`;
+        client.info = {
+            wid: {
+                _serialized: selfId,
+                user: ownerPhone
+            },
+            pushname: 'Bot Owner'
+        };
+        console.log('📱 Using fallback Self ID:', selfId);
     }
     
-    const selfId = client.info.wid._serialized;
-    console.log('📱 BOT: Final Self ID:', selfId);
-    console.log('📱 BOT: Phone Number:', client.info.wid.user);
+    console.log('📱 Phone Number:', client.info.wid.user);
     
-    // Set sync complete flag immediately
+    // Skip sync checking completely - just proceed
+    console.log('✅ Skipping sync check - proceeding directly to welcome messages');
+    
+    // Set sync complete flag
     client.isSyncComplete = true;
     
-    // Send welcome messages
-    console.log('📤 BOT: Sending welcome messages...');
+    // Send welcome messages immediately
+    console.log('📤 Sending welcome messages...');
     
     try {
-        // Wait for WhatsApp to stabilize
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Wait a moment for WhatsApp to stabilize
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
-        // Send welcome messages
+        // Send welcome messages one by one
         await client.sendMessage(selfId, '🤖 *Bot Connected Successfully!*');
-        console.log('✅ BOT: Welcome message 1 sent');
+        console.log('✅ Welcome message 1 sent');
         
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         await client.sendMessage(selfId, `📱 Session: \`${sessionId}\``);
-        console.log('✅ BOT: Welcome message 2 sent');
+        console.log('✅ Welcome message 2 sent');
         
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         await client.sendMessage(selfId, '⚡ Ready for commands! Type !ping to test');
-        console.log('✅ BOT: Welcome message 3 sent');
+        console.log('✅ Welcome message 3 sent');
         
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        await client.sendMessage(selfId, '🔧 Available: !ping, !help, !status, !debug');
-        console.log('✅ BOT: Welcome message 4 sent');
+        await client.sendMessage(selfId, '🔧 Commands: !ping, !help, !status, !debug');
+        console.log('✅ Welcome message 4 sent');
         
     } catch (error) {
-        console.error('❌ BOT: Error sending welcome messages:', error.message);
+        console.error('❌ Error sending welcome messages:', error.message);
         
-        // Try alternative method
+        // Try a simpler approach
         try {
-            console.log('🔄 BOT: Trying alternative message method...');
-            const chat = await client.getChatById(selfId);
-            await chat.sendMessage('🤖 Bot connected! Type !ping to test');
-            console.log('✅ BOT: Alternative welcome message sent');
-        } catch (altError) {
-            console.error('❌ BOT: Alternative method also failed:', altError.message);
+            console.log('🔄 Trying simpler message approach...');
+            await client.sendMessage(selfId, '🤖 Bot ready! Type !ping');
+            console.log('✅ Simple welcome message sent');
+        } catch (simpleError) {
+            console.error('❌ Simple message also failed:', simpleError.message);
         }
     }
     
@@ -1767,7 +1776,7 @@ client.on('ready', async () => {
         });
     }
     
-    console.log('✅ BOT: Session setup completed - Bot should respond to commands');
+    console.log('✅ BOT: Session setup completed - Bot should now respond to commands');
 });
    
         // Disconnected event handler
