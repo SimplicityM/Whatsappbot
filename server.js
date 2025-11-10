@@ -37,12 +37,14 @@ app.use(cors({
 // Database connection
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot';
+        const mongoURI = process.env.MONGODB_URI;
+        if (!mongoURI) {
+            throw new Error('MONGODB_URI environment variable is not defined');
+        }
         
         await mongoose.connect(mongoURI, {
-            // Remove deprecated options
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
         });
         
         console.log('✅ Connected to MongoDB');
@@ -50,10 +52,10 @@ const connectDB = async () => {
         
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
-        // Don't exit - let bot work without database for now
-        console.log('⚠️ Continuing without database...');
+        process.exit(1);
     }
 };
+
 connectDB();
 
 // Global variables
