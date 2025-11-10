@@ -651,6 +651,7 @@ function handleSessionStatusUpdate(data) {
     // Update the session in the userSessions array
     const sessionIndex = userSessions.findIndex(s => s.sessionId === data.sessionId);
     if (sessionIndex !== -1) {
+        // Update existing session
         userSessions[sessionIndex] = {
             ...userSessions[sessionIndex],
             status: data.status,
@@ -658,11 +659,22 @@ function handleSessionStatusUpdate(data) {
             phone: data.phone || userSessions[sessionIndex].phone,
             messageCount: data.messageCount || userSessions[sessionIndex].messageCount
         };
-        
-        // Re-render sessions to show updated status
-        renderUserSessions();
-        updateSessionStats();
+    } else if (data.sessionId) {
+        // Add new session if it doesn't exist
+        console.log('➕ Adding new session to array:', data.sessionId);
+        userSessions.push({
+            sessionId: data.sessionId,
+            status: data.status,
+            connectedAt: data.connectedAt,
+            phone: data.phone,
+            messageCount: data.messageCount || 0,
+            createdAt: new Date().toISOString()
+        });
     }
+    
+    // Re-render sessions to show updated status and count
+    renderUserSessions();
+    updateSessionStats();
 }
 
 
