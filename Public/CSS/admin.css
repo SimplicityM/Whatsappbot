@@ -2034,3 +2034,55 @@ input:checked + .slider:before {
     margin-bottom: 24px;
     color: #666;
 }
+
+
+
+.status-indicator.connected {
+    background-color: #48bb78;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.connecting {
+    background-color: #ed8936;
+    animation: blink 1s infinite;
+}
+
+.status-indicator.waiting {
+    background-color: #4299e1;
+    animation: blink 1.5s infinite;
+}
+
+.status-indicator.syncing {
+    background-color: #9f7aea;
+    animation: spin 2s linear infinite;
+}
+
+.status-indicator.error {
+    background-color: #f56565;
+}
+
+.stat-value.connected {
+    color: #48bb78;
+    font-weight: 600;
+}
+
+.stat-value.error {
+    color: #f56565;
+    font-weight: 600;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

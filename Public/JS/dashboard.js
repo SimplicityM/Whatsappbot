@@ -322,6 +322,13 @@ function connectToServer() {
         
         socket.on('sessionReady', (data) => {
             console.log('✅ Session ready:', data.sessionId);
+            // Update session status to connected with timestamp
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'connected',
+                connectedAt: new Date().toISOString(),
+                phone: data.phone
+            });
             showNotification('WhatsApp session connected successfully!', 'success');
             loadUserSessions();
             closeQRModal();
@@ -345,49 +352,124 @@ function connectToServer() {
             socket.emit('join-user-room', userId);
         });
         
- // Add these sync event listeners INSIDE the socket connection function
+        // Add these sync event listeners INSIDE the socket connection function
         socket.on('syncStarted', (data) => {
             console.log('🔄 Sync started:', data);
             updateSessionStatus(data.sessionId, 'Syncing WhatsApp data...', 'syncing');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'syncing'
+            });
         });
 
         socket.on('syncProgress', (data) => {
             console.log('📊 Sync progress:', data);
             updateSessionStatus(data.sessionId, data.message, 'syncing');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'syncing'
+            });
         });
 
         socket.on('syncCompleted', (data) => {
             console.log('✅ Sync completed:', data);
             updateSessionStatus(data.sessionId, data.message, 'ready');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'connected',
+                connectedAt: new Date().toISOString()
+            });
         });
 
         socket.on('backgroundSyncUpdate', (data) => {
             console.log('🔄 Background sync update:', data);
             updateSessionStatus(data.sessionId, data.message, 'syncing');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'syncing'
+            });
         });
 
         socket.on('authFailure', (data) => {
             console.log('❌ Auth failure:', data);
             updateSessionStatus(data.sessionId, 'Authentication failed', 'error');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'error'
+            });
             showNotification('WhatsApp authentication failed', 'error');
         });
 
         socket.on('sessionDisconnected', (data) => {
             console.log('❌ Session disconnected:', data);
             updateSessionStatus(data.sessionId, 'Disconnected', 'disconnected');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'disconnected'
+            });
             showNotification('WhatsApp session disconnected: ' + data.reason, 'warning');
         });
 
         socket.on('sessionSuspended', (data) => {
             console.log('🚫 Session suspended:', data);
             updateSessionStatus(data.sessionId, 'Suspended', 'suspended');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'suspended'
+            });
             showNotification('Session suspended: ' + data.reason, 'error');
         });
 
         socket.on('sessionResumed', (data) => {
             console.log('🟢 Session resumed:', data);
             updateSessionStatus(data.sessionId, 'Resumed', 'connected');
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'connected',
+                connectedAt: new Date().toISOString()
+            });
             showNotification('Session resumed successfully!', 'success');
+        });
+
+        // NEW SESSION STATUS EVENT HANDLERS
+        socket.on('sessionConnected', (data) => {
+            console.log('✅ Session connected:', data);
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'connected',
+                connectedAt: new Date().toISOString(),
+                phone: data.phone
+            });
+            showNotification(`WhatsApp session connected: ${data.phone || data.sessionId}`, 'success');
+        });
+
+        socket.on('sessionStatusUpdate', (data) => {
+            console.log('📱 Session status update:', data);
+            handleSessionStatusUpdate(data);
+        });
+
+        socket.on('sessionConnecting', (data) => {
+            console.log('🔄 Session connecting:', data);
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'connecting'
+            });
+        });
+
+        socket.on('sessionWaitingQR', (data) => {
+            console.log('⏳ Session waiting for QR:', data);
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'waiting_qr'
+            });
+        });
+
+        socket.on('qrGenerated', (data) => {
+            console.log('📱 QR code generated:', data);
+            handleSessionStatusUpdate({
+                sessionId: data.sessionId,
+                status: 'qr_ready'
+            });
         });
 
     } catch (error) {
@@ -506,47 +588,153 @@ function renderUserSessions() {
         return;
     }
 
-    grid.innerHTML = userSessions.map(session => `
-        <div class="session-card ${session.status}">
-            <div class="session-header">
-                <div class="session-status">
-                    <span class="status-indicator ${session.status}"></span>
-                    <span class="status-text">${formatStatus(session.status)}</span>
-                </div>
-                <div class="session-actions">
-                    <button class="action-btn" onclick="viewSession('${session.sessionId}')" title="View Details">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="action-btn" onclick="restartSession('${session.sessionId}')" title="Restart">
-                        <i class="fas fa-redo"></i>
-                    </button>
-                    <button class="action-btn danger" onclick="deleteSession('${session.sessionId}')" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="session-info">
-                <h4>${session.phone || 'Not connected'}</h4>
-                <p class="session-phone">Session: ${session.sessionId}</p>
-                <div class="session-stats">
-                    <div class="stat">
-                        <span class="stat-label">Uptime</span>
-                        <span class="stat-value">${formatUptime(session.uptime)}</span>
+    grid.innerHTML = userSessions.map(session => {
+        // Determine proper status display
+        const statusText = getSessionStatusText(session.status);
+        const statusClass = getSessionStatusClass(session.status);
+        
+        // Format connection time
+        const connectionTime = getConnectionTime(session);
+        
+        return `
+            <div class="session-card ${session.status}" data-session-id="${session.sessionId}">
+                <div class="session-header">
+                    <div class="session-status">
+                        <span class="status-indicator ${statusClass}"></span>
+                        <span class="status-text">${statusText}</span>
                     </div>
-                    <div class="stat">
-                        <span class="stat-label">Messages</span>
-                        <span class="stat-value">${session.messageCount || 0}</span>
+                    <div class="session-actions">
+                        <button class="action-btn" onclick="viewSession('${session.sessionId}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="action-btn" onclick="restartSession('${session.sessionId}')" title="Restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="action-btn danger" onclick="deleteSession('${session.sessionId}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </div>
+                <div class="session-info">
+                    <h4>${session.phone || 'Not connected'}</h4>
+                    <p class="session-phone">Session: ${session.sessionId}</p>
+                    <div class="session-stats">
+                        <div class="stat">
+                            <span class="stat-label">Status</span>
+                            <span class="stat-value ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Connected</span>
+                            <span class="stat-value">${connectionTime}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Messages</span>
+                            <span class="stat-value">${session.messageCount || 0}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     const mySessionCount = document.getElementById('mySessionCount');
     if (mySessionCount) {
         mySessionCount.textContent = userSessions.filter(s => s.status === 'connected').length;
     }
 }
+
+
+// Add this function to handle real-time session updates
+function handleSessionStatusUpdate(data) {
+    console.log('📱 Session status update:', data);
+    
+    // Update the session in the userSessions array
+    const sessionIndex = userSessions.findIndex(s => s.sessionId === data.sessionId);
+    if (sessionIndex !== -1) {
+        userSessions[sessionIndex] = {
+            ...userSessions[sessionIndex],
+            status: data.status,
+            connectedAt: data.connectedAt || userSessions[sessionIndex].connectedAt,
+            phone: data.phone || userSessions[sessionIndex].phone,
+            messageCount: data.messageCount || userSessions[sessionIndex].messageCount
+        };
+        
+        // Re-render sessions to show updated status
+        renderUserSessions();
+        updateSessionStats();
+    }
+}
+
+
+// Helper function to get proper status text
+function getSessionStatusText(status) {
+    const statusMap = {
+        'connected': 'Connected',
+        'ready': 'Connected',
+        'connecting': 'Connecting...',
+        'waiting_qr': 'Waiting for QR Scan',
+        'qr_ready': 'QR Code Ready',
+        'syncing': 'Syncing...',
+        'disconnected': 'Disconnected',
+        'error': 'Error',
+        'suspended': 'Suspended',
+        'loading': 'Loading...'
+    };
+    return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+// Helper function to get status CSS class
+function getSessionStatusClass(status) {
+    const classMap = {
+        'connected': 'connected',
+        'ready': 'connected',
+        'connecting': 'connecting',
+        'waiting_qr': 'waiting',
+        'qr_ready': 'waiting',
+        'syncing': 'syncing',
+        'disconnected': 'disconnected',
+        'error': 'error',
+        'suspended': 'error'
+    };
+    return classMap[status] || 'disconnected';
+}
+
+// Helper function to get connection time
+function getConnectionTime(session) {
+    if (!session.connectedAt && !session.createdAt) {
+        return 'Never';
+    }
+    
+    // Use connectedAt if available, otherwise use createdAt
+    const connectionDate = session.connectedAt || session.createdAt;
+    
+    if (session.status === 'connected' || session.status === 'ready') {
+        // Show time since connection
+        const now = new Date();
+        const connected = new Date(connectionDate);
+        const diffMs = now - connected;
+        
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffDays > 0) {
+            return `${diffDays}d ${diffHours % 24}h ago`;
+        } else if (diffHours > 0) {
+            return `${diffHours}h ${diffMins % 60}m ago`;
+        } else if (diffMins > 0) {
+            return `${diffMins}m ago`;
+        } else {
+            return 'Just now';
+        }
+    } else {
+        // Show last connection attempt
+        return formatDate(connectionDate);
+    }
+}
+
+
+
 
 // FIXED: Complete session filtering implementation
 function filterSessions() {
