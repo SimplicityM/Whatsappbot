@@ -868,35 +868,44 @@ async function createNewSession() {
             }
         }
         
+        // Clear any existing QR timeouts
+        if (window.currentQRTimeout) {
+            clearTimeout(window.currentQRTimeout);
+            window.currentQRTimeout = null;
+        }
+        
         // Set up QR received flag
         let qrReceived = false;
-        let qrTimeout = null;
+        let currentSessionId = null;
         
-        // Set up QR event listener BEFORE making the API call
-        const qrEventHandler = (data) => {
-            console.log('🎯 QR EVENT RECEIVED IN CREATE SESSION:', data);
-            if (data.sessionId && data.qr) {
-                qrReceived = true; // Mark QR as received
+        // Create unique event handler for this session creation
+        const sessionQRHandler = (data) => {
+            console.log('🎯 SESSION QR EVENT:', data);
+            
+            // Only handle QR for the current session being created
+            if (currentSessionId && data.sessionId === currentSessionId && data.qr) {
+                qrReceived = true;
                 
                 // Clear timeout when QR is received
-                if (qrTimeout) {
-                    clearTimeout(qrTimeout);
-                    qrTimeout = null;
+                if (window.currentQRTimeout) {
+                    clearTimeout(window.currentQRTimeout);
+                    window.currentQRTimeout = null;
                     console.log('✅ QR timeout cleared - QR received');
                 }
                 
                 displayQRCode(data.qr, data.sessionId);
+                
+                // Remove this specific handler after use
+                socket.off('qrCode', sessionQRHandler);
+                console.log('🧹 Removed session-specific QR handler');
             }
         };
-        
-        // Better event management - check if listener already exists
-        socket.off('qrCode', qrEventHandler);
-        socket.on('qrCode', qrEventHandler);
         
         // Ensure user is in socket room
         socket.emit('join-user-room', userId);
         console.log('👤 Joined socket room: user-' + userId);
         
+        // Make API call to create session
         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/create`, {
             method: 'POST',
             headers: {
@@ -910,11 +919,15 @@ async function createNewSession() {
         console.log('📡 API Response:', data);
         
         if (data.success) {
-            console.log('✅ Session created via API:', data.data.sessionId);
+            currentSessionId = data.data.sessionId;
+            console.log('✅ Session created via API:', currentSessionId);
+            
+            // Add session-specific QR handler AFTER getting session ID
+            socket.on('qrCode', sessionQRHandler);
             
             // Add the new session to the array immediately
             const newSession = {
-                sessionId: data.data.sessionId,
+                sessionId: currentSessionId,
                 status: 'waiting_qr',
                 createdAt: new Date().toISOString(),
                 messageCount: 0,
@@ -937,7 +950,7 @@ async function createNewSession() {
                     <div style="text-align: center; padding: 20px;">
                         <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
                         <p>Generating QR Code...</p>
-                        <p>Session: ${data.data.sessionId}</p>
+                        <p>Session: ${currentSessionId}</p>
                         <p style="font-size: 12px; color: #666;">Socket ID: ${socket.id}</p>
                         <p style="font-size: 12px; color: #666;">User Room: user-${userId}</p>
                         <div class="loading-spinner"></div>
@@ -945,54 +958,47 @@ async function createNewSession() {
                 `;
             }
             
-            // Check if QR was already received before modal opened
-            if (qrReceived) {
-                console.log('✅ QR code was already received before modal opened');
-                return; // Don't start timeout since QR is already displayed
-            }
-            
-            // Simple, reliable timeout mechanism
-            qrTimeout = setTimeout(() => {
+            // Set up timeout for QR code generation
+            window.currentQRTimeout = setTimeout(() => {
                 // Only show timeout if QR wasn't received and modal is still open
                 const qrModal = document.getElementById('qrModal');
                 const qrDisplay = document.getElementById('qrCodeDisplay');
                 
                 if (!qrReceived && qrModal && qrModal.classList.contains('active') && qrDisplay) {
-                    console.warn('⚠️ QR code timeout after 30 seconds');
+                    console.warn('⚠️ QR code timeout after 45 seconds');
                     qrDisplay.innerHTML = `
                         <div style="text-align: center; padding: 20px;">
                             <i class="fas fa-clock" style="font-size: 48px; color: #f39c12; margin-bottom: 10px;"></i>
                             <h4>QR Code Timeout</h4>
-                            <p>The QR code took too long to generate.</p>
-                            <p style="font-size: 14px; color: #666;">This could be due to:</p>
+                            <p>The QR code took too long to generate or has expired.</p>
+                            <p style="font-size: 14px; color: #666;">This usually happens when:</p>
                             <ul style="text-align: left; color: #666; font-size: 14px; max-width: 300px; margin: 10px auto;">
-                                <li>Server overload</li>
-                                <li>WhatsApp service issues</li>
-                                <li>Network connectivity problems</li>
-                                <li>Browser compatibility issues</li>
+                                <li>Server is overloaded</li>
+                                <li>WhatsApp service is busy</li>
+                                <li>Network connectivity issues</li>
+                                <li>QR code expired (they expire every 20 seconds)</li>
                             </ul>
                             <div style="margin-top: 20px;">
-                                <button onclick="closeQRModal(); createNewSession();" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                                <button onclick="closeQRModal(); setTimeout(() => createNewSession(), 500);" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
                                     <i class="fas fa-redo"></i> Try Again
-                                </button>
-                                <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
-                                    <i class="fas fa-refresh"></i> Refresh Page
                                 </button>
                                 <button onclick="closeQRModal()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
                                     <i class="fas fa-times"></i> Cancel
                                 </button>
                             </div>
                             <p style="font-size: 12px; color: #999; margin-top: 15px;">
-                                Session: ${data.data.sessionId}<br>
+                                Session: ${currentSessionId}<br>
                                 Socket: ${socket?.connected ? 'Connected' : 'Disconnected'}<br>
-                                Room: user-${userId}<br>
-                                QR Received: ${qrReceived}
+                                Room: user-${userId}
                             </p>
                         </div>
                     `;
                 }
-                qrTimeout = null; // Clear timeout reference
-            }, 30000); // 30 seconds timeout instead of 45
+                
+                // Clean up handler
+                socket.off('qrCode', sessionQRHandler);
+                window.currentQRTimeout = null;
+            }, 45000); // 45 seconds timeout
             
         } else {
             console.error('❌ Session creation failed:', data.message);
@@ -1470,12 +1476,13 @@ function closeQRModal() {
         qrModal.classList.remove('active');
         
         // Clean up any pending QR timeouts
-        if (window.qrTimeout) {
-            clearTimeout(window.qrTimeout);
-            window.qrTimeout = null;
+        if (window.currentQRTimeout) {
+            clearTimeout(window.currentQRTimeout);
+            window.currentQRTimeout = null;
+            console.log('🧹 Cleaned up QR timeout on modal close');
         }
         
-        // Force restore scrolling with multiple methods
+        // Force restore scrolling
         document.body.style.overflow = '';
         document.body.style.overflowY = '';
         document.documentElement.style.overflow = '';
@@ -1490,7 +1497,7 @@ function closeQRModal() {
             qrCodeDisplay.className = 'qr-code-display';
         }
         
-        console.log('✅ QR modal closed and scrolling restored');
+        console.log('✅ QR modal closed and cleaned up');
     }
 }
 
