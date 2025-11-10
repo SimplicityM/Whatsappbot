@@ -545,6 +545,16 @@ async function loadUserSessions() {
         if (response.ok) {
             const data = await response.json();
             userSessions = data.data.sessions || [];
+            
+            console.log('📡 Loaded sessions:', {
+                total: userSessions.length,
+                sessions: userSessions.map(s => ({ 
+                    id: s.sessionId, 
+                    status: s.status,
+                    phone: s.phone 
+                }))
+            });
+            
             renderUserSessions();
             updateSessionStats();
         } else {
@@ -553,6 +563,10 @@ async function loadUserSessions() {
     } catch (error) {
         console.error('Error loading sessions:', error);
         showNotification('Failed to load sessions', 'error');
+        
+        // Reset sessions array and update count
+        userSessions = [];
+        updateSessionCount(0);
         
         // Show empty state
         const grid = document.getElementById('userSessionsGrid');
@@ -563,6 +577,9 @@ async function loadUserSessions() {
                     <h3>Failed to Load Sessions</h3>
                     <p>Please refresh the page or try logging in again</p>
                     <button onclick="logout()" class="btn-primary">Login Again</button>
+                    <button onclick="loadUserSessions()" class="btn-secondary" style="margin-left: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
                 </div>
             `;
         }
@@ -585,6 +602,8 @@ function renderUserSessions() {
                 </button>
             </div>
         `;
+        // Update count to 0 when no sessions
+        updateSessionCount(0);
         return;
     }
 
@@ -637,11 +656,57 @@ function renderUserSessions() {
         `;
     }).join('');
 
+    // Count connected sessions (including both 'connected' and 'ready' status)
+    const connectedSessions = userSessions.filter(s => 
+        s.status === 'connected' || s.status === 'ready'
+    ).length;
+    
+    console.log('📊 Session count update:', {
+        total: userSessions.length,
+        connected: connectedSessions,
+        sessions: userSessions.map(s => ({ id: s.sessionId, status: s.status }))
+    });
+    
+    // Update session count with proper color coding
+    updateSessionCount(connectedSessions);
+}
+
+// Add this new function for updating session counts
+function updateSessionCount(count) {
+    console.log('📊 Updating session count to:', count);
+    
+    // Update the badge in the sidebar
     const mySessionCount = document.getElementById('mySessionCount');
     if (mySessionCount) {
-        mySessionCount.textContent = userSessions.filter(s => s.status === 'connected').length;
+        mySessionCount.textContent = count;
+        
+        // Change badge color based on count
+        if (count > 0) {
+            mySessionCount.style.backgroundColor = '#48bb78'; // Green for active sessions
+            mySessionCount.style.color = 'white';
+            mySessionCount.classList.remove('badge-error');
+            mySessionCount.classList.add('badge-success');
+        } else {
+            mySessionCount.style.backgroundColor = '#f56565'; // Red for no sessions
+            mySessionCount.style.color = 'white';
+            mySessionCount.classList.remove('badge-success');
+            mySessionCount.classList.add('badge-error');
+        }
     }
+    
+    // Also update the overview stats
+    const activeSessionsCount = document.getElementById('activeSessionsCount');
+    if (activeSessionsCount) {
+        activeSessionsCount.textContent = count;
+    }
+    
+    // Update any other session count displays
+    const totalSessionsElements = document.querySelectorAll('.total-sessions-count');
+    totalSessionsElements.forEach(element => {
+        element.textContent = userSessions.length;
+    });
 }
+
 
 
 // Add this function to handle real-time session updates
@@ -834,11 +899,26 @@ async function createNewSession() {
         console.log('📡 API Response:', data);
         
         if (data.success) {
-            console.log('✅ Session created via API:', data.data.sessionId);
-            showNotification('New session created! Waiting for QR code...', 'success');
-            
-            // Open the QR modal immediately
-            showQRModal();
+    console.log('✅ Session created via API:', data.data.sessionId);
+    
+    // Add the new session to the array immediately
+    const newSession = {
+        sessionId: data.data.sessionId,
+        status: 'waiting_qr',
+        createdAt: new Date().toISOString(),
+        messageCount: 0,
+        phone: null
+    };
+    
+    userSessions.push(newSession);
+    console.log('➕ Added new session to array, total sessions:', userSessions.length);
+    
+    // Update the display immediately
+    renderUserSessions();
+    
+    showNotification('New session created! Waiting for QR code...', 'success');
+    showQRModal();
+    
             
             // Show loading state in modal
             const qrCodeDisplay = document.getElementById('qrCodeDisplay');
@@ -1819,16 +1899,50 @@ function showLoading(show) {
 
 function updateSessionStats() {
     const totalSessions = userSessions.length;
-    const activeSessions = userSessions.filter(s => s.status === 'connected').length;
+    const activeSessions = userSessions.filter(s => 
+        s.status === 'connected' || s.status === 'ready'
+    ).length;
     const totalMessages = userSessions.reduce((sum, session) => sum + (session.messageCount || 0), 0);
 
-    const mySessionCount = document.getElementById('mySessionCount');
-    const activeSessionCount = document.getElementById('activeSessionCount');
-    const totalMessagesCount = document.getElementById('totalMessagesCount');
+    console.log('📊 Session stats updated:', { 
+        totalSessions, 
+        activeSessions, 
+        totalMessages,
+        sessionStatuses: userSessions.map(s => s.status)
+    });
 
-    if (mySessionCount) mySessionCount.textContent = activeSessions;
-    if (activeSessionCount) activeSessionCount.textContent = activeSessions;
-    if (totalMessagesCount) totalMessagesCount.textContent = totalMessages.toLocaleString();
+    // Update all relevant elements
+    const elements = {
+        mySessionCount: document.getElementById('mySessionCount'),
+        activeSessionsCount: document.getElementById('activeSessionsCount'),
+        totalMessagesCount: document.getElementById('totalMessagesCount'),
+        messagesToday: document.getElementById('messagesToday'),
+        groupsManaged: document.getElementById('groupsManaged')
+    };
+
+    // Update session count with color coding
+    if (elements.mySessionCount) {
+        elements.mySessionCount.textContent = activeSessions;
+        
+        // Update badge color
+        if (activeSessions > 0) {
+            elements.mySessionCount.style.backgroundColor = '#48bb78'; // Green
+            elements.mySessionCount.style.color = 'white';
+            elements.mySessionCount.classList.remove('badge-error');
+            elements.mySessionCount.classList.add('badge-success');
+        } else {
+            elements.mySessionCount.style.backgroundColor = '#f56565'; // Red
+            elements.mySessionCount.style.color = 'white';
+            elements.mySessionCount.classList.remove('badge-success');
+            elements.mySessionCount.classList.add('badge-error');
+        }
+    }
+    
+    // Update other stats
+    if (elements.activeSessionsCount) elements.activeSessionsCount.textContent = activeSessions;
+    if (elements.totalMessagesCount) elements.totalMessagesCount.textContent = totalMessages.toLocaleString();
+    if (elements.messagesToday) elements.messagesToday.textContent = Math.floor(totalMessages * 0.1);
+    if (elements.groupsManaged) elements.groupsManaged.textContent = totalSessions;
 }
 
 function updateMessageStats() {
