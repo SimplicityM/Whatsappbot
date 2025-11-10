@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Careers | TagThemAll Bot</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="//code.jivosite.com/widget/MssWIIN7cW" async></script>
+    <link rel="icon" type="image/jpg" href="images/Zufamoa.jpg"/>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>TagThemAll Bot</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="pricing.html">Pricing</a></li>
+                <li><a href="blog.html">Blog</a></li>
+                <li><a href="careers.html" class="active">Careers</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+    <style>
+        .careers-hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 120px 0 80px;
+            color: white;
+            text-align: center;
+        }
+        
+        .careers-section {
+            padding: 80px 0;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .section-subtitle {
+            font-size: 1.2rem;
+            color: #6b7280;
+            text-align: center;
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .value-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .value-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .value-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        
+        .jobs-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .job-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .job-card:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            border-color: #667eea;
+        }
+        
+        .job-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .job-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .job-tag {
+            background: #f3f4f6;
+            color: #374151;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+        }
+        
+        .job-description {
+            color: #6b7280;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+        
+        .apply-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .apply-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+         .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 3rem;
+        }
+        
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.5rem;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+        
+        .benefit-icon {
+            font-size: 1.5rem;
+            color: #667eea;
+        }
+        
+        .process-timeline {
+            max-width: 600px;
+            margin: 3rem auto;
+        }
+        
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+        
+        .timeline-number {
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-right: 1.5rem;
+            flex-shrink: 0;
+        }
+        
+        .timeline-content h4 {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .timeline-content p {
+            color: #6b7280;
+            margin: 0;
+        }
+        
+        .cta-section {
+            background: #f8fafc;
+            padding: 80px 0;
+            text-align: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .job-meta {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .timeline-item {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .timeline-number {
+                margin-right: 0;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+     <!-- Hero Section -->
+    <section class="careers-hero">
+        <div class="container">
+            <h1 class="section-title">Join Our Mission</h1>
+            <p class="section-subtitle" style="color: rgba(255,255,255,0.9);">
+                Help us revolutionize WhatsApp automation and build the future of business communication
+            </p>
+        </div>
+    </section>
+
+    <!-- Company Culture -->
+    <section class="careers-section">
+        <div class="container">
+            <h2 class="section-title">Our Culture & Values</h2>
+            <p class="section-subtitle">
+                We're building more than just software - we're creating a culture of innovation, collaboration, and growth
+            </p>
+            
+            <div class="values-grid">
+                <div class="value-card">
+                    <i class="fas fa-lightbulb value-icon"></i>
+                    <h3>Innovation First</h3>
+                    <p>We encourage creative thinking and aren't afraid to challenge the status quo. Every team member's ideas matter.</p>
+                </div>
+                <div class="value-card">
+                    <i class="fas fa-users value-icon"></i>
+                    <h3>Team Collaboration</h3>
+                    <p>We believe in the power of teamwork. Our diverse, inclusive environment fosters the best ideas.</p>
+                </div>
+                <div class="value-card">
+                    <i class="fas fa-chart-line value-icon"></i>
+                    <h3>Continuous Growth</h3>
+                    <p>We invest in our team's professional development and provide opportunities to learn cutting-edge technologies.</p>
+                </div>
+                <div class="value-card">
+                    <i class="fas fa-balance-scale value-icon"></i>
+                    <h3>Work-Life Balance</h3>
+                    <p>We understand that great work comes from well-rested, happy team members. Flexibility is key.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+     <!-- Open Positions -->
+    <!-- <section class="careers-section" style="background: #f8fafc;"> -->
+        <div class="container">
+            <h2 class="section-title">Open Positions</h2>
+            <p class="section-subtitle">
+                Join our growing team and help shape the future of WhatsApp automation
+            </p>
+            
+            <div class="jobs-container">
+                <div class="job-card">
+                    <h3 class="job-title">Senior Full-Stack Developer</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-layer-group"></i> Engineering</span>
+                    </div>
+                    <p class="job-description">
+                        We're looking for an experienced full-stack developer to help build and scale our WhatsApp automation platform. 
+                        You'll work with Node.js, Express, MongoDB, Socket.IO, and modern frontend technologies.
+                    </p>
+                    <p><strong>Requirements:</strong> 5+ years experience, Node.js expertise, MongoDB, real-time applications, API design</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: Senior Full-Stack Developer" class="apply-btn">Apply Now</a>
+                </div>
+
+                <div class="job-card">
+                    <h3 class="job-title">DevOps Engineer</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-server"></i> Infrastructure</span>
+                    </div>
+                    <p class="job-description">
+                        Help us scale our infrastructure to handle millions of WhatsApp messages. You'll work with Docker, 
+                        cloud platforms, CI/CD pipelines, and monitoring systems.
+                    </p>
+                    <p><strong>Requirements:</strong> 3+ years DevOps experience, Docker, AWS/GCP, Kubernetes, monitoring tools</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: DevOps Engineer" class="apply-btn">Apply Now</a>
+                </div>
+
+                <div class="job-card">
+                    <h3 class="job-title">Product Manager</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote/Hybrid</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-chart-bar"></i> Product</span>
+                    </div>
+                    <p class="job-description">
+                        Drive product strategy and roadmap for our WhatsApp automation platform. Work closely with engineering, 
+                        design, and customer success teams to deliver exceptional user experiences.
+                    </p>
+                    <p><strong>Requirements:</strong> 3+ years PM experience, SaaS background, API products, data-driven approach</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: Product Manager" class="apply-btn">Apply Now</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="job-card">
+                    <h3 class="job-title">Frontend Developer (React/Vue)</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-paint-brush"></i> Frontend</span>
+                    </div>
+                    <p class="job-description">
+                        Build beautiful, responsive user interfaces for our dashboard and admin panels. Work with real-time 
+                        data, complex forms, and interactive visualizations.
+                    </p>
+                    <p><strong>Requirements:</strong> 3+ years frontend experience, React or Vue.js, TypeScript, real-time apps</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: Frontend Developer" class="apply-btn">Apply Now</a>
+                </div>
+
+                <div class="job-card">
+                    <h3 class="job-title">Customer Success Manager</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-heart"></i> Customer Success</span>
+                    </div>
+                    <p class="job-description">
+                        Help our customers succeed with WhatsApp automation. Provide onboarding, training, and ongoing support 
+                        to ensure customer satisfaction and retention.
+                    </p>
+                    <p><strong>Requirements:</strong> 2+ years customer success experience, SaaS background, excellent communication</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: Customer Success Manager" class="apply-btn">Apply Now</a>
+                </div>
+
+                <div class="job-card">
+                    <h3 class="job-title">Marketing Specialist</h3>
+                    <div class="job-meta">
+                        <span class="job-tag"><i class="fas fa-map-marker-alt"></i> Remote</span>
+                        <span class="job-tag"><i class="fas fa-clock"></i> Full-time</span>
+                        <span class="job-tag"><i class="fas fa-bullhorn"></i> Marketing</span>
+                    </div>
+                    <p class="job-description">
+                        Drive growth through digital marketing campaigns, content creation, and community building. 
+                        Help us reach businesses looking for WhatsApp automation solutions.
+                    </p>
+                    <p><strong>Requirements:</strong> 2+ years marketing experience, SaaS/B2B background, content creation, analytics</p>
+                    <a href="mailto:careers@tagthemall.com?subject=Application: Marketing Specialist" class="apply-btn">Apply Now</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+     
+    
+
+     <!-- Benefits & Perks -->
+    <section class="careers-section">
+        <div class="container">
+            <h2 class="section-title">Benefits & Perks</h2>
+            <p class="section-subtitle">
+                We believe in taking care of our team members so they can do their best work
+            </p>
+            
+            <div class="benefits-grid">
+                <div class="benefit-item">
+                    <i class="fas fa-dollar-sign benefit-icon"></i>
+                    <div>
+                        <h4>Competitive Salary</h4>
+                        <p>Market-rate compensation with performance bonuses</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-home benefit-icon"></i>
+                    <div>
+                        <h4>Remote-First</h4>
+                        <p>Work from anywhere with flexible hours</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-graduation-cap benefit-icon"></i>
+                    <div>
+                        <h4>Learning Budget</h4>
+                        <p>$2,000 annual budget for courses, conferences, and books</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-laptop benefit-icon"></i>
+                    <div>
+                        <h4>Equipment Provided</h4>
+                        <p>Latest MacBook Pro and necessary development tools</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-plane benefit-icon"></i>
+                    <div>
+                        <h4>Unlimited PTO</h4>
+                        <p>Take time off when you need it, no questions asked</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-users benefit-icon"></i>
+                    <div>
+                        <h4>Team Retreats</h4>
+                        <p>Annual company retreats and quarterly team meetups</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-medkit benefit-icon"></i>
+                    <div>
+                        <h4>Health Insurance</h4>
+                        <p>Comprehensive health, dental, and vision coverage</p>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-piggy-bank benefit-icon"></i>
+                    <div>
+                        <h4>401(k) Matching</h4>
+                        <p>Company matching up to 4% of your salary</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+      <!-- Application Process -->
+    <section class="careers-section" style="background: #f8fafc;">
+        <div class="container">
+            <h2 class="section-title">Our Hiring Process</h2>
+            <p class="section-subtitle">
+                We've designed a fair, efficient process that respects your time while helping us find the right fit
+            </p>
+            
+            <div class="process-timeline">
+                <div class="timeline-item">
+                    <div class="timeline-number">1</div>
+                    <div class="timeline-content">
+                        <h4>Application Review</h4>
+                        <p>We review your application and portfolio within 3 business days</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">2</div>
+                    <div class="timeline-content">
+                        <h4>Initial Screening</h4>
+                        <p>30-minute video call to discuss your background and interests</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">3</div>
+                    <div class="timeline-content">
+                        <h4>Technical Interview</h4>
+                        <p>Technical discussion and coding exercise relevant to the role</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">4</div>
+                    <div class="timeline-content">
+                        <h4>Team Interview</h4>
+                        <p>Meet with potential team members and discuss collaboration</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">5</div>
+                    <div class="timeline-content">
+                        <h4>Final Decision</h4>
+                        <p>Reference checks and offer discussion within 2 business days</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+     <!-- Call to Action Section -->
+    <section class="cta-section">
+        <div class="container">
+            <h2 class="section-title">Ready to Join Our Team?</h2>
+            <p class="section-subtitle">
+                Don't see a position that fits? We're always looking for talented individuals to join our mission.
+            </p>
+            <div style="margin-top: 2rem;">
+                <a href="mailto:careers@tagthemall.com?subject=General Interest - Careers" class="apply-btn" style="margin-right: 1rem;">
+                    <i class="fas fa-envelope"></i> Send Us Your Resume
+                </a>
+                <a href="contact.html" class="apply-btn" style="background: transparent; color: #667eea; border: 2px solid #667eea;">
+                    <i class="fas fa-comments"></i> Get in Touch
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="background: #1f2937; color: white; padding: 3rem 0 1rem;">
+        <div class="container">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                <div>
+                    <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                        <i class="fas fa-robot" style="font-size: 1.5rem; margin-right: 0.5rem; color: #667eea;"></i>
+                        <span style="font-size: 1.2rem; font-weight: 600;">TagThemAll Bot</span>
+                    </div>
+                    <p style="color: #9ca3af; line-height: 1.6;">
+                        Revolutionizing WhatsApp automation for businesses worldwide. Join us in building the future of communication.
+                    </p>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: #667eea;">Quick Links</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin-bottom: 0.5rem;"><a href="index.html" style="color: #9ca3af; text-decoration: none;">Home</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="about.html" style="color: #9ca3af; text-decoration: none;">About</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="pricing.html" style="color: #9ca3af; text-decoration: none;">Pricing</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="contact.html" style="color: #9ca3af; text-decoration: none;">Contact</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: #667eea;">Careers</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin-bottom: 0.5rem;"><a href="#" style="color: #9ca3af; text-decoration: none;">Open Positions</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="#" style="color: #9ca3af; text-decoration: none;">Culture & Values</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="#" style="color: #9ca3af; text-decoration: none;">Benefits</a></li>
+                        <li style="margin-bottom: 0.5rem;"><a href="mailto:careers@tagthemall.com" style="color: #9ca3af; text-decoration: none;">careers@tagthemall.com</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: #667eea;">Connect With Us</h4>
+                    <div style="display: flex; gap: 1rem;">
+                        <a href="#" style="color: #667eea; font-size: 1.5rem;"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" style="color: #667eea; font-size: 1.5rem;"><i class="fab fa-twitter"></i></a>
+                        <a href="#" style="color: #667eea; font-size: 1.5rem;"><i class="fab fa-github"></i></a>
+                        <a href="#" style="color: #667eea; font-size: 1.5rem;"><i class="fab fa-discord"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div style="border-top: 1px solid #374151; padding-top: 1rem; text-align: center; color: #9ca3af;">
+                <p>&copy; 2025 TagThemAll Bot. All rights reserved. | <a href="#" style="color: #667eea;">Privacy Policy</a> | <a href="#" style="color: #667eea;">Terms of Service</a></p>
+            </div>
+        </div>
+    </footer>
+
+     <!-- JavaScript -->
+    <script>
+        // Mobile menu toggle
+        const hamburger = document.querySelector('.hamburger');
+        const navMenu = document.querySelector('.nav-menu');
+
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            navMenu.classList.toggle('active');
+        });
+
+        // Close mobile menu when clicking on a link
+        document.querySelectorAll('.nav-menu a').forEach(n => n.addEventListener('click', () => {
+            hamburger.classList.remove('active');
+            navMenu.classList.remove('active');
+        }));
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements for animation
+        document.querySelectorAll('.value-card, .job-card, .benefit-item, .timeline-item').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        });
+
+        // Job card hover effects
+        document.querySelectorAll('.job-card').forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-5px)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+
+        // Form validation for email links
+        document.querySelectorAll('a[href^="mailto:"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                // You can add custom tracking or validation here
+                console.log('Career application initiated for:', this.href);
+            });
+        });
+    </script>
+</body>
+</html>

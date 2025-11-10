@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Troubleshooting - TagThemAll Bot</title>
+    <link rel="stylesheet" href="CSS/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" type="image/jpg" href="images/Zufamoa.jpg"/>
+    <style>
+        .troubleshooting-hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 120px 0 80px;
+            text-align: center;
+        }
+        
+        .troubleshooting-content {
+            padding: 80px 0;
+            background: #f8f9fa;
+        }
+        
+        .faq-section {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .faq-header {
+            background: #667eea;
+            color: white;
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+        
+        .faq-header:hover {
+            background: #5a6fd8;
+        }
+        
+        .faq-content {
+            padding: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .faq-content.active {
+            padding: 20px;
+            max-height: 1000px;
+        }
+        
+        .faq-content ol, .faq-content ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .faq-content li {
+            margin: 8px 0;
+        }
+        
+        .contact-section {
+            background: #667eea;
+            color: white;
+            padding: 60px 0;
+            text-align: center;
+            margin-top: 40px;
+        }
+        
+        .contact-btn {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 15px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: transform 0.3s ease;
+        }
+        
+        .contact-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+        
+        .search-box {
+            max-width: 600px;
+            margin: 0 auto 40px;
+            position: relative;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .search-icon {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #667eea;
+        }
+
+        .search-highlight {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+.no-results {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>TagThemAll Bot</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="bot-commands.html">Commands</a></li>
+                <li><a href="index.html#features">Features</a></li>
+                <li><a href="pricing.html">Pricing</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="signup.html" class="btn-nav">Get Started</a></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="troubleshooting-hero">
+        <div class="container">
+            <h1><i class="fas fa-tools"></i> Troubleshooting Guide</h1>
+            <p>Find solutions to common issues and get your bot running smoothly</p>
+        </div>
+    </section>
+
+    <!-- Troubleshooting Content -->
+    <section class="troubleshooting-content">
+        <div class="container">
+            <!-- Search Box -->
+            <div class="search-box">
+                <input type="text" class="search-input" id="troubleshootSearch" placeholder="Search for solutions...">
+                <i class="fas fa-search search-icon"></i>
+            </div>
+
+            <!-- FAQ Sections -->
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-qrcode"></i> QR Code Issues</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: QR Code not appearing or not scanning</h4>
+                    <ol>
+                        <li>Refresh the page and wait 30 seconds for the QR code to load</li>
+                        <li>Clear your browser cache and cookies</li>
+                        <li>Try using a different browser (Chrome, Firefox, Safari)</li>
+                        <li>Ensure your WhatsApp app is updated to the latest version</li>
+                        <li>Make sure you're scanning with the correct WhatsApp account</li>
+                        <li>Try scanning from WhatsApp Web settings: Settings > Linked Devices > Link a Device</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-robot"></i> Bot Not Responding</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: Bot doesn't respond to commands</h4>
+                    <ol>
+                        <li>Check if the bot status shows "Connected" in your dashboard</li>
+                        <li>Verify you're using the correct command format (e.g., !tagall, !help)</li>
+                        <li>Ensure the bot has admin privileges in the group</li>
+                        <li>Try sending commands in a private chat first to test connectivity</li>
+                        <li>Wait 2-3 minutes as there might be a temporary delay</li>
+                        <li>Restart the bot from your dashboard</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-users"></i> Group Management Issues</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: Can't tag members or manage groups</h4>
+                    <ol>
+                        <li>Ensure the bot is added as an admin in the WhatsApp group</li>
+                        <li>Check that group settings allow all members to send messages</li>
+                        <li>Verify the group has less than 256 members (WhatsApp limit)</li>
+                        <li>Make sure the bot account is not blocked by any group members</li>
+                        <li>Try removing and re-adding the bot to the group</li>
+                        <li>Check if the group description contains any restricted keywords</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-wifi"></i> Connection Problems</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: Frequent disconnections or "Offline" status</h4>
+                    <ol>
+                        <li>Check your internet connection stability</li>
+                        <li>Ensure WhatsApp Web is not open in another browser/device</li>
+                        <li>Close other WhatsApp Web sessions: Settings > Linked Devices</li>
+                        <li>Restart your router/modem</li>
+                        <li>Try using a VPN if you're in a restricted network</li>
+                        <li>Contact your ISP if the problem persists</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-clock"></i> Message Delays</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: Messages sent with delay or not at all</h4>
+                    <ol>
+                        <li>Check if you've exceeded your daily message limit</li>
+                        <li>Verify your subscription plan allows the number of messages you're sending</li>
+                        <li>Reduce the frequency of automated messages</li>
+                        <li>Check WhatsApp's business policy compliance</li>
+                        <li>Ensure messages don't contain spam-like content</li>
+                        <li>Try sending messages manually to test connectivity</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-ban"></i> Account Restrictions</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: WhatsApp account temporarily banned or restricted</h4>
+                    <ol>
+                        <li>Stop all automated activities immediately</li>
+                        <li>Wait 24-48 hours before attempting to use the account</li>
+                        <li>Review WhatsApp's Terms of Service and Business Policy</li>
+                        <li>Reduce message frequency and avoid spam-like behavior</li>
+                        <li>Use more natural, conversational message patterns</li>
+                        <li>Consider using multiple accounts for high-volume messaging</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-section">
+                <div class="faq-header" onclick="toggleFAQ(this)">
+                    <h3><i class="fas fa-cog"></i> Dashboard Issues</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-content">
+                    <h4>Problem: Can't access dashboard or features not working</h4>
+                    <ol>
+                        <li>Clear browser cache and cookies</li>
+                        <li>Disable browser extensions temporarily</li>
+                        <li>Try accessing from an incognito/private browser window</li>
+                        <li>Check if JavaScript is enabled in your browser</li>
+                        <li>Try a different browser or device</li>
+                        <li>Verify your account subscription is active</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="contact-section">
+        <div class="container">
+            <h2><i class="fas fa-life-ring"></i> Still Need Help?</h2>
+            <p>If none of the above solutions work, our support team is here to help you get back on track.</p>
+            <a href="contact.html" class="contact-btn">
+                <i class="fas fa-envelope"></i> Contact Support
+            </a>
+            <p style="margin-top: 20px; font-size: 14px; opacity: 0.9;">
+                Average response time: 2-4 hours | Available 24/7
+            </p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="logo">
+                        <i class="fas fa-robot"></i>
+                        <span>TagThemAll Bot</span>
+                    </div>
+                    <p>Automate your WhatsApp communication with powerful bot features. Save time and boost productivity.</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Product</h3>
+                    <ul>
+                        <li><a href="index.html#features">Features</a></li>
+                        <li><a href="pricing.html">Pricing</a></li>
+                        <li><a href="bot-commands.html">Bot Commands</a></li>
+                        <li><a href="signup.html">Getting Started</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Support</h3>
+                    <ul>
+                        <li><a href="#" id="help-center-link">Help Center</a></li>
+                        <li><a href="signup.html">Getting Started</a></li>
+                        <li><a href="bot-commands.html">Bot Commands</a></li>
+                        <li><a href="troubleshooting.html">Troubleshooting</a></li>
+                        <li><a href="contact.html">Contact Support</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-section">
+                    <h3>Company</h3>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                        <li><a href="#">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div class="footer-bottom-content">
+                    <p>&copy; 2025 TagThemAll Bot. All rights reserved.</p>
+                    <div class="footer-links">
+                        <a href="#">Privacy</a>
+                        <a href="#">Terms</a>
+                        <a href="#">Security</a>
+                        <a href="#">Status</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const hamburger = document.querySelector('.hamburger');
+            const navMenu = document.querySelector('.nav-menu');
+
+            hamburger.addEventListener('click', function() {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+
+            // Close mobile menu when clicking on a link
+            document.querySelectorAll('.nav-menu a').forEach(link => {
+                link.addEventListener('click', () => {
+                    hamburger.classList.remove('active');
+                    navMenu.classList.remove('active');
+                });
+            });
+        });
+
+        // FAQ Toggle Function
+        function toggleFAQ(element) {
+            const content = element.nextElementSibling;
+            const icon = element.querySelector('.fa-chevron-down');
+            
+            // Close all other FAQs
+            document.querySelectorAll('.faq-content').forEach(faq => {
+                if (faq !== content) {
+                    faq.classList.remove('active');
+                    faq.previousElementSibling.querySelector('.fa-chevron-down').style.transform = 'rotate(0deg)';
+                }
+            });
+            
+            // Toggle current FAQ
+            content.classList.toggle('active');
+            
+            if (content.classList.contains('active')) {
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Search functionality - Replace the existing search code with this
+document.getElementById('troubleshootSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    const faqSections = document.querySelectorAll('.faq-section');
+    let hasResults = false;
+    
+    if (searchTerm === '') {
+        // Show all sections and close them when search is cleared
+        faqSections.forEach(section => {
+            section.style.display = 'block';
+            const content = section.querySelector('.faq-content');
+            const icon = section.querySelector('.fa-chevron-down');
+            content.classList.remove('active');
+            icon.style.transform = 'rotate(0deg)';
+        });
+        return;
+    }
+    
+    faqSections.forEach(section => {
+        const header = section.querySelector('.faq-header h3').textContent.toLowerCase();
+        const content = section.querySelector('.faq-content').textContent.toLowerCase();
+        const faqContent = section.querySelector('.faq-content');
+        const icon = section.querySelector('.fa-chevron-down');
+        
+        if (header.includes(searchTerm) || content.includes(searchTerm)) {
+            section.style.display = 'block';
+            // Automatically open the matching section
+            faqContent.classList.add('active');
+            icon.style.transform = 'rotate(180deg)';
+            hasResults = true;
+            
+            // Highlight matching text (optional enhancement)
+            highlightSearchTerm(section, searchTerm);
+        } else {
+            section.style.display = 'none';
+            // Close non-matching sections
+            faqContent.classList.remove('active');
+            icon.style.transform = 'rotate(0deg)';
+        }
+    });
+    
+    // Show "no results" message if needed
+    showNoResultsMessage(!hasResults, searchTerm);
+});
+
+// Function to highlight search terms
+function highlightSearchTerm(section, searchTerm) {
+    const content = section.querySelector('.faq-content');
+    let html = content.innerHTML;
+    
+    // Remove previous highlights
+    html = html.replace(/<mark class="search-highlight">(.*?)<\/mark>/gi, '$1');
+    
+    // Add new highlights
+    if (searchTerm.length > 2) { // Only highlight terms longer than 2 characters
+        const regex = new RegExp(`(${searchTerm})`, 'gi');
+        html = html.replace(regex, '<mark class="search-highlight">$1</mark>');
+    }
+    
+    content.innerHTML = html;
+}
+
+// Function to show/hide no results message
+function showNoResultsMessage(show, searchTerm) {
+    let noResultsDiv = document.getElementById('no-results-message');
+    
+    if (show && searchTerm.length > 0) {
+        if (!noResultsDiv) {
+            noResultsDiv = document.createElement('div');
+            noResultsDiv.id = 'no-results-message';
+            noResultsDiv.className = 'no-results';
+            noResultsDiv.innerHTML = `
+                <div style="text-align: center; padding: 40px; background: white; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <i class="fas fa-search" style="font-size: 48px; color: #ccc; margin-bottom: 20px;"></i>
+                    <h3 style="color: #666; margin-bottom: 10px;">No results found</h3>
+                    <p style="color: #999; margin-bottom: 20px;">We couldn't find any solutions matching "<strong>${searchTerm}</strong>"</p>
+                    <a href="contact.html" class="contact-btn" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none;">
+                        <i class="fas fa-envelope"></i> Contact Support
+                    </a>
+                </div>
+            `;
+            document.querySelector('.troubleshooting-content .container').appendChild(noResultsDiv);
+        } else {
+            noResultsDiv.querySelector('strong').textContent = searchTerm;
+            noResultsDiv.style.display = 'block';
+        }
+    } else if (noResultsDiv) {
+        noResultsDiv.style.display = 'none';
+    }
+}
+    </script>
+</body>
+</html>
