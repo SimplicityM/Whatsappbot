@@ -17,6 +17,8 @@ const BOT_OWNER = '2347067012884';
 // Temporary in-memory exemption list
 // You can later store this in DB if needed.
 const exemptedUsers = new Set();
+// Load exempted users from file on startup (optional)
+loadExemptedUsersFromFile();
 
 // Helper to add/remove exemptions
 function exemptUser(number, exempt = true) {
@@ -27,30 +29,89 @@ function exemptUser(number, exempt = true) {
 }
 
 // Check if user is allowed to use bot commands
-async function isAllowedToUseBot(userNumber) {
-  try {
-    // Always allow owner
-    if (userNumber === BOT_OWNER) return true;
-
-    // Always allow exempted users
-    if (exemptedUsers.has(userNumber)) return true;
-
-    // Otherwise, run subscription check
-    const user = await User.findOne({ phone: userNumber });
-    if (!user) return false;
-
-    // Example subscription check — adjust to your schema
-    if (user.subscription && user.subscription.expiresAt > Date.now()) {
-      return true;
+async function isAllowedToUseBot(phoneNumber) {
+    try {
+        // Clean the phone number
+        const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+        
+        // Check if user is exempted
+        if (exemptedUsers.has(cleanNumber)) {
+            console.log(`✅ User ${cleanNumber} is exempted`);
+            return true;
+        }
+        
+        // Check if user is owner
+        const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        if (BOT_OWNER && cleanNumber === BOT_OWNER) {
+            console.log(`👑 User ${cleanNumber} is bot owner`);
+            return true;
+        }
+        
+        // Add your actual subscription checking logic here
+        // For testing purposes, return true (replace with real subscription check)
+        console.log(`🔍 Checking subscription for ${cleanNumber}...`);
+        
+        // TODO: Replace this with your actual subscription validation
+        // Example:
+        // const user = await User.findOne({ whatsappNumber: cleanNumber });
+        // if (!user) return false;
+        // return user.isSubscriptionActive();
+        
+        // For now, return true to test the bot (CHANGE THIS IN PRODUCTION)
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Error checking bot usage permission:', error);
+        return false;
     }
-
-    return false; // expired or not subscribed
-  } catch (err) {
-    console.error('❌ Error checking subscription:', err);
-    return false;
-  }
 }
 
+function exemptUser(phoneNumber, exempt = true) {
+    const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+    
+    if (exempt) {
+        exemptedUsers.add(cleanNumber);
+        console.log(`✅ User ${cleanNumber} exempted from payment`);
+    } else {
+        exemptedUsers.delete(cleanNumber);
+        console.log(`🚫 User ${cleanNumber} exemption removed`);
+    }
+    
+    // Optional: Save exempted users to file for persistence
+    // saveExemptedUsersToFile();
+}
+
+// Optional: Function to save exempted users to file for persistence
+function saveExemptedUsersToFile() {
+    try {
+        const exemptedArray = Array.from(exemptedUsers);
+        const fs = require('fs');
+        const path = require('path');
+        
+        const exemptedFile = path.join(__dirname, 'exempted_users.json');
+        fs.writeFileSync(exemptedFile, JSON.stringify(exemptedArray, null, 2));
+        console.log('💾 Exempted users saved to file');
+    } catch (error) {
+        console.error('❌ Error saving exempted users:', error);
+    }
+}
+
+// Optional: Function to load exempted users from file on startup
+function loadExemptedUsersFromFile() {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        
+        const exemptedFile = path.join(__dirname, 'exempted_users.json');
+        if (fs.existsSync(exemptedFile)) {
+            const exemptedArray = JSON.parse(fs.readFileSync(exemptedFile, 'utf8'));
+            exemptedArray.forEach(number => exemptedUsers.add(number));
+            console.log(`📂 Loaded ${exemptedArray.length} exempted users from file`);
+        }
+    } catch (error) {
+        console.error('❌ Error loading exempted users:', error);
+    }
+}
 
 // Add this near the top of bot.js, after the requires
 process.on('unhandledRejection', (reason, promise) => {
@@ -1867,12 +1928,15 @@ client.on('ready', async () => {
         });
 
         // Message handler for bot commands
+
+
 client.on('message_create', async (message) => {
   try {
     console.log('📨 MESSAGE:', {
       body: message.body,
       from: message.from,
       fromMe: message.fromMe,
+      sessionId: sessionId
     });
 
     // Process only commands starting with !
@@ -1887,99 +1951,281 @@ client.on('message_create', async (message) => {
       return;
     }
 
-    console.log(`📱 Self ID: ${selfId}, Message from: ${message.from}`);
+    console.log(`📱 Self ID: ${selfId}, Message from: ${message.from}, Session: ${sessionId}`);
 
-    // Check if this message came from the self-chat
-    const isSelfChat =
-      message.from === selfId ||
-      message.to === selfId ||
-      message.fromMe === true;
-
+    // Only process messages from self-chat (user talking to themselves)
+    const isSelfChat = message.from === selfId;
+    
     if (!isSelfChat) {
       console.log('🚫 Not self-chat, ignoring');
       return;
     }
 
-    // Extract clean number (digits only)
-    const userNumber = message.from.replace('@c.us', '').replace('@g.us', '');
+    // Extract clean number (digits only) from the logged-in user
+    const userNumber = selfNumber;
+
+    console.log('🤖 Processing self-chat command for user:', userNumber);
 
     // ===== SUBSCRIPTION & OWNER EXEMPTION CHECK =====
-    const allowed = await isAllowedToUseBot(userNumber);
-    if (!allowed) {
-      await client.sendMessage(
-        selfId,
-        '🚫 Your subscription has expired. Please renew to continue using the bot.'
-      );
-      console.log(`🚫 Command blocked due to expired subscription: ${userNumber}`);
-      return;
-    }
-    // ================================================
+    const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+    const isOwner = BOT_OWNER && userNumber === BOT_OWNER;
+    
+    // Check subscription status for non-owners
+    if (!isOwner) {
+      try {
+        const allowed = await isAllowedToUseBot(userNumber);
+        if (!allowed) {
+          await client.sendMessage(
+            selfId,
+            `🚫 *Subscription Required*
 
-    console.log('🤖 Processing command:', message.body);
+Your subscription has expired or is inactive.
+
+💳 *Renew your subscription to continue using the bot:*
+• Visit: ${process.env.DOMAIN || 'your-website.com'}/payment
+• Contact support for assistance
+
+📞 *Your Number:* ${userNumber}
+🔒 *Status:* Subscription Required`
+          );
+          console.log(`🚫 Command blocked - expired subscription: ${userNumber}`);
+          return;
+        }
+      } catch (subscriptionError) {
+        console.error('❌ Subscription check error:', subscriptionError);
+        await client.sendMessage(
+          selfId,
+          '⚠️ *Service Temporarily Unavailable*\n\nUnable to verify your subscription status. Please try again in a moment or contact support if this persists.'
+        );
+        return;
+      }
+    }
 
     const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
 
     // ===== OWNER ADMIN COMMANDS =====
-    if (userNumber === BOT_OWNER) {
-      if (command === 'exempt' && args[0]) {
-        exemptUser(args[0], true);
-        await client.sendMessage(selfId, `✅ ${args[0]} exempted from payment.`);
-        return;
-      }
-      if (command === 'unexempt' && args[0]) {
-        exemptUser(args[0], false);
-        await client.sendMessage(selfId, `🚫 ${args[0]} exemption removed.`);
-        return;
-      }
-      if (command === 'listexempt') {
-        const list = [...exemptedUsers].join(', ') || 'None';
-        await client.sendMessage(selfId, `📜 Exempted Users:\n${list}`);
-        return;
+    if (isOwner) {
+      switch (command.toLowerCase()) {
+        case 'exempt':
+          if (args[0]) {
+            try {
+              exemptUser(args[0], true);
+              await client.sendMessage(selfId, `✅ *User Exempted*\n\n📞 Number: ${args[0]}\n🛡️ Status: Exempted from payment\n⏰ Date: ${new Date().toLocaleString()}`);
+              return;
+            } catch (error) {
+              await client.sendMessage(selfId, `❌ *Error:* ${error.message}`);
+              return;
+            }
+          } else {
+            await client.sendMessage(selfId, '❌ *Usage:* !exempt <phone_number>\n\n*Example:* !exempt 1234567890');
+            return;
+          }
+
+        case 'unexempt':
+          if (args[0]) {
+            try {
+              exemptUser(args[0], false);
+              await client.sendMessage(selfId, `🚫 *Exemption Removed*\n\n📞 Number: ${args[0]}\n🛡️ Status: Exemption removed\n⏰ Date: ${new Date().toLocaleString()}`);
+              return;
+            } catch (error) {
+              await client.sendMessage(selfId, `❌ *Error:* ${error.message}`);
+              return;
+            }
+          } else {
+            await client.sendMessage(selfId, '❌ *Usage:* !unexempt <phone_number>\n\n*Example:* !unexempt 1234567890');
+            return;
+          }
+
+        case 'listexempt':
+          try {
+            const exemptedList = [...(exemptedUsers || [])];
+            const list = exemptedList.length > 0 ? exemptedList.join('\n• ') : 'No users exempted';
+            await client.sendMessage(selfId, `📜 *Exempted Users (${exemptedList.length})*\n\n• ${list}`);
+            return;
+          } catch (error) {
+            await client.sendMessage(selfId, `❌ *Error:* ${error.message}`);
+            return;
+          }
+
+        case 'stats':
+          try {
+            const totalSessions = clients.size;
+            const uptime = Math.floor(process.uptime());
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            
+            const statsMsg = `📊 *Bot Statistics*
+
+👥 *Active Sessions:* ${totalSessions}
+⏱️ *Uptime:* ${hours}h ${minutes}m
+💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB
+🛡️ *Exempted Users:* ${exemptedUsers ? exemptedUsers.size : 0}
+📱 *Your Session:* ${sessionId}
+
+🚀 *System Status:* Operational`;
+
+            await client.sendMessage(selfId, statsMsg);
+            return;
+          } catch (error) {
+            await client.sendMessage(selfId, `❌ *Error:* ${error.message}`);
+            return;
+          }
+
+        case 'adminhelp':
+          const adminHelpText = `👑 *Admin Commands*
+
+🛡️ *User Management:*
+• !exempt <number> - Exempt user from payment
+• !unexempt <number> - Remove exemption  
+• !listexempt - List exempted users
+
+📊 *System:*
+• !stats - Show bot statistics
+• !adminhelp - Show admin commands
+
+📋 *Regular Commands:*
+• !ping - Test response
+• !help - Show user help
+• !status - Bot status
+• !myinfo - User information
+
+👑 *Owner privileges active for ${userNumber}*`;
+          await client.sendMessage(selfId, adminHelpText);
+          return;
       }
     }
-    // ================================================
 
-    // ===== NORMAL COMMANDS =====
+    // ===== USER COMMANDS (Available to all subscribed users) =====
     switch (command.toLowerCase()) {
       case 'ping':
-        console.log('🏓 Executing ping...');
-        await client.sendMessage(selfId, '🏓 Pong! Bot is working!');
+        console.log('🏓 Executing ping for user:', userNumber);
+        await client.sendMessage(selfId, `🏓 *Pong!*\n\nBot is working perfectly!\n📱 Your session: ${sessionId}`);
         console.log('✅ Ping sent');
         break;
 
       case 'help':
-        const helpText = `🤖 *Bot Commands*
+        const helpText = `🤖 *WhatsApp Bot Commands*
 
-• !ping - Test response
-• !help - Show this help
-• !status - Bot status
+📋 *Available Commands:*
+• !ping - Test bot response
+• !help - Show this help menu
+• !status - Show bot status  
+• !myinfo - Your account information
+• !support - Get support information
 
-💡 Use these in your self-chat only!`;
+${isOwner ? '\n👑 *Admin Commands:*\n• !adminhelp - Show admin commands\n' : ''}
+
+💡 *Usage:* Type commands in this chat (your self-chat)
+🔒 *Privacy:* Only you can see and use these commands
+
+Need help? Contact support!`;
+
         await client.sendMessage(selfId, helpText);
-        console.log('✅ Help sent');
+        console.log('✅ Help sent to user:', userNumber);
         break;
 
       case 'status':
-        const statusMsg = `🤖 *Status*
+        const uptime = Math.floor(process.uptime());
+        const hours = Math.floor(uptime / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        
+        const statusMsg = `🤖 *Your Bot Status*
 
-✅ Active
-📱 Session: ${sessionId}
-📞 Phone: ${selfNumber}`;
+✅ *Status:* Active & Ready
+📱 *Your Number:* ${userNumber}
+📱 *Session ID:* ${sessionId}
+⏱️ *Connected:* ${hours}h ${minutes}m ago
+${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}
+💚 *Health:* All systems operational
+
+🚀 *Ready to serve you!*`;
+
         await client.sendMessage(selfId, statusMsg);
-        console.log('✅ Status sent');
+        console.log('✅ Status sent to user:', userNumber);
+        break;
+
+      case 'myinfo':
+        const infoMsg = `👤 *Your Account Information*
+
+📞 *Phone Number:* ${userNumber}
+📱 *Session ID:* ${sessionId}
+${isOwner ? '👑 *Account Type:* Bot Owner (Full Access)\n' : '👤 *Account Type:* Subscriber\n'}
+🔗 *Connection:* Active
+⏰ *Last Command:* ${new Date().toLocaleString()}
+
+💼 *Subscription Status:* ${isOwner ? 'Owner (Unlimited)' : 'Active'}
+
+Need to update your info? Contact support!`;
+
+        await client.sendMessage(selfId, infoMsg);
+        console.log('✅ User info sent to:', userNumber);
+        break;
+
+      case 'support':
+        const supportMsg = `🆘 *Support Information*
+
+📞 *Your Number:* ${userNumber}
+📱 *Session ID:* ${sessionId}
+⏰ *Timestamp:* ${new Date().toLocaleString()}
+
+💬 *Contact Support:*
+• Website: ${process.env.DOMAIN || 'your-website.com'}
+• Email: ${process.env.SUPPORT_EMAIL || 'support@yoursite.com'}
+
+🔧 *Common Issues:*
+• Bot not responding? Try !ping
+• Commands not working? Check your subscription
+• Need help? Include your session ID above
+
+We're here to help! 🚀`;
+
+        await client.sendMessage(selfId, supportMsg);
+        console.log('✅ Support info sent to user:', userNumber);
         break;
 
       default:
         await client.sendMessage(
           selfId,
-          `❌ Unknown command: "${command}"\nType !help`
+          `❌ *Unknown Command:* "${command}"
+
+Type !help to see all available commands.
+
+💡 *Tip:* Make sure to use the ! prefix before commands.
+${isOwner ? '\n👑 *Admin:* Type !adminhelp for admin commands' : ''}`
         );
+        console.log(`❌ Unknown command attempted by ${userNumber}: ${command}`);
     }
+
+    // Track command usage (optional)
+    console.log(`📊 Command executed: ${command} by user: ${userNumber} in session: ${sessionId}`);
+
   } catch (error) {
     console.error('❌ Message handler error:', error);
+    
+    // Try to send error message to user
+    try {
+      const selfId = client.info?.wid?._serialized;
+      if (selfId) {
+        await client.sendMessage(
+          selfId, 
+          `⚠️ *Service Error*
+
+An error occurred while processing your command. Our technical team has been notified.
+
+🔧 *What you can do:*
+• Try the command again in a few seconds
+• Use !support to get help
+• Contact our support team if the issue persists
+
+📱 *Your Session:* ${sessionId}
+⏰ *Time:* ${new Date().toLocaleString()}`
+        );
+      }
+    } catch (sendError) {
+      console.error('❌ Could not send error message to user:', sendError);
+    }
   }
 });
-
         
         // Initialize the client
         console.log('🔄 BOT: Initializing WhatsApp client...');
