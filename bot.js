@@ -20,14 +20,6 @@ const exemptedUsers = new Set();
 // Load exempted users from file on startup (optional)
 loadExemptedUsersFromFile();
 
-// Helper to add/remove exemptions
-function exemptUser(number, exempt = true) {
-  if (!number) return;
-  number = number.replace('@c.us', '');
-  if (exempt) exemptedUsers.add(number);
-  else exemptedUsers.delete(number);
-}
-
 // Check if user is allowed to use bot commands
 async function isAllowedToUseBot(phoneNumber) {
     try {
@@ -139,7 +131,7 @@ const CONFIG = {
     mediaPath: getDefaultPath('media'),
     authPath: getDefaultPath('auth'),
     adminSettings: {
-        selfChatOnly: false,
+        selfChatOnly: true,
         secondaryAdmins: {}
     }
 };
@@ -1822,33 +1814,48 @@ client.on('authenticated', (session) => {
         // Ready event handler
 client.on('ready', async () => {
   console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-
+  
   try {
+    // Wait for client info to be fully available
+    let attempts = 0;
+    while (!client.info?.wid && attempts < 10) {
+      console.log(`⏳ Waiting for client info... attempt ${attempts + 1}`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      attempts++;
+    }
+    
     const selfId = client.info?.wid?._serialized || null;
     const selfNumber = client.info?.wid?.user || null;
-
+    
     if (!selfId || !selfNumber) {
       console.error('❌ Unable to determine self chat ID from client.info');
       return;
     }
-
+    
+    // 🔑 CRITICAL: Store selfId for message handler
+    client.selfId = selfId;
+    
     console.log('📱 Logged in WhatsApp number:', selfNumber);
-    console.log('📱 Self chat ID:', selfId);
-
+    console.log('📱 Self chat ID stored:', selfId);
+    
     client.isSyncComplete = true;
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    console.log('📤 Sending welcome messages...');
-
+    
+    // Wait for WhatsApp to sync properly
+    console.log('⏳ Waiting for WhatsApp sync (10 seconds)...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
+    console.log('📤 Sending welcome messages to self-chat...');
+    
     // ✅ Send standard welcome
-    await client.sendMessage(selfId, '🤖 *Bot Connected!*');
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
+    await client.sendMessage(selfId, '🤖 *Bot Connected Successfully!*');
+    console.log('✅ Welcome message 1 sent');
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     // ✅ Subscription or trial check
     const user = await User.findOne({ whatsappNumber: selfNumber });
     if (user) {
       const subStatus = await checkUserSubscriptionStatus(user._id);
-
       if (subStatus.isOwner) {
         await client.sendMessage(selfId, '👑 You are the *Bot Owner*. Unlimited access granted.');
       } else if (subStatus.trial) {
@@ -1866,13 +1873,13 @@ client.on('ready', async () => {
     } else {
       await client.sendMessage(selfId, '⚠️ User record not found. Please register on the dashboard.');
     }
-
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     // ✅ Final ready message
-    await client.sendMessage(selfId, '⚡ Ready! Type !ping to test');
-    console.log('✅ All welcome messages sent');
-
+    await client.sendMessage(selfId, '⚡ Ready! Type !ping to test commands');
+    console.log('✅ All welcome messages sent successfully');
+    
     // Store session and notify dashboard
     userSessions.set(selfId, sessionId);
     if (io) {
@@ -1882,13 +1889,24 @@ client.on('ready', async () => {
         message: 'WhatsApp bot is ready!',
       });
     }
-
+    
     console.log('✅ BOT: Session setup completed successfully');
+    
   } catch (err) {
     console.error('❌ Error during ready handler:', err);
+    
+    // Try fallback welcome message
+    try {
+      const fallbackSelfId = client.info?.wid?._serialized;
+      if (fallbackSelfId) {
+        await client.sendMessage(fallbackSelfId, '🤖 Bot ready! Type !ping to test');
+        console.log('✅ Fallback welcome message sent');
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback message also failed:', fallbackError);
+    }
   }
 });
-
 
         // Disconnected event handler
         client.on('disconnected', async (reason) => {
@@ -1928,8 +1946,6 @@ client.on('ready', async () => {
         });
 
         // Message handler for bot commands
-
-
 client.on('message_create', async (message) => {
   try {
     console.log('📨 MESSAGE:', {
@@ -1942,18 +1958,18 @@ client.on('message_create', async (message) => {
     // Process only commands starting with !
     if (!message.body || !message.body.startsWith('!')) return;
 
-    // Get the actual logged-in account ID
-    const selfId = client.info?.wid?._serialized || null;
+    // Use stored selfId with fallback
+    const selfId = client.selfId || client.info?.wid?._serialized;
     const selfNumber = client.info?.wid?.user || null;
 
     if (!selfId || !selfNumber) {
-      console.warn('⚠️ client.info not ready; skipping message');
+      console.warn('⚠️ Self ID not available; skipping message');
       return;
     }
 
     console.log(`📱 Self ID: ${selfId}, Message from: ${message.from}, Session: ${sessionId}`);
 
-    // Only process messages from self-chat (user talking to themselves)
+    // 🔑 CRITICAL: Only process messages from self-chat
     const isSelfChat = message.from === selfId;
     
     if (!isSelfChat) {
@@ -1961,9 +1977,10 @@ client.on('message_create', async (message) => {
       return;
     }
 
+    console.log('✅ Self-chat confirmed! Processing command:', message.body);
+
     // Extract clean number (digits only) from the logged-in user
     const userNumber = selfNumber;
-
     console.log('🤖 Processing self-chat command for user:', userNumber);
 
     // ===== SUBSCRIPTION & OWNER EXEMPTION CHECK =====
@@ -1977,16 +1994,7 @@ client.on('message_create', async (message) => {
         if (!allowed) {
           await client.sendMessage(
             selfId,
-            `🚫 *Subscription Required*
-
-Your subscription has expired or is inactive.
-
-💳 *Renew your subscription to continue using the bot:*
-• Visit: ${process.env.DOMAIN || 'your-website.com'}/payment
-• Contact support for assistance
-
-📞 *Your Number:* ${userNumber}
-🔒 *Status:* Subscription Required`
+            `🚫 *Subscription Required*\n\nYour subscription has expired or is inactive.\n\n💳 *Renew your subscription to continue using the bot:*\n• Visit: ${process.env.DOMAIN || 'your-website.com'}/payment\n• Contact support for assistance\n\n📞 *Your Number:* ${userNumber}\n🔒 *Status:* Subscription Required`
           );
           console.log(`🚫 Command blocked - expired subscription: ${userNumber}`);
           return;
@@ -2047,49 +2055,8 @@ Your subscription has expired or is inactive.
             return;
           }
 
-        case 'stats':
-          try {
-            const totalSessions = clients.size;
-            const uptime = Math.floor(process.uptime());
-            const hours = Math.floor(uptime / 3600);
-            const minutes = Math.floor((uptime % 3600) / 60);
-            
-            const statsMsg = `📊 *Bot Statistics*
-
-👥 *Active Sessions:* ${totalSessions}
-⏱️ *Uptime:* ${hours}h ${minutes}m
-💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB
-🛡️ *Exempted Users:* ${exemptedUsers ? exemptedUsers.size : 0}
-📱 *Your Session:* ${sessionId}
-
-🚀 *System Status:* Operational`;
-
-            await client.sendMessage(selfId, statsMsg);
-            return;
-          } catch (error) {
-            await client.sendMessage(selfId, `❌ *Error:* ${error.message}`);
-            return;
-          }
-
         case 'adminhelp':
-          const adminHelpText = `👑 *Admin Commands*
-
-🛡️ *User Management:*
-• !exempt <number> - Exempt user from payment
-• !unexempt <number> - Remove exemption  
-• !listexempt - List exempted users
-
-📊 *System:*
-• !stats - Show bot statistics
-• !adminhelp - Show admin commands
-
-📋 *Regular Commands:*
-• !ping - Test response
-• !help - Show user help
-• !status - Bot status
-• !myinfo - User information
-
-👑 *Owner privileges active for ${userNumber}*`;
+          const adminHelpText = `👑 *Admin Commands*\n\n🛡️ *User Management:*\n• !exempt <number> - Exempt user from payment\n• !unexempt <number> - Remove exemption\n• !listexempt - List exempted users\n\n📊 *System:*\n• !stats - Show bot statistics\n• !adminhelp - Show admin commands\n\n📋 *Regular Commands:*\n• !ping - Test response\n• !help - Show user help\n• !status - Bot status\n• !myinfo - User information\n\n👑 *Owner privileges active for ${userNumber}*`;
           await client.sendMessage(selfId, adminHelpText);
           return;
       }
@@ -2104,22 +2071,7 @@ Your subscription has expired or is inactive.
         break;
 
       case 'help':
-        const helpText = `🤖 *WhatsApp Bot Commands*
-
-📋 *Available Commands:*
-• !ping - Test bot response
-• !help - Show this help menu
-• !status - Show bot status  
-• !myinfo - Your account information
-• !support - Get support information
-
-${isOwner ? '\n👑 *Admin Commands:*\n• !adminhelp - Show admin commands\n' : ''}
-
-💡 *Usage:* Type commands in this chat (your self-chat)
-🔒 *Privacy:* Only you can see and use these commands
-
-Need help? Contact support!`;
-
+        const helpText = `🤖 *WhatsApp Bot Commands*\n\n📋 *Available Commands:*\n• !ping - Test bot response\n• !help - Show this help menu\n• !status - Show bot status\n• !myinfo - Your account information\n• !support - Get support information\n\n${isOwner ? '👑 *Admin Commands:*\n• !adminhelp - Show admin commands\n\n' : ''}💡 *Usage:* Type commands in this chat (your self-chat)\n🔒 *Privacy:* Only you can see and use these commands\n\nNeed help? Contact support!`;
         await client.sendMessage(selfId, helpText);
         console.log('✅ Help sent to user:', userNumber);
         break;
@@ -2129,69 +2081,19 @@ Need help? Contact support!`;
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
         
-        const statusMsg = `🤖 *Your Bot Status*
-
-✅ *Status:* Active & Ready
-📱 *Your Number:* ${userNumber}
-📱 *Session ID:* ${sessionId}
-⏱️ *Connected:* ${hours}h ${minutes}m ago
-${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}
-💚 *Health:* All systems operational
-
-🚀 *Ready to serve you!*`;
-
+        const statusMsg = `🤖 *Your Bot Status*\n\n✅ *Status:* Active & Ready\n📱 *Your Number:* ${userNumber}\n📱 *Session ID:* ${sessionId}\n⏱️ *Connected:* ${hours}h ${minutes}m ago\n${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}💚 *Health:* All systems operational\n\n🚀 *Ready to serve you!*`;
         await client.sendMessage(selfId, statusMsg);
         console.log('✅ Status sent to user:', userNumber);
         break;
 
-      case 'myinfo':
-        const infoMsg = `👤 *Your Account Information*
-
-📞 *Phone Number:* ${userNumber}
-📱 *Session ID:* ${sessionId}
-${isOwner ? '👑 *Account Type:* Bot Owner (Full Access)\n' : '👤 *Account Type:* Subscriber\n'}
-🔗 *Connection:* Active
-⏰ *Last Command:* ${new Date().toLocaleString()}
-
-💼 *Subscription Status:* ${isOwner ? 'Owner (Unlimited)' : 'Active'}
-
-Need to update your info? Contact support!`;
-
-        await client.sendMessage(selfId, infoMsg);
-        console.log('✅ User info sent to:', userNumber);
-        break;
-
-      case 'support':
-        const supportMsg = `🆘 *Support Information*
-
-📞 *Your Number:* ${userNumber}
-📱 *Session ID:* ${sessionId}
-⏰ *Timestamp:* ${new Date().toLocaleString()}
-
-💬 *Contact Support:*
-• Website: ${process.env.DOMAIN || 'your-website.com'}
-• Email: ${process.env.SUPPORT_EMAIL || 'support@yoursite.com'}
-
-🔧 *Common Issues:*
-• Bot not responding? Try !ping
-• Commands not working? Check your subscription
-• Need help? Include your session ID above
-
-We're here to help! 🚀`;
-
-        await client.sendMessage(selfId, supportMsg);
-        console.log('✅ Support info sent to user:', userNumber);
+      case 'test':
+        await client.sendMessage(selfId, `🧪 *Self-Chat Test*\n\n✅ Command received in self-chat\n📱 Your ID: ${selfId}\n📞 Your Number: ${selfNumber}\n📨 Message From: ${message.from}\n🤖 From Me: ${message.fromMe}\n✅ Self Match: ${message.from === selfId}\n📱 Session: ${sessionId}\n⏰ Time: ${new Date().toLocaleString()}`);
         break;
 
       default:
         await client.sendMessage(
           selfId,
-          `❌ *Unknown Command:* "${command}"
-
-Type !help to see all available commands.
-
-💡 *Tip:* Make sure to use the ! prefix before commands.
-${isOwner ? '\n👑 *Admin:* Type !adminhelp for admin commands' : ''}`
+          `❌ *Unknown Command:* "${command}"\n\nType !help to see all available commands.\n\n💡 *Tip:* Make sure to use the ! prefix before commands.\n${isOwner ? '\n👑 *Admin:* Type !adminhelp for admin commands' : ''}`
         );
         console.log(`❌ Unknown command attempted by ${userNumber}: ${command}`);
     }
@@ -2204,21 +2106,11 @@ ${isOwner ? '\n👑 *Admin:* Type !adminhelp for admin commands' : ''}`
     
     // Try to send error message to user
     try {
-      const selfId = client.info?.wid?._serialized;
+      const selfId = client.selfId || client.info?.wid?._serialized;
       if (selfId) {
         await client.sendMessage(
           selfId, 
-          `⚠️ *Service Error*
-
-An error occurred while processing your command. Our technical team has been notified.
-
-🔧 *What you can do:*
-• Try the command again in a few seconds
-• Use !support to get help
-• Contact our support team if the issue persists
-
-📱 *Your Session:* ${sessionId}
-⏰ *Time:* ${new Date().toLocaleString()}`
+          `⚠️ *Service Error*\n\nAn error occurred while processing your command. Please try again.\n\n📱 *Your Session:* ${sessionId}\n⏰ *Time:* ${new Date().toLocaleString()}\n\nIf this persists, use !support for help.`
         );
       }
     } catch (sendError) {
