@@ -1984,8 +1984,18 @@ client.on('ready', async () => {
         // Message handler for bot commands
 client.on('message', async (message) => {
     try {
+        // Wait for client info to be available
+        if (!client.info || !client.info.wid) {
+            console.log('⚠️ Client info not ready, skipping message');
+            return;
+        }
+
+        // Get self ID and number
+        const selfId = client.info.wid._serialized;
+        const selfNumber = client.info.wid.user;
+
         // Use your old reliable self-chat detection
-        const isSelfChat = message.fromMe && message.to === client.info.wid._serialized;
+        const isSelfChat = message.fromMe && message.to === selfId;
         if (!isSelfChat || !message.body.startsWith('!')) return;
         
         console.log('✅ Self-chat command received:', message.body);
@@ -1998,11 +2008,12 @@ client.on('message', async (message) => {
         }
         
         const [command, ...args] = message.body.slice(1).toLowerCase().split(' ');
-        const selfNumber = client.info.wid.user;
         
         // Check if user is owner
         const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
         const isOwner = BOT_OWNER && selfNumber === BOT_OWNER;
+        
+        console.log(`🔍 Debug: BOT_OWNER=${BOT_OWNER}, selfNumber=${selfNumber}, isOwner=${isOwner}`);
         
         // Subscription check for non-owners
         if (!isOwner) {
@@ -2034,7 +2045,10 @@ client.on('message', async (message) => {
                         `• !status - Bot status\n` +
                         `• !myinfo - Account information\n` +
                         `• !sessionid - Your session ID\n` +
-                        `• !support - Get support\n\n` +
+                        `• !support - Get support\n` +
+                        `• !media [type] - Send media file\n` +
+                        `• !document - Send document\n` +
+                        `• !info - Chat information\n\n` +
                         `${isOwner ? '👑 *Admin Commands:*\n• !exempt <number> - Exempt user\n• !unexempt <number> - Remove exemption\n• !listexempt - List exempted users\n• !stats - Bot statistics\n\n' : ''}` +
                         `💡 *Usage:* Type commands in this chat only!\n` +
                         `🔒 *Privacy:* Only you can see these commands.`;
@@ -2073,56 +2087,71 @@ client.on('message', async (message) => {
                     await message.reply(supportMsg);
                     break;
 
-                    case 'sessionid':
-    const uniqueId = userSessions.get(selfId) || sessionId;
-    await client.sendMessage(selfId, `📱 *Your Session ID*\n\n\`${uniqueId}\`\n\nUse this ID when contacting support.`);
-    break;
+                case 'sessionid':
+                    const uniqueId = userSessions.get(selfId) || sessionId;
+                    await message.reply(`📱 *Your Session ID*\n\n\`${uniqueId}\`\n\nUse this ID when contacting support.`);
+                    break;
 
-case 'media':
-    const mediaType = args[0] || 'image';
-    if (mediaPath[mediaType]) {
-        if (fs.existsSync(mediaPath[mediaType])) {
-            const media = MessageMedia.fromFilePath(mediaPath[mediaType]);
-            await client.sendMessage(selfId, media);
-        } else {
-            await client.sendMessage(selfId, `❌ Media file not found: ${mediaPath[mediaType]}`);
-        }
-    } else {
-        await client.sendMessage(selfId, '❌ Invalid media type. Use: image, audio, or document');
-    }
-    break;
+                case 'media':
+                    const mediaType = args[0] || 'image';
+                    if (mediaPath[mediaType]) {
+                        if (fs.existsSync(mediaPath[mediaType])) {
+                            const media = MessageMedia.fromFilePath(mediaPath[mediaType]);
+                            await message.reply(media);
+                        } else {
+                            await message.reply(`❌ Media file not found: ${mediaPath[mediaType]}`);
+                        }
+                    } else {
+                        await message.reply('❌ Invalid media type. Use: image, audio, or document');
+                    }
+                    break;
 
-case 'document':
-    try {
-        if (!fs.existsSync(mediaPath.document)) {
-            await client.sendMessage(selfId, `❌ Document not found at ${mediaPath.document}`);
-            break;
-        }
-        
-        const document = MessageMedia.fromFilePath(mediaPath.document);
-        await client.sendMessage(selfId, document, { 
-            caption: 'Here is your requested document',
-            sendMediaAsDocument: true 
-        });
-        
-        console.log(`✅ Document sent to ${userNumber}`);
-    } catch (error) {
-        console.error('Error sending document:', error);
-        await client.sendMessage(selfId, '❌ Failed to send document');
-    }
-    break;
+                case 'document':
+                    try {
+                        if (!fs.existsSync(mediaPath.document)) {
+                            await message.reply(`❌ Document not found at ${mediaPath.document}`);
+                            break;
+                        }
+                        
+                        const document = MessageMedia.fromFilePath(mediaPath.document);
+                        await message.reply(document, undefined, { 
+                            caption: 'Here is your requested document',
+                            sendMediaAsDocument: true 
+                        });
+                        
+                        console.log(`✅ Document sent to ${selfNumber}`);
+                    } catch (error) {
+                        console.error('Error sending document:', error);
+                        await message.reply('❌ Failed to send document');
+                    }
+                    break;
 
-case 'info':
-    const infoMsg = `📋 *Chat Information*\n\n` +
-        `📱 *Your Number:* ${userNumber}\n` +
-        `📱 *Session ID:* ${sessionId}\n` +
-        `🔗 *Self Chat:* Yes\n` +
-        `⏰ *Time:* ${new Date().toLocaleString()}\n` +
-        `${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}`;
-    
-    await client.sendMessage(selfId, infoMsg);
-    break;
-                
+                case 'info':
+                    const infoMsg = `📋 *Chat Information*\n\n` +
+                        `📱 *Your Number:* ${selfNumber}\n` +
+                        `📱 *Session ID:* ${sessionId}\n` +
+                        `🔗 *Self Chat:* Yes\n` +
+                        `⏰ *Time:* ${new Date().toLocaleString()}\n` +
+                        `${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}`;
+                    
+                    await message.reply(infoMsg);
+                    break;
+
+                case 'debug':
+                    const debugInfo = `🔍 *Debug Information*\n\n` +
+                        `📱 *Self ID:* ${selfId}\n` +
+                        `📞 *Self Number:* ${selfNumber}\n` +
+                        `📨 *Message From:* ${message.from}\n` +
+                        `📤 *Message To:* ${message.to}\n` +
+                        `🤖 *From Me:* ${message.fromMe}\n` +
+                        `✅ *Is Self Chat:* ${message.to === selfId}\n` +
+                        `👑 *Is Owner:* ${isOwner}\n` +
+                        `🔧 *Config Owner:* ${CONFIG.owner}\n` +
+                        `⏰ *Time:* ${new Date().toLocaleString()}`;
+                    
+                    await message.reply(debugInfo);
+                    break;
+                    
                 // Owner admin commands
                 case 'exempt':
                     if (!isOwner) {
