@@ -2060,24 +2060,6 @@ client.on('message', async (message) => {
                     await message.reply(statusMsg);
                     break;
                     
-                case 'sessionid':
-                    const userId = message.to;
-                    const uniqueId = userSessions.get(userId) || sessionId;
-                    await message.reply(`📱 *Your Session ID*\n\n\`${uniqueId}\`\n\nUse this when contacting support.`);
-                    break;
-                    
-                case 'myinfo':
-                    const infoMsg = `👤 *Your Account Information*\n\n` +
-                        `📞 *Phone:* ${selfNumber}\n` +
-                        `📱 *Session:* ${sessionId}\n` +
-                        `${isOwner ? '👑 *Type:* Bot Owner (Full Access)\n' : '👤 *Type:* Subscriber\n'}` +
-                        `🔗 *Status:* Connected\n` +
-                        `⏰ *Time:* ${new Date().toLocaleString()}\n\n` +
-                        `💼 *Subscription:* ${isOwner ? 'Owner (Unlimited)' : 'Active'}`;
-                    
-                    await message.reply(infoMsg);
-                    break;
-                    
                 case 'support':
                     const supportMsg = `🆘 *Support Information*\n\n` +
                         `📞 *Your Number:* ${selfNumber}\n` +
