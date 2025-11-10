@@ -9,6 +9,49 @@ const User = require('./models/User');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
+// ✅ === OWNER & SUBSCRIPTION EXEMPTION SETTINGS ===
+
+// The owner's WhatsApp number (in international format, without @c.us)
+const BOT_OWNER = '2347067012884';
+
+// Temporary in-memory exemption list
+// You can later store this in DB if needed.
+const exemptedUsers = new Set();
+
+// Helper to add/remove exemptions
+function exemptUser(number, exempt = true) {
+  if (!number) return;
+  number = number.replace('@c.us', '');
+  if (exempt) exemptedUsers.add(number);
+  else exemptedUsers.delete(number);
+}
+
+// Check if user is allowed to use bot commands
+async function isAllowedToUseBot(userNumber) {
+  try {
+    // Always allow owner
+    if (userNumber === BOT_OWNER) return true;
+
+    // Always allow exempted users
+    if (exemptedUsers.has(userNumber)) return true;
+
+    // Otherwise, run subscription check
+    const user = await User.findOne({ phone: userNumber });
+    if (!user) return false;
+
+    // Example subscription check — adjust to your schema
+    if (user.subscription && user.subscription.expiresAt > Date.now()) {
+      return true;
+    }
+
+    return false; // expired or not subscribed
+  } catch (err) {
+    console.error('❌ Error checking subscription:', err);
+    return false;
+  }
+}
+
+
 // Add this near the top of bot.js, after the requires
 process.on('unhandledRejection', (reason, promise) => {
     console.log(`[${new Date().toISOString()}] ERROR: Unhandled Rejection at:`, promise);
@@ -333,108 +376,137 @@ async function removeDirectoryWithRetry(dirPath, maxRetries = 3) {
     }
 }
 
-// Subscription validation functions
+// ✅ Enhanced Subscription Validation Function
 async function checkUserSubscriptionStatus(userId) {
-    try {
-        const user = await User.findById(userId);
-        
-        if (!user) {
-            return { 
-                isValid: false, 
-                reason: 'User not found',
-                action: 'suspend'
-            };
-        }
+  try {
+    const user = await User.findById(userId);
 
-        console.log(`🔍 Checking subscription for user: ${userId}`);
-        console.log(`📱 User WhatsApp: ${user.whatsappNumber}`);
-        console.log(`👑 Config Owner: ${CONFIG.owner}`);
-
-        // 🔑 OWNER EXEMPTION: Check if this is the bot owner
-        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-        const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
-        
-        console.log(`🔍 Owner check - Config: ${ownerNumber}, User: ${userNumber}`);
-        
-        if (ownerNumber && userNumber && userNumber === ownerNumber) {
-            console.log(`👑 OWNER DETECTED: ${userId} - bypassing subscription check`);
-            return { 
-                isValid: true, 
-                reason: 'Owner privileges',
-                isOwner: true,
-                user: user
-            };
-        }
-
-        // 🔑 ADMIN EXEMPTION: Check if user is exempted by admin
-        if (user.exemptFromPayment === true) {
-            console.log(`🛡️ Payment exemption detected for user: ${userId}`);
-            return { 
-                isValid: true, 
-                reason: 'Admin exemption',
-                isExempted: true,
-                user: user
-            };
-        }
-
-        // 🔑 ADMIN USERS: Check if user is a secondary admin
-        const userPhone = user.whatsappNumber || user.phone;
-        if (userPhone && isSecondaryAdmin(userPhone)) {
-            console.log(`👨‍💼 Secondary admin detected: ${userId} - bypassing subscription check`);
-            return { 
-                isValid: true, 
-                reason: 'Admin privileges',
-                isAdmin: true,
-                user: user
-            };
-        }
-
-        console.log(`⚠️ Regular user - checking subscription status`);
-
-        // Regular subscription checks for normal users
-        if (!user.subscription || user.subscription.status !== 'active') {
-            console.log(`❌ No active subscription for user: ${userId}`);
-            return { 
-                isValid: false, 
-                reason: 'No active subscription',
-                action: 'suspend'
-            };
-        }
-
-        // Check if subscription has expired
-        if (user.subscription.expiresAt && new Date() > user.subscription.expiresAt) {
-            return { 
-                isValid: false, 
-                reason: 'Subscription expired',
-                action: 'suspend',
-                expiredDate: user.subscription.expiresAt
-            };
-        }
-
-        // Check if payment is overdue
-        if (user.subscription.paymentStatus === 'failed' || user.subscription.paymentStatus === 'overdue') {
-            return { 
-                isValid: false, 
-                reason: 'Payment failed or overdue',
-                action: 'suspend'
-            };
-        }
-
-        return { 
-            isValid: true, 
-            subscription: user.subscription,
-            user: user
-        };
-        
-    } catch (error) {
-        console.error('❌ Error checking subscription status:', error);
-        return { 
-            isValid: false, 
-            reason: 'System error',
-            action: 'suspend'
-        };
+    if (!user) {
+      return {
+        isValid: false,
+        reason: 'User not found',
+        action: 'suspend'
+      };
     }
+
+    console.log(`🔍 Checking subscription for user: ${userId}`);
+    console.log(`📱 User WhatsApp: ${user.whatsappNumber}`);
+    console.log(`👑 Config Owner: ${CONFIG.owner}`);
+
+    // Normalize numbers
+    const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+    const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
+
+    // 🟢 OWNER EXEMPTION
+    if (ownerNumber && userNumber && userNumber === ownerNumber) {
+      console.log(`👑 OWNER DETECTED (${userNumber}) → bypassing all subscription checks`);
+      return {
+        isValid: true,
+        reason: 'Owner privileges',
+        isOwner: true,
+        user
+      };
+    }
+
+    // 🟢 ADMIN EXEMPTION
+    if (user.exemptFromPayment === true) {
+      console.log(`🛡️ Admin payment exemption detected for user: ${userId}`);
+      return {
+        isValid: true,
+        reason: 'Admin exemption',
+        isExempted: true,
+        user
+      };
+    }
+
+    // 🟢 SECONDARY ADMIN CHECK (if you have such function)
+    const userPhone = user.whatsappNumber || user.phone;
+    if (userPhone && isSecondaryAdmin && isSecondaryAdmin(userPhone)) {
+      console.log(`👨‍💼 Secondary admin detected (${userPhone}) → bypassing subscription check`);
+      return {
+        isValid: true,
+        reason: 'Admin privileges',
+        isAdmin: true,
+        user
+      };
+    }
+
+    // 🟢 FREE 7-DAY TRIAL LOGIC
+    if (!user.subscription || !user.subscription.createdAt) {
+      // Assume `user.createdAt` exists
+      const createdAt = user.createdAt || new Date();
+      const daysSinceSignup = Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysSinceSignup <= 7) {
+        console.log(`🎁 Trial period active (${7 - daysSinceSignup} days left) for ${userNumber}`);
+        return {
+          isValid: true,
+          reason: 'Free 7-day trial active',
+          trial: true,
+          trialDaysLeft: 7 - daysSinceSignup,
+          user
+        };
+      }
+
+      console.log(`⛔ Trial expired for ${userNumber}`);
+      return {
+        isValid: false,
+        reason: 'Free trial expired',
+        action: 'suspend'
+      };
+    }
+
+    console.log(`⚙️ Active subscription found for regular user ${userNumber}`);
+
+    // 🕓 ACTIVE SUBSCRIPTION VALIDATION
+    const sub = user.subscription;
+
+    if (!sub.status || sub.status !== 'active') {
+      console.log(`❌ Subscription inactive for user: ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Inactive subscription',
+        action: 'suspend'
+      };
+    }
+
+    if (sub.expiresAt && new Date() > sub.expiresAt) {
+      console.log(`❌ Subscription expired for ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Subscription expired',
+        action: 'suspend',
+        expiredDate: sub.expiresAt
+      };
+    }
+
+    if (['failed', 'overdue'].includes(sub.paymentStatus)) {
+      console.log(`❌ Payment ${sub.paymentStatus} for ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Payment failed or overdue',
+        action: 'suspend'
+      };
+    }
+
+    // ✅ Everything OK
+    return {
+      isValid: true,
+      reason: 'Active subscription',
+      subscription: sub,
+      user
+    };
+
+  } catch (error) {
+    console.error('❌ Error checking subscription status:', error);
+    return {
+      isValid: false,
+      reason: 'System error',
+      action: 'suspend'
+    };
+  }
 }
+
 
 // Function to suspend a user's bot session (IMPROVED VERSION)
 async function suspendUserSession(userId, sessionId, reason, client, io) {
@@ -1688,65 +1760,75 @@ client.on('authenticated', (session) => {
 
         // Ready event handler
 client.on('ready', async () => {
-    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-    
-    // Use owner number directly - no complex logic
-    const ownerPhone = CONFIG.owner.replace(/[^0-9]/g, '');
-    const selfId = `${ownerPhone}@c.us`;
-    
-    // Force create client info
-    client.info = {
-        wid: {
-            _serialized: selfId,
-            user: ownerPhone
-        },
-        pushname: 'WhatsApp Bot'
-    };
-    
-    console.log('📱 Self ID:', selfId);
-    console.log('📱 Phone Number:', ownerPhone);
-    
-    // Set sync complete immediately
-    client.isSyncComplete = true;
-    
-    // Send welcome messages with simple approach
-    console.log('📤 Sending welcome messages...');
-    
-    // Wait a bit then send messages
-    setTimeout(async () => {
-        try {
-            await client.sendMessage(selfId, '🤖 *Bot Connected!*');
-            console.log('✅ Welcome message 1 sent');
-            
-            setTimeout(async () => {
-                try {
-                    await client.sendMessage(selfId, '⚡ Ready! Type !ping to test');
-                    console.log('✅ Welcome message 2 sent');
-                } catch (error) {
-                    console.error('❌ Welcome message 2 failed:', error.message);
-                }
-            }, 2000);
-            
-        } catch (error) {
-            console.error('❌ Welcome message 1 failed:', error.message);
-        }
-    }, 5000);
-    
-    // Store session info
-    userSessions.set(selfId, sessionId);
-    
-    // Emit ready to frontend
-    if (io) {
-        io.to(`user-${userId}`).emit('sessionReady', {
-            sessionId,
-            phone: ownerPhone,
-            message: 'WhatsApp bot is ready!'
-        });
+  console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+
+  try {
+    const selfId = client.info?.wid?._serialized || null;
+    const selfNumber = client.info?.wid?.user || null;
+
+    if (!selfId || !selfNumber) {
+      console.error('❌ Unable to determine self chat ID from client.info');
+      return;
     }
-    
-    console.log('✅ BOT: Session setup completed');
+
+    console.log('📱 Logged in WhatsApp number:', selfNumber);
+    console.log('📱 Self chat ID:', selfId);
+
+    client.isSyncComplete = true;
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    console.log('📤 Sending welcome messages...');
+
+    // ✅ Send standard welcome
+    await client.sendMessage(selfId, '🤖 *Bot Connected!*');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // ✅ Subscription or trial check
+    const user = await User.findOne({ whatsappNumber: selfNumber });
+    if (user) {
+      const subStatus = await checkUserSubscriptionStatus(user._id);
+
+      if (subStatus.isOwner) {
+        await client.sendMessage(selfId, '👑 You are the *Bot Owner*. Unlimited access granted.');
+      } else if (subStatus.trial) {
+        await client.sendMessage(
+          selfId,
+          `🎁 *Free Trial Active!*\nYou have *${subStatus.trialDaysLeft} day(s)* remaining before subscription is required.`
+        );
+      } else if (subStatus.isExempted) {
+        await client.sendMessage(selfId, '🛡️ You are exempted from subscription payments.');
+      } else if (subStatus.isValid) {
+        await client.sendMessage(selfId, '💳 Subscription Active — full features unlocked!');
+      } else {
+        await client.sendMessage(selfId, '⚠️ Subscription expired or inactive. Please renew to continue.');
+      }
+    } else {
+      await client.sendMessage(selfId, '⚠️ User record not found. Please register on the dashboard.');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // ✅ Final ready message
+    await client.sendMessage(selfId, '⚡ Ready! Type !ping to test');
+    console.log('✅ All welcome messages sent');
+
+    // Store session and notify dashboard
+    userSessions.set(selfId, sessionId);
+    if (io) {
+      io.to(`user-${userId}`).emit('sessionReady', {
+        sessionId,
+        phone: selfNumber,
+        message: 'WhatsApp bot is ready!',
+      });
+    }
+
+    console.log('✅ BOT: Session setup completed successfully');
+  } catch (err) {
+    console.error('❌ Error during ready handler:', err);
+  }
 });
-   
+
+
         // Disconnected event handler
         client.on('disconnected', async (reason) => {
             console.log('❌ BOT: Client disconnected:', reason);
@@ -1786,76 +1868,119 @@ client.on('ready', async () => {
 
         // Message handler for bot commands
 client.on('message_create', async (message) => {
-    try {
-        console.log(`📨 MESSAGE:`, {
-            body: message.body,
-            from: message.from,
-            fromMe: message.fromMe
-        });
+  try {
+    console.log('📨 MESSAGE:', {
+      body: message.body,
+      from: message.from,
+      fromMe: message.fromMe,
+    });
 
-        // Only process commands
-        if (!message.body || !message.body.startsWith('!')) {
-            return;
-        }
+    // Process only commands starting with !
+    if (!message.body || !message.body.startsWith('!')) return;
 
-        // Use owner number as self ID
-        const ownerPhone = CONFIG.owner.replace(/[^0-9]/g, '');
-        const selfId = `${ownerPhone}@c.us`;
-        
-        console.log(`📨 Self ID: ${selfId}, Message from: ${message.from}`);
-        
-        // Check if from self-chat
-        const isSelfMessage = message.from === selfId;
-        
-        if (!isSelfMessage) {
-            console.log('🚫 Not from self-chat, ignoring');
-            return;
-        }
-        
-        console.log('🤖 Processing command:', message.body);
+    // Get the actual logged-in account ID
+    const selfId = client.info?.wid?._serialized || null;
+    const selfNumber = client.info?.wid?.user || null;
 
-        const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
-        
-        // Process commands
-        switch (command.toLowerCase()) {
-            case 'ping':
-                console.log('🏓 Executing ping...');
-                await client.sendMessage(selfId, '🏓 Pong! Bot is working!');
-                console.log('✅ Ping sent');
-                break;
-                
-            case 'help':
-                const helpText = `🤖 *Bot Commands*
+    if (!selfId || !selfNumber) {
+      console.warn('⚠️ client.info not ready; skipping message');
+      return;
+    }
+
+    console.log(`📱 Self ID: ${selfId}, Message from: ${message.from}`);
+
+    // Check if this message came from the self-chat
+    const isSelfChat =
+      message.from === selfId ||
+      message.to === selfId ||
+      message.fromMe === true;
+
+    if (!isSelfChat) {
+      console.log('🚫 Not self-chat, ignoring');
+      return;
+    }
+
+    // Extract clean number (digits only)
+    const userNumber = message.from.replace('@c.us', '').replace('@g.us', '');
+
+    // ===== SUBSCRIPTION & OWNER EXEMPTION CHECK =====
+    const allowed = await isAllowedToUseBot(userNumber);
+    if (!allowed) {
+      await client.sendMessage(
+        selfId,
+        '🚫 Your subscription has expired. Please renew to continue using the bot.'
+      );
+      console.log(`🚫 Command blocked due to expired subscription: ${userNumber}`);
+      return;
+    }
+    // ================================================
+
+    console.log('🤖 Processing command:', message.body);
+
+    const [command, ...args] = message.body.slice(1).trim().split(/\s+/);
+
+    // ===== OWNER ADMIN COMMANDS =====
+    if (userNumber === BOT_OWNER) {
+      if (command === 'exempt' && args[0]) {
+        exemptUser(args[0], true);
+        await client.sendMessage(selfId, `✅ ${args[0]} exempted from payment.`);
+        return;
+      }
+      if (command === 'unexempt' && args[0]) {
+        exemptUser(args[0], false);
+        await client.sendMessage(selfId, `🚫 ${args[0]} exemption removed.`);
+        return;
+      }
+      if (command === 'listexempt') {
+        const list = [...exemptedUsers].join(', ') || 'None';
+        await client.sendMessage(selfId, `📜 Exempted Users:\n${list}`);
+        return;
+      }
+    }
+    // ================================================
+
+    // ===== NORMAL COMMANDS =====
+    switch (command.toLowerCase()) {
+      case 'ping':
+        console.log('🏓 Executing ping...');
+        await client.sendMessage(selfId, '🏓 Pong! Bot is working!');
+        console.log('✅ Ping sent');
+        break;
+
+      case 'help':
+        const helpText = `🤖 *Bot Commands*
 
 • !ping - Test response
-• !help - This help
+• !help - Show this help
 • !status - Bot status
 
-💡 Self-chat only!`;
-                
-                await client.sendMessage(selfId, helpText);
-                console.log('✅ Help sent');
-                break;
-                
-            case 'status':
-                const statusMsg = `🤖 *Status*
+💡 Use these in your self-chat only!`;
+        await client.sendMessage(selfId, helpText);
+        console.log('✅ Help sent');
+        break;
+
+      case 'status':
+        const statusMsg = `🤖 *Status*
 
 ✅ Active
 📱 Session: ${sessionId}
-📞 Phone: ${ownerPhone}`;
-                
-                await client.sendMessage(selfId, statusMsg);
-                console.log('✅ Status sent');
-                break;
-                
-            default:
-                await client.sendMessage(selfId, `❌ Unknown: "${command}"\nType !help`);
-        }
-        
-    } catch (error) {
-        console.error('❌ Message error:', error.message);
+📞 Phone: ${selfNumber}`;
+        await client.sendMessage(selfId, statusMsg);
+        console.log('✅ Status sent');
+        break;
+
+      default:
+        await client.sendMessage(
+          selfId,
+          `❌ Unknown command: "${command}"\nType !help`
+        );
     }
-});  
+  } catch (error) {
+    console.error('❌ Message handler error:', error);
+  }
+});
+
+        
         // Initialize the client
         console.log('🔄 BOT: Initializing WhatsApp client...');
         await client.initialize();

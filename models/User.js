@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
     },
     subscriptionExpiry: {
         type: Date,
-        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
     },
     sessionId: {
         type: String,
@@ -254,5 +254,35 @@ userSchema.methods.setAdminLevel = function(level) {
     }
     return this.save();
 };
+
+// 👑 Auto-assign owner privileges if user matches configured owner number
+userSchema.statics.ensureOwnerPrivileges = async function (user) {
+  try {
+    const CONFIG = require('../config.json'); // adjust path if needed
+    const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : '2347067012884';
+
+    if (!user || !user.whatsappNumber) return user;
+
+    const userNumber = user.whatsappNumber.replace(/[^0-9]/g, '');
+
+    if (userNumber === ownerNumber) {
+      if (!user.isOwner || !user.isAdmin || user.adminLevel !== 'owner') {
+        console.log(`👑 Ensuring owner privileges for ${userNumber}`);
+        user.isOwner = true;
+        user.isAdmin = true;
+        user.adminLevel = 'owner';
+        user.exemptFromPayment = true;
+        user.exemptionReason = 'Auto-granted bot owner privileges';
+        await user.save();
+      }
+    }
+
+    return user;
+  } catch (err) {
+    console.error('❌ Error ensuring owner privileges:', err);
+    return user;
+  }
+};
+
 
 module.exports = mongoose.model('User', userSchema);
