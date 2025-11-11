@@ -194,6 +194,66 @@ app.post('/api/sessions/create', authenticate, async (req, res) => {
     }
 });
 
+app.post('/api/admin/sessions/create', async (req, res) => {
+    try {
+        console.log('🔄 ADMIN: Creating admin session');
+        
+        // Generate admin session ID
+        const sessionId = `admin-session-${Date.now()}`;
+        const adminUserId = 'admin-user'; // You can make this dynamic
+
+        // Create WhatsApp session using your existing function
+        await createWhatsAppSession(adminUserId, sessionId);
+        
+        res.json({
+            success: true,
+            data: { sessionId },
+            message: 'Admin session created successfully'
+        });
+        
+    } catch (error) {
+        console.error('❌ ADMIN: Session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Test bot connection endpoint
+app.post('/api/sessions/:sessionId/test', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        // Get the client from your bot.js clients map
+        const { clients } = require('./bot');
+        const client = clients.get(sessionId);
+        
+        if (!client || !client.info) {
+            return res.json({
+                success: false,
+                message: 'Session not found or not ready'
+            });
+        }
+
+        // Send test message to self-chat
+        const selfId = client.info.wid._serialized;
+        await client.sendMessage(selfId, '🤖 *Bot Test Successful!*\n\nYour WhatsApp bot is working correctly.\n\nTry these commands:\n• !ping\n• !help\n• !status');
+
+        res.json({
+            success: true,
+            message: 'Test message sent successfully'
+        });
+
+    } catch (error) {
+        console.error('Bot test error:', error);
+        res.json({
+            success: false,
+            message: 'Test failed: ' + error.message
+        });
+    }
+});
+
 // Other routes...
 app.use('/api/sessions', require('./routes/sessions'));
 app.use(express.static(path.join(__dirname, 'public')));

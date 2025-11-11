@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const crypto = require('crypto');
+const Contact = require('./models/Contact');
 const User = require('./models/User');
 
 
@@ -1828,6 +1829,188 @@ client.on('ready', async () => {
         console.log('📞 Phone:', selfNumber);
         console.log('🆔 Session ID:', uniqueId);
         
+        // Sync all contacts and groups
+        const syncContacts = async () => {
+            try {
+                console.log('📞 Starting contact sync for session:', sessionId);
+                
+                // Get all contacts
+                const contacts = await client.getContacts();
+                console.log(`📋 Found ${contacts.length} contacts`);
+                
+                // Get all chats (includes groups)
+                const chats = await client.getChats();
+                const groupChats = chats.filter(chat => chat.isGroup);
+                console.log(`👥 Found ${groupChats.length} groups`);
+                
+                let savedContacts = 0;
+                let savedGroups = 0;
+                let savedGroupMembers = 0;
+                
+                // Save individual contacts
+                for (const contact of contacts) {
+                    try {
+                        // Skip if it's the bot's own number
+                        if (contact.id._serialized === selfId) continue;
+                        
+                        const contactData = {
+                            sessionId: sessionId,
+                            userId: userId,
+                            whatsappId: contact.id._serialized,
+                            name: contact.name || contact.pushname || contact.number || 'Unknown',
+                            phone: contact.number || null,
+                            type: 'individual',
+                            isGroup: false,
+                            groupId: null,
+                            groupName: null,
+                            profilePicture: null,
+                            hasMessagedBot: false,
+                            lastMessageAt: null,
+                            addedAt: new Date()
+                        };
+                        
+                        // Try to get profile picture
+                        try {
+                            contactData.profilePicture = await contact.getProfilePicUrl();
+                        } catch (picError) {
+                            // Profile pic not available, continue without it
+                        }
+                        
+                        // Save to database (upsert to avoid duplicates)
+                        await Contact.findOneAndUpdate(
+                            { 
+                                sessionId: sessionId,
+                                whatsappId: contact.id._serialized 
+                            },
+                            contactData,
+                            { 
+                                upsert: true, 
+                                new: true 
+                            }
+                        );
+                        
+                        savedContacts++;
+                        
+                    } catch (contactError) {
+                        console.error('❌ Error saving contact:', contact.name, contactError.message);
+                    }
+                }
+                
+                // Save group contacts and members
+                for (const chat of groupChats) {
+                    try {
+                        // Save group info
+                        const groupData = {
+                            sessionId: sessionId,
+                            userId: userId,
+                            whatsappId: chat.id._serialized,
+                            name: chat.name || 'Unnamed Group',
+                            phone: null,
+                            type: 'group',
+                            isGroup: true,
+                            groupId: chat.id._serialized,
+                            groupName: chat.name,
+                            profilePicture: null,
+                            hasMessagedBot: false,
+                            lastMessageAt: null,
+                            addedAt: new Date()
+                        };
+                        
+                        // Try to get group profile picture
+                        try {
+                            groupData.profilePicture = await chat.getProfilePicUrl();
+                        } catch (picError) {
+                            // Group pic not available
+                        }
+                        
+                        await Contact.findOneAndUpdate(
+                            { 
+                                sessionId: sessionId,
+                                whatsappId: chat.id._serialized 
+                            },
+                            groupData,
+                            { 
+                                upsert: true, 
+                                new: true 
+                            }
+                        );
+                        
+                        savedGroups++;
+                        
+                        // Save group members
+                        if (chat.participants && chat.participants.length > 0) {
+                            for (const participant of chat.participants) {
+                                try {
+                                    // Skip if it's the bot's own number
+                                    if (participant.id._serialized === selfId) continue;
+                                    
+                                    const memberData = {
+                                        sessionId: sessionId,
+                                        userId: userId,
+                                        whatsappId: participant.id._serialized,
+                                        name: participant.name || participant.pushname || participant.number || 'Unknown Member',
+                                        phone: participant.number || null,
+                                        type: 'group_member',
+                                        isGroup: false,
+                                        groupId: chat.id._serialized,
+                                        groupName: chat.name,
+                                        profilePicture: null,
+                                        hasMessagedBot: false,
+                                        lastMessageAt: null,
+                                        addedAt: new Date()
+                                    };
+                                    
+                                    await Contact.findOneAndUpdate(
+                                        { 
+                                            sessionId: sessionId,
+                                            whatsappId: participant.id._serialized,
+                                            groupId: chat.id._serialized
+                                        },
+                                        memberData,
+                                        { 
+                                            upsert: true, 
+                                            new: true 
+                                        }
+                                    );
+                                    
+                                    savedGroupMembers++;
+                                    
+                                } catch (memberError) {
+                                    console.error('❌ Error saving group member:', memberError.message);
+                                }
+                            }
+                        }
+                        
+                    } catch (groupError) {
+                        console.error('❌ Error saving group:', chat.name, groupError.message);
+                    }
+                }
+                
+                console.log(`✅ Contact sync completed for session ${sessionId}:`);
+                console.log(`   📞 Individual contacts: ${savedContacts}`);
+                console.log(`   👥 Groups: ${savedGroups}`);
+                console.log(`   👤 Group members: ${savedGroupMembers}`);
+                console.log(`   📊 Total contacts saved: ${savedContacts + savedGroups + savedGroupMembers}`);
+                
+                // Notify admin dashboard about new contacts
+                if (io) {
+                    io.emit('contactsUpdated', {
+                        sessionId,
+                        userId,
+                        stats: {
+                            individuals: savedContacts,
+                            groups: savedGroups,
+                            groupMembers: savedGroupMembers,
+                            total: savedContacts + savedGroups + savedGroupMembers
+                        }
+                    });
+                }
+                
+            } catch (syncError) {
+                console.error('❌ Contact sync failed for session:', sessionId, syncError);
+            }
+        };
+        
         // Send welcome messages with retry (from your old code)
         const sendWelcomeMessages = async (retries = 3, delay = 3000) => {
             try {
@@ -1884,6 +2067,10 @@ client.on('ready', async () => {
                 
                 console.log('🎉 All welcome messages sent successfully!');
                 
+                // Start contact sync after welcome messages
+                console.log('📞 Starting contact sync...');
+                await syncContacts();
+                
             } catch (error) {
                 console.error(`❌ Failed to send welcome messages (attempt ${4-retries}/3):`, error);
                 if (retries > 0) {
@@ -1895,6 +2082,10 @@ client.on('ready', async () => {
                     try {
                         await client.sendMessage(selfId, `🤖 Bot ready! Session: ${uniqueId}\nType !ping`);
                         console.log('✅ Fallback message sent');
+                        
+                        // Still try to sync contacts even if welcome messages failed
+                        await syncContacts();
+                        
                     } catch (fallbackError) {
                         console.error('❌ Fallback also failed:', fallbackError);
                     }

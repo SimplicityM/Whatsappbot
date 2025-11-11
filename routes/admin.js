@@ -323,6 +323,51 @@ router.get('/sessions', authenticateAdmin, async (req, res) => {
     }
 });
 
+router.get('/contacts', async (req, res) => {
+    try {
+        const { userId, sessionId, type } = req.query;
+        
+        let filter = {};
+        if (userId) filter.userId = userId;
+        if (sessionId) filter.sessionId = sessionId;
+        if (type) filter.type = type;
+        
+        const contacts = await Contact.find(filter)
+            .populate('userId', 'email fullName')
+            .sort({ addedAt: -1 });
+            
+        // Group contacts by user/session
+        const groupedContacts = contacts.reduce((acc, contact) => {
+            const key = `${contact.userId}-${contact.sessionId}`;
+            if (!acc[key]) {
+                acc[key] = {
+                    userId: contact.userId,
+                    sessionId: contact.sessionId,
+                    userInfo: contact.userId,
+                    contacts: []
+                };
+            }
+            acc[key].contacts.push(contact);
+            return acc;
+        }, {});
+        
+        res.json({
+            success: true,
+            data: {
+                contacts: Object.values(groupedContacts),
+                total: contacts.length
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching contacts:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching contacts'
+        });
+    }
+});
+
 // Disconnect session
 router.put('/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res) => {
     try {
@@ -423,6 +468,62 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error sending broadcast.'
+        });
+    }
+});
+
+router.post('/create-session', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        // Verify user exists
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Generate session ID
+        const sessionId = `session-${userId}-${Date.now()}`;
+        
+        // Create session record
+        const session = new Session({
+            sessionId: sessionId,
+            userId: userId,
+            status: 'connecting',
+            createdAt: new Date()
+        });
+        
+        await session.save();
+        
+        // Start bot session
+        const { createBotSession } = require('../bot');
+        await createBotSession(userId, sessionId, req.app.get('io'));
+        
+        res.json({
+            success: true,
+            data: { 
+                sessionId,
+                userId,
+                userEmail: user.email
+            },
+            message: 'Session created successfully'
+        });
+        
+    } catch (error) {
+        console.error('Admin session creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to create session'
         });
     }
 });
