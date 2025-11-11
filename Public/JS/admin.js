@@ -8,6 +8,12 @@ let currentSessionId = null;
 let isCreatingSession = false;
 let socket; // Declare socket variable
 
+// Get current admin ID
+function getCurrentAdminId() {
+    const userSession = JSON.parse(localStorage.getItem('userSession') || '{}');
+    return userSession.id || userSession.userId || 'admin-user';
+}
+
 // Admin Dashboard Configuration
 const CONFIG = {
     API_BASE: window.location.origin,
