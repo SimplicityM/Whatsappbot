@@ -2439,6 +2439,224 @@ client.on('message', async (message) => {
         throw error;
     }
 }    
+
+// 🔑 NEW: Different command help for admin vs user 
+const commandsMessage = isAdmin 
+    ? `🔧 *Admin Commands Available:*\n\n` +
+      `• !ping - Test response\n` +
+      `• !help - Full help menu\n` +
+      `• !status - Bot status\n` +
+      `• !stats - System statistics\n` +
+      `• !exempt <number> - Exempt user from payment\n` +
+      `• !unexempt <number> - Remove exemption\n` +
+      `• !listexempt - List exempted users\n` +
+      `• !broadcast <message> - Send to all users\n` +
+      `• !sessions - List all active sessions\n` +
+      `• !userinfo <number> - Get user information\n\n` +
+      `👑 *Admin Privileges:* Full system control\n` +
+      `💡 Type commands in this chat only!`
+    : `🔧 *Available Commands:*\n\n` +
+      `• !ping - Test response\n` +
+      `• !help - Full help menu\n` +
+      `• !status - Bot status\n` +
+      `• !myinfo - Account info\n\n` +
+      `💡 Type commands in this chat only!`;
+
+await chat.sendMessage(commandsMessage);
+console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
+
+console.log(`🎉 All ${isAdmin ? 'ADMIN' : 'USER'} welcome messages sent successfully!`);
+
+// Start contact sync after welcome messages
+console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
+await syncContacts();
+
+} catch (error) {
+    console.error(`❌ Failed to send ${isAdmin ? 'ADMIN' : 'USER'} welcome messages (attempt ${4 - retries}/3):`, error);
+    if (retries > 0) {
+        console.log(`🔄 Retrying in ${delay / 1000} seconds...`);
+        return sendWelcomeMessages(retries - 1, delay * 1.5);
+    } else {
+        console.error('❌ Maximum retries reached.');
+        try {
+            const fallbackMsg = isAdmin 
+                ? `👑 Admin Bot ready! Session: ${uniqueId}\nType !help for admin commands`
+                : `🤖 Bot ready! Session: ${uniqueId}\nType !ping`;
+            
+            await client.sendMessage(selfId, fallbackMsg);
+            console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Fallback message sent`);
+            
+            await syncContacts();
+        } catch (fallbackError) {
+            console.error('❌ Fallback also failed:', fallbackError);
+        }
+    }
+}
+
+// ✅ Start welcome message process safely
+await sendWelcomeMessages();
+
+// 🩺 Keep-Alive System
+const keepAliveInterval = setInterval(async () => {
+    try {
+        await client.getState();
+        console.log(`💓 Keep-alive for ${isAdmin ? 'ADMIN' : 'USER'} session ${sessionId}`);
+    } catch (error) {
+        console.error(`💔 Keep-alive failed:`, error);
+        if (error.message.includes('Session closed')) {
+            clearInterval(keepAliveInterval);
+            console.log(`🛑 Keep-alive stopped - ${isAdmin ? 'ADMIN' : 'USER'} session dead`);
+        }
+    }
+}, 300000); // every 5 minutes
+
+client.keepAliveInterval = keepAliveInterval;
+
+// 🔔 Notify appropriate frontend via Socket.IO
+if (io) {
+    const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+    const eventName = isAdmin ? 'adminSessionReady' : 'sessionReady';
+    
+    io.to(roomName).emit(eventName, {
+        sessionId,
+        uniqueId,
+        phone: selfNumber,
+        isAdmin,
+        userType: isAdmin ? 'admin' : 'user',
+        message: `${isAdmin ? 'Admin' : 'User'} WhatsApp bot is ready!`
+    });
+}
+
+console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Session setup completed`);
+
+// ==========================
+// 🔌 DISCONNECT HANDLER
+// ==========================
+client.on('disconnected', async (reason) => {
+    console.log(`❌ ${isAdmin ? 'ADMIN' : 'USER'} BOT: Client disconnected:`, reason);
+
+    // Clean up keep-alive interval
+    if (client.keepAliveInterval) {
+        clearInterval(client.keepAliveInterval);
+        console.log(`🛑 Keep-alive interval cleared for ${isAdmin ? 'ADMIN' : 'USER'}`);
+    }
+    
+    // 🔑 Notify frontend
+    const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+    const eventName = isAdmin ? 'adminSessionDisconnected' : 'sessionDisconnected';
+
+    io.to(roomName).emit(eventName, {
+        sessionId,
+        reason,
+        isAdmin,
+        userType: isAdmin ? 'admin' : 'user',
+        message: `${isAdmin ? 'Admin' : 'User'} WhatsApp session disconnected`
+    });
+
+    // Remove from clients map immediately
+    clients.delete(sessionId);
+
+    // Clean up session directory after short delay
+    setTimeout(async () => {
+        try {
+            const authPath = path.join('./.wwebjs_auth', `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`);
+            if (fs.existsSync(authPath)) {
+                console.log(`🧹 Cleaning up ${isAdmin ? 'ADMIN' : 'USER'} session directory: ${authPath}`);
+                await removeDirectoryWithRetry(authPath, 3);
+            }
+        } catch (cleanupError) {
+            console.log(`⚠️ ${isAdmin ? 'ADMIN' : 'USER'} Session cleanup warning:`, cleanupError.message);
+        }
+    }, 5000);
+});
+
+// ==========================
+// 🔐 AUTH FAILURE HANDLER
+// ==========================
+client.on('auth_failure', (message) => {
+    console.log(`❌ ${isAdmin ? 'ADMIN' : 'USER'} BOT: Authentication failed:`, message);
+
+    const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+    const eventName = isAdmin ? 'adminAuthFailure' : 'authFailure';
+
+    io.to(roomName).emit(eventName, {
+        sessionId,
+        isAdmin,
+        userType: isAdmin ? 'admin' : 'user',
+        message: `${isAdmin ? 'Admin' : 'User'} WhatsApp authentication failed`
+    });
+});
+
+// ==========================
+// 💬 MESSAGE HANDLER (ADMIN + USER)
+// ==========================
+client.on('message', async (message) => {
+    try {
+        // Wait for client info
+        if (!client.info || !client.info.wid) {
+            console.log('⚠️ Client info not ready, skipping message');
+            return;
+        }
+
+        const selfId = client.info.wid._serialized;
+        const selfNumber = client.info.wid.user;
+
+        // Self-chat only
+        const isSelfChat = message.fromMe && message.to === selfId;
+        if (!isSelfChat || !message.body.startsWith('!')) return;
+    
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Self-chat command received:`, message.body);
+    
+        // React to show acknowledgment
+        try { 
+            await message.react('🤖'); 
+        } catch (error) { 
+            console.log('Failed to react:', error.message); 
+        }
+
+        const [command, ...args] = message.body.slice(1).toLowerCase().split(' ');
+
+        const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        const isOwner = BOT_OWNER && selfNumber === BOT_OWNER;
+
+        console.log(`🔍 BOT_OWNER=${BOT_OWNER}, selfNumber=${selfNumber}, isOwner=${isOwner}, isAdmin=${isAdmin}`);
+
+        // Skip subscription check for admin users
+        if (!isOwner && !isAdmin) {
+            try {
+                const allowed = await isAllowedToUseBot(selfNumber);
+                if (!allowed) {
+                    await message.reply(`🚫 *Subscription Required*\n\nYour subscription has expired.\n\n💳 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`);
+                    return;
+                }
+            } catch (subscriptionError) {
+                console.error('Subscription check error:', subscriptionError);
+                await message.reply('⚠️ Unable to verify subscription. Please try again.');
+                return;
+            }
+        }
+
+        // ====================
+        // COMMAND PROCESSING
+        // ====================
+        await handleBotCommand({
+            client,
+            message,
+            command,
+            args,
+            isAdmin,
+            isOwner,
+            selfNumber,
+            selfId,
+            sessionId,
+            userId
+        });
+
+    } catch (error) {
+        console.error('❌ Message handler error:', error);
+    }
+});
+
   
 
 // Add this function to handle background sync
