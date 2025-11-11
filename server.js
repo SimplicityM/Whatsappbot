@@ -395,6 +395,7 @@ async function executeCommand(user, sessionId, command, message) {
 io.on('connection', (socket) => {
     console.log('🔌 Client connected:', socket.id);
 
+    // 🔑 EXISTING: User room handling
     socket.on('join-user-room', (userId) => {
         if (!userId) {
             console.log('❌ Cannot join room: user ID is null/undefined');
@@ -409,13 +410,38 @@ io.on('connection', (socket) => {
         socket.emit('room-joined', { roomName, userId });
     });
 
-    // Add room verification endpoint
-    socket.on('verify-room', (userId, callback) => {
-        const roomName = `user-${userId}`;
+    // 🔑 NEW: Admin room handling
+    socket.on('join-admin-room', (adminId) => {
+        if (!adminId) {
+            console.log('❌ Cannot join admin room: admin ID is null/undefined');
+            return;
+        }
+        
+        const roomName = `admin-${adminId}`;
+        socket.join(roomName);
+        console.log(`✅ Admin ${adminId} (socket ${socket.id}) joined room: ${roomName}`);
+        
+        // Send confirmation back to client
+        socket.emit('admin-room-joined', { roomName, adminId });
+    });
+
+    // 🔑 UPDATED: Room verification for both users and admins
+    socket.on('verify-room', (data, callback) => {
+        let roomName, userId;
+        
+        // Handle both old format (userId) and new format ({ userId, isAdmin })
+        if (typeof data === 'string') {
+            userId = data;
+            roomName = `user-${userId}`;
+        } else {
+            userId = data.userId || data.adminId;
+            roomName = data.isAdmin ? `admin-${userId}` : `user-${userId}`;
+        }
+        
         const rooms = Array.from(socket.rooms);
         const inRoom = rooms.includes(roomName);
         
-        console.log(`🔍 Room verification for ${userId}:`, {
+        console.log(`🔍 Room verification for ${userId} (${data.isAdmin ? 'admin' : 'user'}):`, {
             socketId: socket.id,
             rooms: rooms,
             targetRoom: roomName,
@@ -452,6 +478,8 @@ socket.on('join-admin-room', (adminId) => {
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/sessions', require('./routes/sessions'));
 
 app.post('/api/sessions/create', authenticate, async (req, res) => {
     try {
