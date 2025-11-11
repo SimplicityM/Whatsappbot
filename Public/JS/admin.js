@@ -1,12 +1,56 @@
+const { clients, resumeUserSession } = require('../bot');
 // Global variables
 let currentSection = 'dashboard';
 let sessions = [];
 let users = [];
-let socket = null;
 let currentSessionId = null;
 let isCreatingSession = false;
 
 // ==================== INITIALIZATION ====================
+
+// Admin Dashboard Configuration
+const CONFIG = {
+    API_BASE: window.location.origin,
+    SOCKET_URL: window.location.origin
+};
+
+// Initialize Socket.io for admin
+const socket = io(CONFIG.SOCKET_URL);
+const adminId = localStorage.getItem('adminId') || 'admin-1';
+
+// Join admin room
+socket.emit('join-admin-room', adminId);
+
+// Listen for real-time updates
+socket.on('admin-status', (data) => {
+    updateDashboardStats(data);
+});
+
+// Load admin dashboard data
+async function loadDashboardData() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/dashboard`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            updateDashboardStats(data.data.stats);
+            loadRecentActivity(data.data.recentSessions);
+        }
+    } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+    }
+}
+
+// Update dashboard statistics
+function updateDashboardStats(stats) {
+    document.getElementById('activeSessions').textContent = stats.sessions?.active || 0;
+    document.getElementById('totalUsers').textContent = stats.users?.total || 0;
+    document.getElementById('messagesProcessed').textContent = stats.usage?.totalMessages || 0;
+}
 
 // Initialize admin dashboard
 document.addEventListener('DOMContentLoaded', function() {

@@ -168,9 +168,25 @@ io.on('connection', (socket) => {
     });
 });
 
+socket.on('join-admin-room', (adminId) => {
+    if (!adminId) return;
+    
+    const roomName = `admin-${adminId}`;
+    socket.join(roomName);
+    console.log(`Admin ${adminId} joined room: ${roomName}`);
+    
+    // Send current bot status to admin
+    socket.emit('admin-status', {
+        activeSessions: clients.size,
+        totalUsers: 0, // Get from database
+        systemStatus: 'online'
+    });
+});
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Session creation endpoint
 app.post('/api/sessions/create', authenticate, async (req, res) => {
@@ -220,6 +236,46 @@ app.post('/api/admin/sessions/create', async (req, res) => {
     }
 });
 
+// Admin session management
+app.get('/api/admin/sessions', authenticateAdmin, async (req, res) => {
+    try {
+        const sessions = await Session.find()
+            .populate('userId', 'fullName email whatsappNumber')
+            .sort({ createdAt: -1 });
+        
+        const sessionsWithStatus = sessions.map(session => ({
+            ...session.toObject(),
+            isActive: clients.has(session.sessionId)
+        }));
+        
+        res.json({ success: true, data: sessionsWithStatus });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Force disconnect session
+app.post('/api/admin/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const client = clients.get(sessionId);
+        
+        if (client) {
+            await client.destroy();
+            clients.delete(sessionId);
+        }
+        
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { status: 'disconnected', errorMessage: 'Disconnected by admin' }
+        );
+        
+        res.json({ success: true, message: 'Session disconnected' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Test bot connection endpoint
 app.post('/api/sessions/:sessionId/test', async (req, res) => {
     try {
@@ -255,6 +311,18 @@ app.post('/api/sessions/:sessionId/test', async (req, res) => {
 });
 
 // Other routes...
+// routes/sessions.js - WhatsApp admins creating bot sessions
+app.use('/api/sessions', authenticate, require('./routes/sessions'));
+
+// routes/user.js - WhatsApp admin user operations  
+app.use('/api/users', authenticate, require('./routes/user'));
+
+// routes/payment.js - WhatsApp admins managing subscriptions
+app.use('/api/payment', authenticate, require('./routes/payment'));
+
+// routes/admin.js - System admin dashboard and controls
+app.use('/api/admin', authenticateAdmin, require('./routes/admin'));
+
 app.use('/api/sessions', require('./routes/sessions'));
 app.use(express.static(path.join(__dirname, 'public')));
 
