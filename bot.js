@@ -1668,150 +1668,164 @@ async function createBotSession(userId, sessionId, io) {
         // Add this variable at the top of the createBotSession function
             let botPhoneNumber = null;
             let botSelfId = null;
-        console.log('🤖 BOT: Creating bot session');
-        console.log('👤 User ID:', userId);
-        console.log('📱 Session ID:', sessionId);
-        console.log('🔍 BOT: io object exists?', !!io);
+      
+    console.log('🤖 BOT: Creating bot session');
+    console.log('👤 User ID:', userId);
+    console.log('📱 Session ID:', sessionId);
+    console.log('🔍 BOT: io object exists?', !!io);
 
-        const client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `user-${userId}-${sessionId}`,
-                dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
-            }),
-            puppeteer: {
-                ...clientConfig.puppeteer,
-                args: [
-                    ...clientConfig.puppeteer.args,
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    // Add Windows-specific cleanup optimizations
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-extensions',
-                    '--disable-plugins',
-                    '--no-first-run'
-                ],
-                // Add these options for better cleanup on Windows
-                handleSIGINT: false,
-                handleSIGTERM: false,
-            },
-            // Add these sync optimization options
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 5000,
-            
-            // Skip initial sync to speed up connection
-            syncFullHistory: false,
-            markOnlineOnConnect: false,
-            
-            // Reduce chat loading timeout
-            chatLoadingTimeoutMs: 15000, // Reduced from default 60000
-            
-            // Optimize session loading
-            sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
-            
-            // Keep existing config values
-            qrMaxRetries: clientConfig.qrMaxRetries,
-            authTimeoutMs: clientConfig.authTimeoutMs,
-            restartOnAuthFail: clientConfig.restartOnAuthFail
-        });
+    // 🔑 NEW: Check if this is an admin session
+    const user = await User.findById(userId);
+    const isAdmin = user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
+    
+    console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
+    console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
 
-        // Store client in existing maps
-        clients.set(sessionId, client);
-
-        // Loading and authentication handlers
-        let loadingComplete = false;
-        let authComplete = false;
+    const client = new Client({
+        authStrategy: new LocalAuth({ 
+            clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
+            dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
+        }),
+        puppeteer: {
+            ...clientConfig.puppeteer,
+            args: [
+                ...clientConfig.puppeteer.args,
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                // Add Windows-specific cleanup optimizations
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--no-first-run'
+            ],
+            // Add these options for better cleanup on Windows
+            handleSIGINT: false,
+            handleSIGTERM: false,
+        },
+        // Add these sync optimization options
+        takeoverOnConflict: true,
+        takeoverTimeoutMs: 5000,
         
-        client.on('loading_screen', (percent, message) => {
-            console.log('📱 DEBUG: Loading screen:', percent + '%', message);
-            
-            // If we reach 95% or higher, consider loading complete
-            if (percent >= 95 && !loadingComplete) {
-                loadingComplete = true;
-                console.log('✅ DEBUG: Loading appears complete at', percent + '%');
-                
-                // Wait a bit then force ready if not already fired
-                setTimeout(() => {
-                    if (authComplete && !client.readyFired) {
-                        console.log('🔧 FORCE: Triggering ready event manually');
-                        client.readyFired = true;
-                        client.emit('ready');
-                    }
-                }, 3000);
-            }
-        });
+        // Skip initial sync to speed up connection
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
+        
+        // Reduce chat loading timeout
+        chatLoadingTimeoutMs: 15000, // Reduced from default 60000
+        
+        // Optimize session loading
+        sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
+        
+        // Keep existing config values
+        qrMaxRetries: clientConfig.qrMaxRetries,
+        authTimeoutMs: clientConfig.authTimeoutMs,
+        restartOnAuthFail: clientConfig.restartOnAuthFail
+    });
 
-        // Replace the authenticated event handler
-client.on('authenticated', (session) => {
-    console.log('🔑 BOT: Authentication successful!');
-    console.log('📱 BOT: Session data received');
+    // Store client in existing maps
+    clients.set(sessionId, client);
+
+    // Loading and authentication handlers
+    let loadingComplete = false;
+    let authComplete = false;
     
-    // Extract phone number from session data
-    try {
-        if (session && session.WABrowserId) {
-            const sessionString = JSON.stringify(session);
-            const phoneMatch = sessionString.match(/(\d{10,15})/);
-            if (phoneMatch) {
-                botPhoneNumber = phoneMatch[1];
-                botSelfId = `${botPhoneNumber}@c.us`;
-                console.log('📞 BOT: Extracted phone number:', botPhoneNumber);
-                console.log('📱 BOT: Self ID will be:', botSelfId);
-            }
+    client.on('loading_screen', (percent, message) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading screen:`, percent + '%', message);
+        
+        // If we reach 95% or higher, consider loading complete
+        if (percent >= 95 && !loadingComplete) {
+            loadingComplete = true;
+            console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading appears complete at`, percent + '%');
+            
+            // Wait a bit then force ready if not already fired
+            setTimeout(() => {
+                if (authComplete && !client.readyFired) {
+                    console.log(`🔧 ${isAdmin ? 'ADMIN' : 'USER'} FORCE: Triggering ready event manually`);
+                    client.readyFired = true;
+                    client.emit('ready');
+                }
+            }, 3000);
         }
-    } catch (error) {
-        console.error('❌ Error extracting phone from session:', error.message);
-    }
-    
-    // Fallback to owner number if extraction fails
-    if (!botPhoneNumber && CONFIG.owner) {
-        botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
-        botSelfId = `${botPhoneNumber}@c.us`;
-        console.log('📞 BOT: Using owner number as fallback:', botPhoneNumber);
-    }
-});
-        client.on('change_state', (state) => {
-            console.log('📱 DEBUG: State changed to:', state);
-        });
+    });
 
-        client.on('qr', async (qr) => {
-            console.log('📱 BOT: QR CODE GENERATED!');
-            console.log('📱 Session:', sessionId);
-            console.log('📱 User ID:', userId);
-            console.log('📱 QR Data Length:', qr.length);
-            console.log('📱 QR Preview:', qr.substring(0, 50) + '...');
-            
-            const roomName = `user-${userId}`;
-            console.log('📤 BOT: Emitting to room:', roomName);
-            
-            // Check if io exists
-            if (!io) {
-                console.error('❌ BOT: io (socket.io) is null/undefined!');
-                return;
+    // Replace the authenticated event handler
+    client.on('authenticated', (session) => {
+        console.log(`🔑 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Authentication successful!`);
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Session data received`);
+        authComplete = true;
+        
+        // Extract phone number from session data
+        try {
+            if (session && session.WABrowserId) {
+                const sessionString = JSON.stringify(session);
+                const phoneMatch = sessionString.match(/(\d{10,15})/);
+                if (phoneMatch) {
+                    botPhoneNumber = phoneMatch[1];
+                    botSelfId = `${botPhoneNumber}@c.us`;
+                    console.log(`📞 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Extracted phone number:`, botPhoneNumber);
+                    console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Self ID will be:`, botSelfId);
+                }
             }
-            
-            // Emit to specific room
-            io.to(roomName).emit('qrCode', {
-                sessionId,
-                qr,
-                message: 'Scan this QR code with WhatsApp',
-                userId: userId
-            });
-            
-            console.log('✅ BOT: QR code emitted to room:', roomName);
-            
-            // Also emit to all sockets as backup
-            io.emit('qrCode', {
-                sessionId,
-                qr,
-                message: 'Scan this QR code with WhatsApp',
-                userId: userId,
-                broadcast: true
-            });
-            
-            console.log('✅ BOT: QR code also broadcasted to all sockets');
-        });
+        } catch (error) {
+            console.error('❌ Error extracting phone from session:', error.message);
+        }
+        
+        // Fallback to owner number if extraction fails
+        if (!botPhoneNumber && CONFIG.owner) {
+            botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
+            botSelfId = `${botPhoneNumber}@c.us`;
+            console.log(`📞 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Using owner number as fallback:`, botPhoneNumber);
+        }
+    });
 
+    client.on('change_state', (state) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: State changed to:`, state);
+    });
+
+    client.on('qr', async (qr) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR CODE GENERATED!`);
+        console.log('📱 Session:', sessionId);
+        console.log('📱 User ID:', userId);
+        console.log('📱 QR Data Length:', qr.length);
+        console.log('📱 QR Preview:', qr.substring(0, 50) + '...');
+        
+        // 🔑 NEW: Emit to appropriate room based on user type
+        const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+        console.log(`📤 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Emitting to room:`, roomName);
+        
+        // Check if io exists
+        if (!io) {
+            console.error(`❌ ${isAdmin ? 'ADMIN' : 'USER'} BOT: io (socket.io) is null/undefined!`);
+            return;
+        }
+        
+        // Emit to specific room
+        io.to(roomName).emit('qrCode', {
+            sessionId,
+            qr,
+            message: 'Scan this QR code with WhatsApp',
+            userId: userId,
+            isAdmin: isAdmin,
+            userType: isAdmin ? 'admin' : 'user'
+        });
+        
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR code emitted to room:`, roomName);
+        
+        // Also emit to all sockets as backup
+        io.emit('qrCode', {
+            sessionId,
+            qr,
+            message: 'Scan this QR code with WhatsApp',
+            userId: userId,
+            isAdmin: isAdmin,
+            userType: isAdmin ? 'admin' : 'user',
+            broadcast: true
+        });
+        
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR code also broadcasted to all sockets`);
+    });
         // Ready event handler
 client.on('ready', async () => {
     console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
