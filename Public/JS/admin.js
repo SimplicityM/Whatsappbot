@@ -62,26 +62,52 @@ function setupSocketConnection() {
         });
 
         // Socket event listeners
-        socket.on('connect', () => {
-            console.log('✅ Connected to server');
-            const adminId = 'admin-user';
-            socket.emit('join-admin-room', adminId);
-            updateConnectionStatus(true);
-        });
+      socket.on('connect', () => {
+    console.log('✅ Connected to server');
+    const adminId = getCurrentAdminId();
+    socket.emit('join-admin-room', adminId); // 🔑 Use admin room
+    updateConnectionStatus(true);
+});
 
-                socket.on('qrCode', (data) => {
-            console.log('📱 ADMIN: QR Code received:', data);
-            
-            if (data.userId === getCurrentAdminId()) {
-                displayAdminQRCode(data.qr, data.sessionId);
-            }
-        });
+               // 🔑 UPDATED: Admin-specific socket events
+socket.on('qrCode', (data) => {
+    console.log('📱 ADMIN: QR Code received:', data);
+    
+    // Handle QR codes for admin sessions or if this is an admin user
+    if (data.isAdmin || data.userType === 'admin' || data.userId === getCurrentAdminId()) {
+        displayQRCode(data.qr, data.sessionId); // Use your existing function
+    }
+});
 
-        socket.on('sessionReady', (data) => {
-            console.log('✅ ADMIN: Bot session ready:', data);
-            hideAdminQRCode();
-            showAdminBotStatus('connected', data.phone);
-        });
+socket.on('sessionReady', (data) => {
+    console.log('✅ ADMIN: Bot session ready:', data);
+    handleSessionReady(data); // Use your existing function
+});
+
+socket.on('adminSessionReady', (data) => {
+    console.log('✅ ADMIN: Admin bot session ready:', data);
+    handleSessionReady(data); // Use your existing function
+});
+
+socket.on('sessionDisconnected', (data) => {
+    console.log('❌ ADMIN: Session disconnected:', data);
+    handleSessionDisconnected(data); // Use your existing function
+});
+
+socket.on('adminSessionDisconnected', (data) => {
+    console.log('❌ ADMIN: Admin session disconnected:', data);
+    handleSessionDisconnected(data); // Use your existing function
+});
+
+socket.on('authFailure', (data) => {
+    console.log('🚫 ADMIN: Authentication failed:', data);
+    handleAuthFailure(data); // Use your existing function
+});
+
+socket.on('adminAuthFailure', (data) => {
+    console.log('🚫 ADMIN: Admin authentication failed:', data);
+    handleAuthFailure(data); // Use your existing function
+});
 
         // Add QR display functions
         function displayAdminQRCode(qrData, sessionId) {
@@ -242,10 +268,10 @@ async function createNewSession() {
 
     try {
         isCreatingSession = true;
-        console.log('🔄 Creating new WhatsApp session...');
+        console.log('🔄 Creating new ADMIN WhatsApp session...');
         
         // Show loading state
-        showNotification('Creating new session...', 'info');
+        showNotification('Creating new admin session...', 'info');
         
         // Show QR modal immediately
         showQRModal();
@@ -256,21 +282,19 @@ async function createNewSession() {
             qrContainer.innerHTML = `
                 <div class="qr-loading">
                     <i class="fas fa-spinner fa-spin" style="font-size: 48px; color: #667eea;"></i>
-                    <p style="margin-top: 15px;">Initializing WhatsApp session...</p>
+                    <p style="margin-top: 15px;">Initializing ADMIN WhatsApp session...</p>
                     <p style="font-size: 12px; color: #666;">This may take a few moments</p>
                 </div>
             `;
         }
 
-        // Call your backend API to create session
-        const response = await fetch('/api/sessions/create', {
+        // 🔑 NEW: Call the ADMIN session creation endpoint
+        const response = await fetch('/api/admin/sessions/create', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                adminSession: true
-            })
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getAuthToken()}` // Add auth token
+            }
         });
 
         if (!response.ok) {
@@ -282,30 +306,37 @@ async function createNewSession() {
         
         if (result.success) {
             currentSessionId = result.data.sessionId;
-            console.log('✅ Session created successfully:', currentSessionId);
-            showNotification('Session created! Waiting for QR code...', 'success');
+            console.log('✅ ADMIN Session created successfully:', currentSessionId);
+            showNotification('Admin session created! Waiting for QR code...', 'success');
             
             // Update QR container to show waiting state
             if (qrContainer) {
                 qrContainer.innerHTML = `
                     <div class="qr-waiting">
                         <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea;"></i>
-                        <p style="margin-top: 15px;">Generating QR Code...</p>
+                        <p style="margin-top: 15px;">Generating Admin QR Code...</p>
                         <p style="font-size: 12px; color: #666;">Session ID: ${currentSessionId}</p>
+                        <p style="font-size: 12px; color: #ff6b6b;">⚠️ This will create an ADMIN bot session</p>
                     </div>
                 `;
             }
         } else {
-            throw new Error(result.message || 'Failed to create session');
+            throw new Error(result.message || 'Failed to create admin session');
         }
 
     } catch (error) {
-        console.error('❌ Error creating session:', error);
+        console.error('❌ Error creating admin session:', error);
         showNotification(`Error: ${error.message}`, 'error');
         closeQRModal();
     } finally {
         isCreatingSession = false;
     }
+}
+
+// 🔑 NEW: Add auth token helper function
+function getAuthToken() {
+    // Get the auth token from localStorage or wherever you store it
+    return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
 }
 
 // Display QR code in the modal
@@ -360,16 +391,21 @@ function handleSessionReady(data) {
 
     const qrContainer = document.getElementById('qrCode');
     if (qrContainer) {
+        // 🔑 Check if this is an admin session
+        const isAdminSession = data.isAdmin || data.userType === 'admin';
+        
         qrContainer.innerHTML = `
             <div style="text-align: center; padding: 20px;">
                 <i class="fas fa-check-circle" style="font-size: 64px; color: #48bb78;"></i>
-                <h3 style="color: #48bb78; margin: 15px 0;">Bot Connected!</h3>
+                <h3 style="color: #48bb78; margin: 15px 0;">${isAdminSession ? '👑 Admin Bot Connected!' : 'Bot Connected!'}</h3>
                 <p><strong>Phone:</strong> ${data.phone || 'Connected'}</p>
                 <p><strong>Session ID:</strong> ${data.uniqueId || data.sessionId}</p>
-                <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #667eea;">
-                    <strong>🎯 Test your bot:</strong><br>
+                ${isAdminSession ? '<p><strong>Role:</strong> System Administrator</p>' : ''}
+                <div style="margin-top: 20px; padding: 15px; background: ${isAdminSession ? '#fff3cd' : '#f0f9ff'}; border-radius: 8px; border-left: 4px solid ${isAdminSession ? '#ffc107' : '#667eea'};">
+                    <strong>${isAdminSession ? '🛡️ Admin Commands Available:' : '🎯 Test your bot:'}</strong><br>
                     Open WhatsApp and send yourself:<br>
-                    <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">!ping</code>
+                    <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">${isAdminSession ? '!help' : '!ping'}</code>
+                    ${isAdminSession ? ' or <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">!stats</code>' : ''}
                 </div>
                 <button onclick="closeQRModal()" class="btn-primary" style="margin-top: 15px;">
                     <i class="fas fa-check"></i> Continue
@@ -378,7 +414,7 @@ function handleSessionReady(data) {
         `;
     }
 
-    showNotification(`Bot connected successfully! Phone: ${data.phone || 'Connected'}`, 'success');
+    showNotification(`${data.isAdmin ? 'Admin bot' : 'Bot'} connected successfully! Phone: ${data.phone || 'Connected'}`, 'success');
     updateStats();
     loadSessions();
 }
