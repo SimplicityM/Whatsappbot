@@ -2468,30 +2468,36 @@ console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
 console.log(`🎉 All ${isAdmin ? 'ADMIN' : 'USER'} welcome messages sent successfully!`);
 
 // Start contact sync after welcome messages
-console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
-await syncContacts();
+try {
+    // Start contact sync after welcome messages
+    console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
+    await syncContacts();
 
 } catch (error) {
     console.error(`❌ Failed to send ${isAdmin ? 'ADMIN' : 'USER'} welcome messages (attempt ${4 - retries}/3):`, error);
+
     if (retries > 0) {
         console.log(`🔄 Retrying in ${delay / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
         return sendWelcomeMessages(retries - 1, delay * 1.5);
-    } else {
-        console.error('❌ Maximum retries reached.');
-        try {
-            const fallbackMsg = isAdmin 
-                ? `👑 Admin Bot ready! Session: ${uniqueId}\nType !help for admin commands`
-                : `🤖 Bot ready! Session: ${uniqueId}\nType !ping`;
-            
-            await client.sendMessage(selfId, fallbackMsg);
-            console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Fallback message sent`);
-            
-            await syncContacts();
-        } catch (fallbackError) {
-            console.error('❌ Fallback also failed:', fallbackError);
-        }
+    }
+
+    console.error('❌ Maximum retries reached. Sending fallback message...');
+    try {
+        const fallbackMsg = isAdmin
+            ? `👑 Admin Bot ready! Session: ${uniqueId}\nType !help for admin commands`
+            : `🤖 Bot ready! Session: ${uniqueId}\nType !ping`;
+
+        await client.sendMessage(selfId, fallbackMsg);
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} fallback message sent successfully.`);
+
+        console.log(`📞 Running contact sync after fallback...`);
+        await syncContacts();
+    } catch (fallbackError) {
+        console.error('❌ Fallback also failed:', fallbackError);
     }
 }
+
 
 // ✅ Start welcome message process safely
 await sendWelcomeMessages();
