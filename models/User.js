@@ -20,6 +20,14 @@ const userSchema = new mongoose.Schema({
         required: true,
         minlength: 8
     },
+    
+    // 🔑 ADD THIS NEW FIELD FOR USER TYPE DISTINCTION
+    role: {
+        type: String,
+        enum: ['whatsapp_admin', 'system_admin'],
+        default: 'whatsapp_admin'
+    },
+    
     subscription: {
         type: String,
         enum: ['starter', 'professional', 'business', 'enterprise'],
@@ -149,8 +157,11 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-// 🔑 NEW: Check if user is exempt from payment requirements
+// 🔑 ENHANCED: Check if user is exempt from payment requirements
 userSchema.methods.isExemptFromPayment = function() {
+    // System admin is always exempt
+    if (this.role === 'system_admin') return true;
+    
     // Owner is always exempt
     if (this.isOwner) return true;
     
@@ -173,8 +184,18 @@ userSchema.methods.isBotOwner = function() {
     return ownerNumber && userNumber && userNumber === ownerNumber;
 };
 
+// 🔑 ENHANCED: Check if user is system admin
+userSchema.methods.isSystemAdmin = function() {
+    return this.role === 'system_admin' || 
+           this.email === process.env.ADMIN_EMAIL ||
+           this.adminLevel === 'owner';
+};
+
 // Check if subscription is active (enhanced with exemptions)
 userSchema.methods.isSubscriptionActive = function() {
+    // System admin doesn't need subscription
+    if (this.role === 'system_admin') return true;
+    
     // Exempt users don't need active subscriptions
     if (this.isExemptFromPayment()) return true;
     
@@ -187,6 +208,11 @@ userSchema.methods.isSubscriptionActive = function() {
 
 // Get subscription limits (enhanced with exemptions)
 userSchema.methods.getSubscriptionLimits = function() {
+    // System admin gets unlimited access
+    if (this.role === 'system_admin') {
+        return { sessions: -1, commands: -1, groups: -1 }; // unlimited
+    }
+    
     // Owner and exempt users get unlimited access
     if (this.isExemptFromPayment() || this.isBotOwner()) {
         return { sessions: -1, commands: -1, groups: -1 }; // unlimited
@@ -255,34 +281,43 @@ userSchema.methods.setAdminLevel = function(level) {
     return this.save();
 };
 
-// 👑 Auto-assign owner privileges if user matches configured owner number
-userSchema.statics.ensureOwnerPrivileges = async function (user) {
-  try {
-    const CONFIG = require('../config.json'); // adjust path if needed
-    const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : '2347067012884';
-
-    if (!user || !user.whatsappNumber) return user;
-
-    const userNumber = user.whatsappNumber.replace(/[^0-9]/g, '');
-
-    if (userNumber === ownerNumber) {
-      if (!user.isOwner || !user.isAdmin || user.adminLevel !== 'owner') {
-        console.log(`👑 Ensuring owner privileges for ${userNumber}`);
-        user.isOwner = true;
-        user.isAdmin = true;
-        user.adminLevel = 'owner';
-        user.exemptFromPayment = true;
-        user.exemptionReason = 'Auto-granted bot owner privileges';
-        await user.save();
-      }
-    }
-
-    return user;
-  } catch (err) {
-    console.error('❌ Error ensuring owner privileges:', err);
-    return user;
-  }
+// 🔑 NEW: Set as system admin
+userSchema.methods.setAsSystemAdmin = function() {
+    this.role = 'system_admin';
+    this.isAdmin = true;
+    this.adminLevel = 'owner';
+    this.exemptFromPayment = true;
+    this.exemptionReason = 'System admin privileges';
+    return this.save();
 };
 
+// 👑 Auto-assign owner privileges if user matches configured owner number
+userSchema.statics.ensureOwnerPrivileges = async function (user) {
+    try {
+        const CONFIG = require('../config.json'); // adjust path if needed
+        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : '2347067012884';
+
+        if (!user || !user.whatsappNumber) return user;
+
+        const userNumber = user.whatsappNumber.replace(/[^0-9]/g, '');
+
+        if (userNumber === ownerNumber) {
+            if (!user.isOwner || !user.isAdmin || user.adminLevel !== 'owner') {
+                console.log(`👑 Ensuring owner privileges for ${userNumber}`);
+                user.isOwner = true;
+                user.isAdmin = true;
+                user.adminLevel = 'owner';
+                user.exemptFromPayment = true;
+                user.exemptionReason = 'Auto-granted bot owner privileges';
+                await user.save();
+            }
+        }
+
+        return user;
+    } catch (err) {
+        console.error('❌ Error ensuring owner privileges:', err);
+        return user;
+    }
+};
 
 module.exports = mongoose.model('User', userSchema);
