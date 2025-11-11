@@ -69,6 +69,65 @@ function setupSocketConnection() {
             updateConnectionStatus(true);
         });
 
+                socket.on('qrCode', (data) => {
+            console.log('📱 ADMIN: QR Code received:', data);
+            
+            if (data.userId === getCurrentAdminId()) {
+                displayAdminQRCode(data.qr, data.sessionId);
+            }
+        });
+
+        socket.on('sessionReady', (data) => {
+            console.log('✅ ADMIN: Bot session ready:', data);
+            hideAdminQRCode();
+            showAdminBotStatus('connected', data.phone);
+        });
+
+        // Add QR display functions
+        function displayAdminQRCode(qrData, sessionId) {
+            const qrContainer = document.getElementById('adminQRContainer');
+            if (qrContainer) {
+                qrContainer.innerHTML = `
+                    <div class="qr-code-display">
+                        <h3>Scan QR Code with WhatsApp</h3>
+                        <div id="adminQrCode"></div>
+                        <p>Session: ${sessionId}</p>
+                    </div>
+                `;
+                
+                // Generate QR code using QRCode library
+                QRCode.toCanvas(document.getElementById('adminQrCode'), qrData, {
+                    width: 256,
+                    margin: 2
+                });
+            }
+        }
+
+        // Add bot session creation
+        async function createAdminBotSession() {
+            try {
+                const response = await fetch('/api/admin/bot/create-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${getAuthToken()}`
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification('Bot session created. Scan QR code to connect.', 'success');
+                } else {
+                    showNotification(result.message, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error creating admin bot session:', error);
+                showNotification('Failed to create bot session', 'error');
+            }
+        }
+
         socket.on('disconnect', () => {
             console.log('❌ Disconnected from server');
             updateConnectionStatus(false);

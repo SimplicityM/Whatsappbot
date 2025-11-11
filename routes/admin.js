@@ -673,4 +673,32 @@ router.get('/export/users', authenticateAdmin, async (req, res) => {
     }
 });
 
+app.use('/api/admin', require('./routes/admin'));
+
+router.post('/bot/create-session', authenticateAdmin, async (req, res) => {
+    try {
+        const adminId = req.user.id;
+        const sessionId = `admin-bot-${adminId}-${Date.now()}`;
+        
+        // Import createBotSession from bot.js
+        const { createBotSession } = require('../bot');
+        const io = req.app.get('io'); // Get Socket.IO instance
+        
+        await createBotSession(adminId, sessionId, io);
+        
+        res.json({
+            success: true,
+            data: { sessionId, adminId },
+            message: 'Admin bot session created successfully'
+        });
+        
+    } catch (error) {
+        console.error('Admin bot session error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to create admin bot session'
+        });
+    }
+});
+
 module.exports = router;
