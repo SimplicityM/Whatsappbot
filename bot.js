@@ -2582,8 +2582,6 @@ async function performContactSync(client, sessionId, userId, io, isAdmin) {
 }
 
 
- 
-
 // Add this function to handle background sync
 async function handleBackgroundSync(client, sessionId, userId, io) {
     console.log('🔄 Starting background sync...');

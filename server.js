@@ -462,18 +462,6 @@ io.on('connection', (socket) => {
     });
 });
 
-socket.on('join-admin-room', (adminId) => {
-    if (!adminId) {
-        console.log('❌ Cannot join admin room: admin ID is null/undefined');
-        return;
-    }
-    
-    const roomName = `admin-${adminId}`;
-    socket.join(roomName);
-    console.log(`✅ Admin ${adminId} (socket ${socket.id}) joined room: ${roomName}`);
-    
-    socket.emit('admin-room-joined', { roomName, adminId });
-});
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
