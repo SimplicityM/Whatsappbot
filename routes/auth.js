@@ -370,4 +370,139 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
+// Admin Login Route - Add this to routes/auth.js
+router.post('/admin-login', async (req, res) => {
+    try {
+        const { email, password, isAdmin } = req.body;
+
+        console.log('🔐 Admin login attempt for:', email);
+
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        // Find user by email
+        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!user) {
+            console.log('❌ Admin login failed: User not found');
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid admin credentials'
+            });
+        }
+
+        // Check password
+        const isPasswordValid = await user.comparePassword(password);
+        if (!isPasswordValid) {
+            console.log('❌ Admin login failed: Invalid password');
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid admin credentials'
+            });
+        }
+
+        // Check if user is admin
+        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
+                             user.role === 'system_admin' || 
+                             user.isAdmin === true;
+
+        if (!isSystemAdmin) {
+            console.log('❌ Admin login failed: User is not admin');
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin privileges required.'
+            });
+        }
+
+        // Generate token
+        const token = generateToken(user._id);
+
+        // Update last login
+        user.lastLogin = new Date();
+        await user.save();
+
+        console.log('✅ Admin login successful for:', email);
+
+        res.json({
+            success: true,
+            message: 'Admin login successful',
+            data: {
+                token,
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role || 'system_admin',
+                    isAdmin: true
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Admin login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error during admin login'
+        });
+    }
+});
+
+// Admin Token Verification Route - Add this too
+router.get('/admin/verify-token', async (req, res) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
+            });
+        }
+
+        const decoded = verifyToken(token);
+        const user = await User.findById(decoded.userId).select('-password');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token'
+            });
+        }
+
+        // Check if user is admin
+        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
+                             user.role === 'system_admin' || 
+                             user.isAdmin === true;
+
+        if (!isSystemAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'Admin privileges required'
+            });
+        }
+
+        res.json({
+            success: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                role: user.role || 'system_admin',
+                isAdmin: true
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Token verification error:', error);
+        res.status(401).json({
+            success: false,
+            message: 'Invalid token'
+        });
+    }
+});
+
 module.exports = router;
