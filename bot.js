@@ -2439,6 +2439,7 @@ client.on('message', async (message) => {
     }
 }    
 
+// Add the missing handleBotCommand function
 async function handleBotCommand({ client, message, command, args, isAdmin, isOwner, selfNumber, selfId, sessionId, userId }) {
     try {
         switch (command) {
@@ -2489,74 +2490,6 @@ async function handleBotCommand({ client, message, command, args, isAdmin, isOwn
                 await message.reply(statusMsg);
                 break;
                 
-            case 'myinfo':
-                if (!isAdmin) {
-                    const infoMsg = `📋 *Your Account Information*\n\n` +
-                        `📱 *Number:* ${selfNumber}\n` +
-                        `📱 *Session ID:* ${sessionId}\n` +
-                        `👤 *Role:* ${isOwner ? 'Owner' : 'User'}\n` +
-                        `⏰ *Connected:* ${new Date().toLocaleString()}`;
-                    
-                    await message.reply(infoMsg);
-                } else {
-                    await message.reply('Use !status for admin information.');
-                }
-                break;
-                
-            // Admin-only commands
-            case 'stats':
-                if (!isAdmin && !isOwner) {
-                    await message.reply('🚫 Admin access required');
-                    break;
-                }
-                
-                const totalSessions = clients.size;
-                const statsUptime = Math.floor(process.uptime() / 60);
-                const statsMsg = `📊 *Bot Statistics*\n\n` +
-                    `👥 *Active Sessions:* ${totalSessions}\n` +
-                    `⏱️ *Uptime:* ${statsUptime}m\n` +
-                    `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
-                    `🛡️ *Exempted Users:* ${exemptedUsers ? exemptedUsers.size : 0}`;
-                
-                await message.reply(statsMsg);
-                break;
-                
-            case 'exempt':
-                if (!isAdmin && !isOwner) {
-                    await message.reply('🚫 Admin access required');
-                    break;
-                }
-                if (args[0]) {
-                    exemptUser(args[0], true);
-                    await message.reply(`✅ *User Exempted*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
-                } else {
-                    await message.reply('❌ Usage: !exempt <phone_number>');
-                }
-                break;
-                
-            case 'unexempt':
-                if (!isAdmin && !isOwner) {
-                    await message.reply('🚫 Admin access required');
-                    break;
-                }
-                if (args[0]) {
-                    exemptUser(args[0], false);
-                    await message.reply(`🚫 *Exemption Removed*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
-                } else {
-                    await message.reply('❌ Usage: !unexempt <phone_number>');
-                }
-                break;
-                
-            case 'listexempt':
-                if (!isAdmin && !isOwner) {
-                    await message.reply('🚫 Admin access required');
-                    break;
-                }
-                const exemptedList = [...(exemptedUsers || [])];
-                const list = exemptedList.length > 0 ? exemptedList.join('\n• ') : 'No users exempted';
-                await message.reply(`📜 *Exempted Users (${exemptedList.length})*\n\n• ${list}`);
-                break;
-                
             default:
                 await message.reply(`❌ Unknown command: "${command}"\n\nType !help for available commands.`);
         }
@@ -2568,6 +2501,20 @@ async function handleBotCommand({ client, message, command, args, isAdmin, isOwn
         await message.reply('⚠️ An error occurred while processing your command.');
     }
 }
+
+// Export the function
+module.exports = { 
+    createBotSession,
+    resumeUserSession,
+    clients,
+    userSessions
+};
+
+// Start global periodic subscription checking
+setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
+
+// Also check on startup
+setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup
 
 // Enhanced welcome message function that should be inside sendWelcomeMessages
 async function sendCommandsMessage(chat, isAdmin, uniqueId) {
