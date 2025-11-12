@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const crypto = require('crypto');
 const Contact = require('./models/Contact');
 const User = require('./models/User');
@@ -2440,61 +2439,198 @@ client.on('message', async (message) => {
     }
 }    
 
-// 🔑 NEW: Different command help for admin vs user 
-const commandsMessage = isAdmin 
-    ? `🔧 *Admin Commands Available:*\n\n` +
-      `• !ping - Test response\n` +
-      `• !help - Full help menu\n` +
-      `• !status - Bot status\n` +
-      `• !stats - System statistics\n` +
-      `• !exempt <number> - Exempt user from payment\n` +
-      `• !unexempt <number> - Remove exemption\n` +
-      `• !listexempt - List exempted users\n` +
-      `• !broadcast <message> - Send to all users\n` +
-      `• !sessions - List all active sessions\n` +
-      `• !userinfo <number> - Get user information\n\n` +
-      `👑 *Admin Privileges:* Full system control\n` +
-      `💡 Type commands in this chat only!`
-    : `🔧 *Available Commands:*\n\n` +
-      `• !ping - Test response\n` +
-      `• !help - Full help menu\n` +
-      `• !status - Bot status\n` +
-      `• !myinfo - Account info\n\n` +
-      `💡 Type commands in this chat only!`;
-
-await chat.sendMessage(commandsMessage);
-console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
-
-console.log(`🎉 All ${isAdmin ? 'ADMIN' : 'USER'} welcome messages sent successfully!`);
-
-// Start contact sync after welcome messages
-try {
-    // Start contact sync after welcome messages
-    console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
-    await syncContacts();
-
-} catch (error) {
-    console.error(`❌ Failed to send ${isAdmin ? 'ADMIN' : 'USER'} welcome messages (attempt ${4 - retries}/3):`, error);
-
-    if (retries > 0) {
-        console.log(`🔄 Retrying in ${delay / 1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return sendWelcomeMessages(retries - 1, delay * 1.5);
-    }
-
-    console.error('❌ Maximum retries reached. Sending fallback message...');
+async function handleBotCommand({ client, message, command, args, isAdmin, isOwner, selfNumber, selfId, sessionId, userId }) {
     try {
-        const fallbackMsg = isAdmin
-            ? `👑 Admin Bot ready! Session: ${uniqueId}\nType !help for admin commands`
-            : `🤖 Bot ready! Session: ${uniqueId}\nType !ping`;
+        switch (command) {
+            case 'ping':
+                await message.reply('🏓 Pong! Bot is working perfectly!');
+                break;
+                
+            case 'help':
+                const helpMessage = isAdmin 
+                    ? `🔧 *Admin Commands Available:*\n\n` +
+                      `• !ping - Test response\n` +
+                      `• !help - Full help menu\n` +
+                      `• !status - Bot status\n` +
+                      `• !stats - System statistics\n` +
+                      `• !exempt <number> - Exempt user from payment\n` +
+                      `• !unexempt <number> - Remove exemption\n` +
+                      `• !listexempt - List exempted users\n` +
+                      `• !broadcast <message> - Send to all users\n` +
+                      `• !sessions - List all active sessions\n` +
+                      `• !userinfo <number> - Get user information\n\n` +
+                      `👑 *Admin Privileges:* Full system control\n` +
+                      `💡 Type commands in this chat only!`
+                    : `🔧 *Available Commands:*\n\n` +
+                      `• !ping - Test response\n` +
+                      `• !help - Full help menu\n` +
+                      `• !status - Bot status\n` +
+                      `• !myinfo - Account info\n\n` +
+                      `💡 Type commands in this chat only!`;
+                
+                await message.reply(helpMessage);
+                break;
+                
+            case 'status':
+                const uptime = process.uptime();
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                const seconds = Math.floor(uptime % 60);
+                
+                const statusMsg = `🤖 *Your Bot Status*\n\n` +
+                    `✅ *Status:* Active & Ready\n` +
+                    `📱 *Your Number:* ${selfNumber}\n` +
+                    `📱 *Session:* ${sessionId}\n` +
+                    `⏱️ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n` +
+                    `${isOwner ? '👑 *Role:* Bot Owner\n' : (isAdmin ? '👨‍💼 *Role:* Admin\n' : '👤 *Role:* User\n')}` +
+                    `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n\n` +
+                    `🚀 *Ready to serve you!*`;
+                
+                await message.reply(statusMsg);
+                break;
+                
+            case 'myinfo':
+                if (!isAdmin) {
+                    const infoMsg = `📋 *Your Account Information*\n\n` +
+                        `📱 *Number:* ${selfNumber}\n` +
+                        `📱 *Session ID:* ${sessionId}\n` +
+                        `👤 *Role:* ${isOwner ? 'Owner' : 'User'}\n` +
+                        `⏰ *Connected:* ${new Date().toLocaleString()}`;
+                    
+                    await message.reply(infoMsg);
+                } else {
+                    await message.reply('Use !status for admin information.');
+                }
+                break;
+                
+            // Admin-only commands
+            case 'stats':
+                if (!isAdmin && !isOwner) {
+                    await message.reply('🚫 Admin access required');
+                    break;
+                }
+                
+                const totalSessions = clients.size;
+                const statsUptime = Math.floor(process.uptime() / 60);
+                const statsMsg = `📊 *Bot Statistics*\n\n` +
+                    `👥 *Active Sessions:* ${totalSessions}\n` +
+                    `⏱️ *Uptime:* ${statsUptime}m\n` +
+                    `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
+                    `🛡️ *Exempted Users:* ${exemptedUsers ? exemptedUsers.size : 0}`;
+                
+                await message.reply(statsMsg);
+                break;
+                
+            case 'exempt':
+                if (!isAdmin && !isOwner) {
+                    await message.reply('🚫 Admin access required');
+                    break;
+                }
+                if (args[0]) {
+                    exemptUser(args[0], true);
+                    await message.reply(`✅ *User Exempted*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
+                } else {
+                    await message.reply('❌ Usage: !exempt <phone_number>');
+                }
+                break;
+                
+            case 'unexempt':
+                if (!isAdmin && !isOwner) {
+                    await message.reply('🚫 Admin access required');
+                    break;
+                }
+                if (args[0]) {
+                    exemptUser(args[0], false);
+                    await message.reply(`🚫 *Exemption Removed*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
+                } else {
+                    await message.reply('❌ Usage: !unexempt <phone_number>');
+                }
+                break;
+                
+            case 'listexempt':
+                if (!isAdmin && !isOwner) {
+                    await message.reply('🚫 Admin access required');
+                    break;
+                }
+                const exemptedList = [...(exemptedUsers || [])];
+                const list = exemptedList.length > 0 ? exemptedList.join('\n• ') : 'No users exempted';
+                await message.reply(`📜 *Exempted Users (${exemptedList.length})*\n\n• ${list}`);
+                break;
+                
+            default:
+                await message.reply(`❌ Unknown command: "${command}"\n\nType !help for available commands.`);
+        }
+        
+        console.log(`📊 Command executed: ${command} by ${selfNumber} (${isOwner ? 'Owner' : (isAdmin ? 'Admin' : 'User')})`);
+        
+    } catch (error) {
+        console.error(`Command error (${command}):`, error);
+        await message.reply('⚠️ An error occurred while processing your command.');
+    }
+}
 
-        await client.sendMessage(selfId, fallbackMsg);
-        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} fallback message sent successfully.`);
+// Enhanced welcome message function that should be inside sendWelcomeMessages
+async function sendCommandsMessage(chat, isAdmin, uniqueId) {
+    try {
+        const commandsMessage = isAdmin 
+            ? `🔧 *Admin Commands Available:*\n\n` +
+              `• !ping - Test response\n` +
+              `• !help - Full help menu\n` +
+              `• !status - Bot status\n` +
+              `• !stats - System statistics\n` +
+              `• !exempt <number> - Exempt user from payment\n` +
+              `• !unexempt <number> - Remove exemption\n` +
+              `• !listexempt - List exempted users\n` +
+              `• !broadcast <message> - Send to all users\n` +
+              `• !sessions - List all active sessions\n` +
+              `• !userinfo <number> - Get user information\n\n` +
+              `👑 *Admin Privileges:* Full system control\n` +
+              `💡 Type commands in this chat only!`
+            : `🔧 *Available Commands:*\n\n` +
+              `• !ping - Test response\n` +
+              `• !help - Full help menu\n` +
+              `• !status - Bot status\n` +
+              `• !myinfo - Account info\n\n` +
+              `💡 Type commands in this chat only!`;
 
-        console.log(`📞 Running contact sync after fallback...`);
-        await syncContacts();
-    } catch (fallbackError) {
-        console.error('❌ Fallback also failed:', fallbackError);
+        await chat.sendMessage(commandsMessage);
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
+        
+        return true;
+    } catch (error) {
+        console.error(`❌ Failed to send commands message:`, error);
+        return false;
+    }
+}
+
+// Enhanced contact sync with proper error handling
+async function performContactSync(client, sessionId, userId, io, isAdmin) {
+    try {
+        console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
+        
+        // Your existing syncContacts logic here
+        const contacts = await client.getContacts();
+        const chats = await client.getChats();
+        const groupChats = chats.filter(chat => chat.isGroup);
+        
+        console.log(`📋 Found ${contacts.length} contacts and ${groupChats.length} groups`);
+        
+        // Notify frontend about sync completion
+        if (io) {
+            io.to(`${isAdmin ? 'admin' : 'user'}-${userId}`).emit('contactSyncComplete', {
+                sessionId,
+                contactCount: contacts.length,
+                groupCount: groupChats.length,
+                message: 'Contact sync completed successfully'
+            });
+        }
+        
+        console.log(`✅ Contact sync completed for ${isAdmin ? 'ADMIN' : 'USER'}`);
+        return true;
+        
+    } catch (error) {
+        console.error(`❌ Contact sync failed for ${isAdmin ? 'ADMIN' : 'USER'}:`, error);
+        return false;
     }
 }
 
