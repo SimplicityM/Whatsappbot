@@ -1,7 +1,7 @@
-// create-admin.js
+// create-admin.js - FIXED VERSION
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
-const User = require('./models/User'); // Adjust path if needed
+const User = require('./models/User');
 require('dotenv').config();
 
 async function createAdminUser() {
@@ -11,10 +11,11 @@ async function createAdminUser() {
         await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot');
         console.log('✅ Connected to MongoDB');
 
-        // Check if admin already exists
-        const adminEmail = 'tagthemall@botforall.com'; // Change this to your preferred email
-        const adminPassword = 'abuusayd123$'; // Change this to your preferred password
+        // Admin credentials
+        const adminEmail = 'tagthemall@botforall.com';
+        const adminPassword = 'abuusayd2323$'; // Must be at least 8 characters
         
+        // Check if admin already exists
         const existingAdmin = await User.findOne({ email: adminEmail });
         if (existingAdmin) {
             console.log('⚠️ Admin user already exists with email:', adminEmail);
@@ -26,6 +27,8 @@ async function createAdminUser() {
             await existingAdmin.save();
             
             console.log('✅ Updated existing user to admin privileges');
+            console.log('📧 Email:', adminEmail);
+            console.log('🔑 Use your existing password');
             process.exit(0);
         }
 
@@ -33,21 +36,19 @@ async function createAdminUser() {
         console.log('🔐 Hashing password...');
         const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
-        // Create admin user
+        // Create admin user with correct field names
         const adminUser = new User({
-            name: 'System Administrator',
+            fullName: 'System Administrator', // This was missing!
             email: adminEmail,
             password: hashedPassword,
-            role: 'system_admin',
+            role: 'system_admin', // This matches your enum
+            subscription: 'enterprise', // This should be a string, not object
+            subscriptionExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
             isAdmin: true,
             emailVerified: true,
             whatsappNumber: null,
-            subscription: {
-                planType: 'enterprise',
-                status: 'active',
-                createdAt: new Date(),
-                expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
-            },
+            phone: null,
+            sessionId: null,
             createdAt: new Date(),
             lastLogin: null
         });
@@ -57,6 +58,9 @@ async function createAdminUser() {
         console.log('🎉 Admin user created successfully!');
         console.log('📧 Email:', adminEmail);
         console.log('🔑 Password:', adminPassword);
+        console.log('👤 Full Name: System Administrator');
+        console.log('🎯 Role: system_admin');
+        console.log('💎 Subscription: enterprise');
         console.log('');
         console.log('🚀 You can now login at: http://localhost:3000/admin-login.html');
         console.log('');
@@ -64,6 +68,10 @@ async function createAdminUser() {
 
     } catch (error) {
         console.error('❌ Error creating admin user:', error);
+        
+        if (error.code === 11000) {
+            console.log('💡 Tip: User with this email already exists. Try a different email.');
+        }
     } finally {
         // Close database connection
         await mongoose.connection.close();
