@@ -88,7 +88,6 @@ const userSessions = new Map();
 const scheduledReminders = new Map();
 let reminderCounter = 1;
 
-
 const clientGroups = new Map(); 
 const groupRefreshIntervals = new Map(); 
 
@@ -200,7 +199,6 @@ async function saveNewContact(client, phoneNumber, name = null) {
             return false;
         }
         
-        
         const contactName = name || `New Contact ${phoneNumber}`;
         await client.pupPage.evaluate((contact, name) => {
             return window.WWebJS.contactAdd(contact, name);
@@ -210,17 +208,17 @@ async function saveNewContact(client, phoneNumber, name = null) {
         fs.writeFileSync(SAVED_CONTACTS_FILE, JSON.stringify([...savedContacts]));
         logger.info(`New contact saved: ${phoneNumber} as "${contactName}"`);
         return true;
-    }  catch (error) {
+    } catch (error) {
         // Add navigation error handling here
         if (error.message.includes('context was destroyed') || 
             error.message.includes('navigation')) {
             logger.info('Page navigation interrupted contact saving');
             return false;
         }
-         logger.error(`Failed to save contact ${phoneNumber}:`, error);
+        logger.error(`Failed to save contact ${phoneNumber}:`, error);
         return false;
     }
-    }
+}
 
 function setupCallHandlers(client) {
     client.on('call', async (call) => {
@@ -302,12 +300,12 @@ async function refreshGroupsForSession(client, sessionId) {
             }
 
             const participant = c.participants.find(p => 
-    p.id._serialized === meId || 
-    p.id.user === meId.split('@')[0]
-);
+                p.id._serialized === meId || 
+                p.id.user === meId.split('@')[0]
+            );
             const isAdmin = participant?.isAdmin ?? false;
 
-             logger.info(`👥 Group: "${c.name}" | Bot found: ${!!participant} | Admin: ${isAdmin} | Participants: ${c.participants.length}`);
+            logger.info(`👥 Group: "${c.name}" | Bot found: ${!!participant} | Admin: ${isAdmin} | Participants: ${c.participants.length}`);
 
             if (participant && isAdmin) {
                 adminGroups.push(c);
@@ -322,7 +320,6 @@ async function refreshGroupsForSession(client, sessionId) {
         return [];
     }
 }
-
 
 function createClient(sessionId) {
     const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
@@ -351,6 +348,7 @@ function createClient(sessionId) {
     setupCallHandlers(client);
     return client;
 }
+
 
 function setupClientEvents(client, sessionId) {
     let qrRetryCount = 0;
@@ -424,32 +422,27 @@ function setupClientEvents(client, sessionId) {
         }
 
         logger.info(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
-await refreshGroupsForSession(client, sessionId);
-logger.info(`✅ Finished group refresh call for session ${sessionId}`);
+        await refreshGroupsForSession(client, sessionId);
+        logger.info(`✅ Finished group refresh call for session ${sessionId}`);
 
+        // Periodic refresh (every 10 minutes)
+        groupRefreshIntervals.set(
+            sessionId,
+            setInterval(() => refreshGroupsForSession(client, sessionId), 600000) // 10 minutes
+        );
 
-// Periodic refresh (every 10 minutes)
-groupRefreshIntervals.set(
-    sessionId,
-    setInterval(() => refreshGroupsForSession(client, sessionId), 600000) // 10 minutes
-);
-
-
-                // Only proceed if properly authenticated
+        // Only proceed if properly authenticated
         try {
             const selfId = client.info.wid._serialized;
             const chat = await client.getChatById(selfId);
             
-            // Verify we can actually send messages
-            const testMsg = await chat.sendMessage("Welcome, We are happy you joined us...");
-            await testMsg.delete(true); // Clean up test message
+            // Store the correct session ID
+            userSessions.set(selfId, sessionId);
             
-            // FIX: Store the correct session ID
-            userSessions.set(selfId, sessionId); // Use the sessionId from closure
-            
-            // FIX: Remove uniqueId and use the actual session ID
+            // Send welcome messages without test message
             await chat.sendMessage(`🤖 *Bot Connected*\n\nYour session ID: \`${sessionId}\``);
             await chat.sendMessage("👋 Hello, I'm a WhatsApp bot. Use !help to see available commands");    
+            
             // Set up keep-alive
             keepAliveInterval = setInterval(async () => {
                 try {
@@ -474,16 +467,17 @@ groupRefreshIntervals.set(
         logger.info(`Client ${sessionId} disconnected: ${reason}`);
         if (keepAliveInterval) clearInterval(keepAliveInterval);
         if (groupRefreshIntervals.has(sessionId)) {
-    clearInterval(groupRefreshIntervals.get(sessionId));
-    groupRefreshIntervals.delete(sessionId);
-}
-clientGroups.delete(sessionId);
+            clearInterval(groupRefreshIntervals.get(sessionId));
+            groupRefreshIntervals.delete(sessionId);
+        }
+        clientGroups.delete(sessionId);
         clients.delete(sessionId);
         if (reason !== 'NAVIGATION' && reason !== 'LOGOUT') {
             setTimeout(() => createNewSession(), 10000);
         }
     });
 
+    // FIXED: Single message handler for regular messages from others
     client.on('message', async (message) => {
         try {
             console.log("RAW MESSAGE RECEIVED:", {
@@ -493,94 +487,11 @@ clientGroups.delete(sessionId);
                 type: message.type
             });
 
-            // Skip messages sent by the bot itself
-if (message.fromMe) {
-    console.log("Skipping message from self");
-    return;
-}
-
-    // New listener for self-chat commands
-    client.on('message_create', async (message) => {
-        if (!message.body || !message.body.trim().startsWith(COMMAND_PREFIX)) return;
-        const selfId = client.info.wid._serialized;
-        const sender = message.fromMe ? message.to : message.from;
-        if (sender !== selfId && !isAuthorized(sender)) {
-            return await message.reply("🔒 Admin-only command");
-        }
-        const [command, ...args] = message.body
-            .slice(COMMAND_PREFIX.length)
-            .trim()
-            .split(/\s+/);
-        switch (command.toLowerCase()) {
-            case 'ping':
-                return message.reply('Pong! 🏓');
-            case 'help':
-                return message.reply(`*Available Commands:*
-1. Ping - Check bot response
-2. Help - Show this help
-3. Status - Show bot status
-4. Info - Get chat info
-5. Sessionid - Get your session ID
-6. Media - Send test media
-7. Newsession - Create new session
-8. Shutdown - Turn off bot (admin only)
-9. Sudo - Admin commands
-10. List - List groups
-11. Document - Send document
-12. Savecontact - Save a new contact (admin only)
-13. Contacts - List all saved contacts (admin only)
-14. Tagall - Mention all group members (admin only)
-15. Tagallexcept - Mention all except specified members (admin only)
-16. Meeting - Schedule a meeting with reminders
-17. Event - Schedule an event with reminders
-18. Reminders - List all active reminders
-19. Cancelreminder - Cancel a scheduled reminder`);
-               
-case 'list': {
-    try {
-        let groups = clientGroups.get(sessionId) || [];
-        
-        // If no groups found, try refreshing
-        if (groups.length === 0) {
-            await message.reply('⏳ Refreshing group list, please wait...');
-            groups = await refreshGroupsForSession(client, sessionId) || [];
-        }
-        
-        if (!groups.length) {
-            await message.reply('You are not an admin in any groups');
-            break;
-        }
-        
-        const listText = groups.map((g, i) => 
-            `${i+1}. ${g.name || g.id._serialized}`
-        ).join('\n');
-        
-        await message.reply(`*Admin Groups:*\n${listText}`);
-    } catch (error) {
-        console.error('Error in !list command:', error);
-        await message.reply('❌ Error fetching groups');
-    }
-    break;
-}
-
-        
-case 'refreshgroups':
-    await message.reply('🔄 Refreshing groups...');
-    const groups = await refreshGroupsForSession(client, sessionId);
-    await message.reply(`✅ Refreshed ${groups.length} groups`);
-    break;
-
-            case 'status':
-                const statusMsg = `*Bot Status:*
-- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
-- Active sessions: ${clients.size}
-- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-                return message.reply(statusMsg);
-            default:
-                return message.reply('Unknown command. Try !help');
-        }
-    });
-
+            // Skip messages from self (but allow self-chat commands in message_create)
+            if (message.fromMe) {
+                console.log("Skipping message from self");
+                return;
+            }
 
             // Skip if: empty body, from broadcast, or from status
             if (!message.body || 
@@ -617,12 +528,8 @@ case 'refreshgroups':
                 isAuthorized: isAuthorized(sender)
             });
 
-            // Always allow commands from self chat
-            if (sender === selfId) {
-                // Process command normally
-            } 
-            // For other senders, check authorization
-            else if (!isAuthorized(sender)) {
+            // Check authorization for non-self messages
+            if (!isAuthorized(sender)) {
                 console.log(`Unauthorized command from ${sender}`);
                 return await message.reply("🔒 Admin-only command");
             }
@@ -645,225 +552,98 @@ case 'refreshgroups':
                 console.error("Failed to react:", error);
             }
 
-            switch (command.toLowerCase()) {
-                case 'ping':
-                    await message.reply('Pong! 🏓');
-                    break;
-                    
-                            case 'help':
-                await message.reply(`*Available Commands:*\n` +
-                    '1. !ping - Pong\n' +
-                    '2. !help - This help\n' +
-                    '3. !list - Groups you admin\n' +
-                    '4. !tagall [group numbers] - Mention all in groups\n' +
-                    '5. !tagallexcept [group numbers] [phone numbers] - Mention all except specified\n' +
-                    '6. !document [type] - Send stored file\n' +
-                    '7. !meeting [YYYY-MM-DD] [HH:mm] [title] - Schedule meeting\n' +
-                    '8. !event [YYYY-MM-DD] [HH:mm] [title] - Schedule event\n' +
-                    '9. !refreshgroups - Refresh group list');
-                break;
-                            
-    case 'list': {
-     try {
-        let groups = clientGroups.get(sessionId) || [];
-        
-        // If no groups found, try refreshing
-              
-        if (groups.length === 0) {
-            await message.reply('⏳ Refreshing group list, please wait...');
-            groups = await refreshGroupsForSession(client, sessionId) || [];
-        }
-        
-        if (!groups.length) {
-            await message.reply('You are not an admin in any groups');
-            break;
-        }
-        
-        const listText = groups.map((g, i) => 
-            `${i+1}. ${g.name || g.id._serialized}`
-        ).join('\n');
-        
-        await message.reply(`*Admin Groups:*\n${listText}`);
-    } catch (error) {
-        console.error('Error in !list command:', error);
-        await message.reply('❌ Error fetching groups');
-    }
-    break;
-}
-
-                          
-                case 'info':
-                    const chatInfo = await message.getChat();
-                    let info = `*Chat Info:*\n- Is Group: ${chatInfo.isGroup}\n- Participants: ${chatInfo.isGroup ? chatInfo.participants.length : 'N/A'}\n- Name: ${chatInfo.name || 'N/A'}`;
-                    
-                    if (chatInfo.isGroup) {
-                        info += `\n- Group Description: ${chatInfo.description || 'N/A'}`;
-                    }
-                    
-                    await message.reply(info);
-                    break;
-                    
-                case 'sessionid':
-                    const clientId = client.info.wid._serialized;
-                    const sessionId = userSessions.get(clientId);
-                    await message.reply(`Your session ID: ${sessionId}`);
-                    break;
-                    
-                case 'media':
-                    if (fs.existsSync(mediaPath.image)) {
-                        const media = MessageMedia.fromFilePath(mediaPath.image);
-                        await message.reply(media);
-                    } else {
-                        await message.reply('No test image found');
-                    }
-                    break;
-                    
-                case 'status':
-                    const status = `*Bot Status:*\n- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m\n- Active sessions: ${clients.size}\n- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-                    await message.reply(status);
-                    break;
-                    
-                case 'newsession':
-                    const newSessionId = createNewSession();
-                    await message.reply(`New session created with ID: ${newSessionId}`);
-                    break;
-                    
-                case 'shutdown':
-                    await handleShutdown(message);
-                    break;
-                    
-                case 'sudo':
-                    await handleSudoCommand(message, args);
-                    break;
-                    
-                case 'document':
-                    await sendDocument(message);
-                    break;
-                    
-                case 'savecontact':
-                    if (args.length < 1) {
-                        await message.reply('Usage: !savecontact [phone number] [optional name]');
-                        return;
-                    }
-                    const phoneNumber = args[0];
-                    const contactName = args.length > 1 ? args.slice(1).join(' ') : null;
-                    const saved = await saveNewContact(client, phoneNumber, contactName);
-                    await message.reply(saved ? '✅ Contact saved successfully' : '❌ Failed to save contact');
-                    break;
-                    
-                case 'contacts':
-                    const contactsList = [...savedContacts].join('\n');
-                    await message.reply(`*Saved Contacts:*\n${contactsList || 'No contacts saved'}`);
-                    break;
-                    
-                        case 'tagall':
-            await handleGroupTagCommand(message, args, client, sessionId);
-            break;
-
-        case 'tagallexcept':
-            await handleGroupTagExceptCommand(message, args, client, sessionId);
-            break;
-
-                    
-                case 'meeting':
-                    await handleMeetingCommand(message, args, client);
-                    break;
-                    
-                case 'event':
-                    await handleEventCommand(message, args, client);
-                    break;
-                    
-                case 'reminders':
-                    await listReminders(message, client);
-                    break;
-                    
-                case 'cancelreminder':
-                    await cancelReminder(message, args);
-                    break;
-                    
-             default:
-                await message.reply('Unknown command. Try !help');
-            }
+            await processCommand(message, command, args, client, sessionId);
         } catch (error) {
             console.error("Message handler error:", error);
         }
     });
 
+    // FIXED: Single message_create handler for self-chat commands
     client.on('message_create', async (message) => {
-    console.log("MESSAGE CREATE EVENT:", {
-        from: message.from,
-        to: message.to,
-        body: message.body,
-        fromMe: message.fromMe
+        try {
+            console.log("MESSAGE CREATE EVENT:", {
+                from: message.from,
+                to: message.to,
+                body: message.body,
+                fromMe: message.fromMe
+            });
+            
+            // Skip if client not ready
+            if (!client.info) {
+                console.log("Client not ready in message_create, skipping");
+                return;
+            }
+
+            const selfId = client.info.wid._serialized;
+            
+            // Only process messages TO self (self-chat)
+            if (message.to !== selfId) {
+                return;
+            }
+            
+            // Only process commands
+            if (!message.body || !message.body.trim().startsWith(COMMAND_PREFIX)) {
+                return;
+            }
+            
+            console.log("Processing self-chat command in message_create");
+            
+            const [command, ...args] = message.body
+                .slice(COMMAND_PREFIX.length)
+                .trim()
+                .split(/\s+/);
+            
+            try {
+                await message.react('🤖');
+            } catch (error) {
+                console.error("Failed to react:", error);
+            }
+
+            await processCommand(message, command, args, client, sessionId);
+        } catch (error) {
+            console.error("Message_create handler error:", error);
+        }
     });
-    
-    // Skip if client not ready
-    if (!client.info) {
-        console.log("Client not ready in message_create, skipping");
-        return;
-    }
 
-    const selfId = client.info.wid._serialized;
-    
-    // Only process self-chat commands
-    if (message.to !== selfId) {
-        console.log(`Message not to self (to: ${message.to}, self: ${selfId}), skipping`);
-        return;
-    }
-    
-    // Only process commands
-    if (!message.body || !message.body.trim().startsWith(COMMAND_PREFIX)) {
-        console.log("No command prefix, skipping");
-        return;
-    }
-    
-    console.log("Processing self-chat command in message_create");
-    
-    const [command, ...args] = message.body
-        .slice(COMMAND_PREFIX.length)
-        .trim()
-        .split(/\s+/);
-    
-    try {
-        await message.react(isPrimaryAdmin(message.from) ? '👑' : '🔧');
-    } catch (error) {
-        console.error("Failed to react:", error);
-    }
+    client.on('auth_failure', (error) => {
+        logger.error(`Authentication failed for session ${sessionId}:`, error);
+        const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
+        if (fs.existsSync(sessionFile)) fs.unlinkSync(sessionFile);
+        clients.delete(sessionId);
+    });
+}
 
+// FIXED: Centralized command processing function
+async function processCommand(message, command, args, client, sessionId) {
     switch (command.toLowerCase()) {
         case 'ping':
-            return message.reply('Pong! 🏓');
+            await message.reply('Pong! 🏓');
+            break;
+            
         case 'help':
-            return message.reply(`*Available Commands:*
-1. Ping - Check bot response
-2. Help - Show this help
-3. Status - Show bot status
-4. Info - Get chat info
-5. Sessionid - Get your session ID
-6. Media - Send test media
-7. Newsession - Create new session
-8. Shutdown - Turn off bot (admin only)
-9. Sudo - Admin commands
-10. List - List groups
-11. Document - Send document
-12. Savecontact - Save a new contact (admin only)
-13. Contacts - List all saved contacts (admin only)
-14. Tagall - Mention all group members (admin only)
-15. Tagallexcept - Mention all except specified members (admin only)
-16. Meeting - Schedule a meeting with reminders
-17. Event - Schedule an event with reminders
-18. Reminders - List all active reminders
-19. Refresh - To refresh groups you are admin of
-20. Cancelreminder - Cancel a scheduled reminder`);
-               
+            await message.reply(`*Available Commands:*\n` +
+                '1. !ping - Pong\n' +
+                '2. !help - This help\n' +
+                '3. !list - Groups you admin\n' +
+                '4. !tagall [group numbers] - Mention all in groups\n' +
+                '5. !tagallexcept [group numbers] [phone numbers] - Mention all except specified\n' +
+                '6. !document [type] - Send stored file\n' +
+                '7. !meeting [YYYY-MM-DD] [HH:mm] [title] - Schedule meeting\n' +
+                '8. !event [YYYY-MM-DD] [HH:mm] [title] - Schedule event\n' +
+                '9. !refreshgroups - Refresh group list\n' +
+                '10. !status - Show bot status\n' +
+                '11. !sessionid - Get your session ID');
+            break;
+            
         case 'list': {
             try {
-                console.log("🔍 Self ID:", selfId);
-console.log("🆔 Session ID from userSessions:", sessionId);
-console.log("📂 Groups in clientGroups:", clientGroups.get(sessionId));
-
-
-                const groups = clientGroups.get(sessionId) || [];
+                let groups = clientGroups.get(sessionId) || [];
+                
+                // If no groups found, try refreshing
+                if (groups.length === 0) {
+                    await message.reply('⏳ Refreshing group list, please wait...');
+                    groups = await refreshGroupsForSession(client, sessionId) || [];
+                }
                 
                 if (!groups.length) {
                     await message.reply('You are not an admin in any groups');
@@ -881,23 +661,104 @@ console.log("📂 Groups in clientGroups:", clientGroups.get(sessionId));
             }
             break;
         }
-        case 'status':
-            const statusMsg = `*Bot Status:*
-- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
-- Active sessions: ${clients.size}
-- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-            return message.reply(statusMsg);
-        default:
-            return message.reply('Unknown command. Try !help');
-    }
-});
+        
+        case 'refreshgroups':
+            await message.reply('🔄 Refreshing groups...');
+            const groups = await refreshGroupsForSession(client, sessionId);
+            await message.reply(`✅ Refreshed ${groups.length} groups`);
+            break;
 
-    client.on('auth_failure', (error) => {
-        logger.error(`Authentication failed for session ${sessionId}:`, error);
-        const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
-        if (fs.existsSync(sessionFile)) fs.unlinkSync(sessionFile);
-        clients.delete(sessionId);
-    });
+        case 'status':
+            const statusMsg = `*Bot Status:*\n- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m\n- Active sessions: ${clients.size}\n- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
+            await message.reply(statusMsg);
+            break;
+            
+        case 'info':
+            const chatInfo = await message.getChat();
+            let info = `*Chat Info:*\n- Is Group: ${chatInfo.isGroup}\n- Participants: ${chatInfo.isGroup ? chatInfo.participants.length : 'N/A'}\n- Name: ${chatInfo.name || 'N/A'}`;
+            
+            if (chatInfo.isGroup) {
+                info += `\n- Group Description: ${chatInfo.description || 'N/A'}`;
+            }
+            
+            await message.reply(info);
+            break;
+            
+        case 'sessionid':
+            const clientId = client.info.wid._serialized;
+            const storedSessionId = userSessions.get(clientId);
+            await message.reply(`Your session ID: ${storedSessionId}`);
+            break;
+            
+        case 'media':
+            if (fs.existsSync(mediaPath.image)) {
+                const media = MessageMedia.fromFilePath(mediaPath.image);
+                await message.reply(media);
+            } else {
+                await message.reply('No test image found');
+            }
+            break;
+            
+        case 'newsession':
+            const newSessionId = createNewSession();
+            await message.reply(`New session created with ID: ${newSessionId}`);
+            break;
+            
+        case 'shutdown':
+            await handleShutdown(message);
+            break;
+            
+        case 'sudo':
+            await handleSudoCommand(message, args);
+            break;
+            
+        case 'document':
+            await sendDocument(message);
+            break;
+            
+        case 'savecontact':
+            if (args.length < 1) {
+                await message.reply('Usage: !savecontact [phone number] [optional name]');
+                return;
+            }
+            const phoneNumber = args[0];
+            const contactName = args.length > 1 ? args.slice(1).join(' ') : null;
+            const saved = await saveNewContact(client, phoneNumber, contactName);
+            await message.reply(saved ? '✅ Contact saved successfully' : '❌ Failed to save contact');
+            break;
+            
+        case 'contacts':
+            const contactsList = [...savedContacts].join('\n');
+            await message.reply(`*Saved Contacts:*\n${contactsList || 'No contacts saved'}`);
+            break;
+            
+        case 'tagall':
+            await handleGroupTagCommand(message, args, client, sessionId);
+            break;
+
+        case 'tagallexcept':
+            await handleGroupTagExceptCommand(message, args, client, sessionId);
+            break;
+            
+        case 'meeting':
+            await handleMeetingCommand(message, args, client);
+            break;
+            
+        case 'event':
+            await handleEventCommand(message, args, client);
+            break;
+            
+        case 'reminders':
+            await listReminders(message, client);
+            break;
+            
+        case 'cancelreminder':
+            await cancelReminder(message, args);
+            break;
+            
+        default:
+            await message.reply('Unknown command. Try !help');
+    }
 }
 
 let isShuttingDown = false;
@@ -1086,7 +947,7 @@ const sendDocument = async (message) => {
     }
 };
     
-    const handleGroupTagCommand = async (message, args, client, sessionId) => {
+const handleGroupTagCommand = async (message, args, client, sessionId) => {
     try {
         if (args.length < 1) {
             await message.reply('Usage: !tagall [group numbers...]\nExample: !tagall 1 3');
