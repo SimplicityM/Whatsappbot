@@ -1219,3 +1219,9 @@ module.exports = {
     createNewSession,
     clients
 };
+
+if (require.main === module) {
+    console.log('🚀 Starting WhatsApp bot...');
+    const { start } = module.exports;
+    start(); // Start session creation
+}
