@@ -2,8 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../models/User');
-const { generateToken, authenticate } = require('../middleware/auth');
+const { generateToken, authenticate, verifyToken } = require('../middleware/auth');
 const router = express.Router();
+
 
 // Register new user
 router.post('/register', async (req, res) => {
@@ -135,6 +136,149 @@ router.post('/login', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error logging in. Please try again.'
+        });
+    }
+});
+
+// Admin Login Route - Add this after the regular login route
+router.post('/admin-login', async (req, res) => {
+    try {
+        const { email, password, isAdmin } = req.body;
+
+        console.log('🔐 Admin login attempt for:', email);
+
+        // Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        // Find user
+        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!user) {
+            console.log('❌ Admin login failed: User not found');
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid admin credentials'
+            });
+        }
+
+        // Check password
+        const isPasswordValid = await user.comparePassword(password);
+        if (!isPasswordValid) {
+            console.log('❌ Admin login failed: Invalid password');
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid admin credentials'
+            });
+        }
+
+        // Check if user is admin
+        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
+                             user.role === 'system_admin' || 
+                             user.isAdmin === true;
+
+        if (!isSystemAdmin) {
+            console.log('❌ Admin login failed: User is not admin');
+            console.log('User role:', user.role);
+            console.log('User isAdmin:', user.isAdmin);
+            console.log('Admin email from env:', process.env.ADMIN_EMAIL);
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin privileges required.'
+            });
+        }
+
+        // Generate token
+        const token = generateToken(user._id);
+
+        // Update last login
+        user.lastLogin = new Date();
+        await user.save();
+
+        console.log('✅ Admin login successful for:', email);
+
+        // Remove password from response
+        const userResponse = user.toObject();
+        delete userResponse.password;
+
+        res.json({
+            success: true,
+            message: 'Admin login successful',
+            data: {
+                token,
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    fullName: user.fullName,
+                    role: user.role || 'system_admin',
+                    isAdmin: true,
+                    subscription: user.subscription
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Admin login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error during admin login'
+        });
+    }
+});
+
+// Admin Token Verification Route - Add this too
+router.get('/admin/verify-token', async (req, res) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
+            });
+        }
+
+        const decoded = verifyToken(token);
+        const user = await User.findById(decoded.userId).select('-password');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token'
+            });
+        }
+
+        // Check if user is admin
+        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
+                             user.role === 'system_admin' || 
+                             user.isAdmin === true;
+
+        if (!isSystemAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'Admin privileges required'
+            });
+        }
+
+        res.json({
+            success: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role || 'system_admin',
+                isAdmin: true
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Token verification error:', error);
+        res.status(401).json({
+            success: false,
+            message: 'Invalid token'
         });
     }
 });
@@ -370,139 +514,6 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// Admin Login Route - Add this to routes/auth.js
-router.post('/admin-login', async (req, res) => {
-    try {
-        const { email, password, isAdmin } = req.body;
 
-        console.log('🔐 Admin login attempt for:', email);
-
-        // Validate input
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and password are required'
-            });
-        }
-
-        // Find user by email
-        const user = await User.findOne({ email: email.toLowerCase() });
-        if (!user) {
-            console.log('❌ Admin login failed: User not found');
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid admin credentials'
-            });
-        }
-
-        // Check password
-        const isPasswordValid = await user.comparePassword(password);
-        if (!isPasswordValid) {
-            console.log('❌ Admin login failed: Invalid password');
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid admin credentials'
-            });
-        }
-
-        // Check if user is admin
-        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
-                             user.role === 'system_admin' || 
-                             user.isAdmin === true;
-
-        if (!isSystemAdmin) {
-            console.log('❌ Admin login failed: User is not admin');
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. Admin privileges required.'
-            });
-        }
-
-        // Generate token
-        const token = generateToken(user._id);
-
-        // Update last login
-        user.lastLogin = new Date();
-        await user.save();
-
-        console.log('✅ Admin login successful for:', email);
-
-        res.json({
-            success: true,
-            message: 'Admin login successful',
-            data: {
-                token,
-                user: {
-                    id: user._id,
-                    email: user.email,
-                    name: user.name,
-                    role: user.role || 'system_admin',
-                    isAdmin: true
-                }
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Admin login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during admin login'
-        });
-    }
-});
-
-// Admin Token Verification Route - Add this too
-router.get('/admin/verify-token', async (req, res) => {
-    try {
-        const token = req.header('Authorization')?.replace('Bearer ', '');
-        
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'No token provided'
-            });
-        }
-
-        const decoded = verifyToken(token);
-        const user = await User.findById(decoded.userId).select('-password');
-
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid token'
-            });
-        }
-
-        // Check if user is admin
-        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || 
-                             user.role === 'system_admin' || 
-                             user.isAdmin === true;
-
-        if (!isSystemAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: 'Admin privileges required'
-            });
-        }
-
-        res.json({
-            success: true,
-            user: {
-                id: user._id,
-                email: user.email,
-                name: user.name,
-                role: user.role || 'system_admin',
-                isAdmin: true
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Token verification error:', error);
-        res.status(401).json({
-            success: false,
-            message: 'Invalid token'
-        });
-    }
-});
 
 module.exports = router;
