@@ -1,84 +1,48 @@
-// create-admin.js - FIXED VERSION
+// make-user-admin.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
 const User = require('./models/User');
 require('dotenv').config();
 
-async function createAdminUser() {
+async function makeUserAdmin() {
     try {
-        // Connect to MongoDB
-        console.log('🔄 Connecting to MongoDB...');
         await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsappbot');
         console.log('✅ Connected to MongoDB');
 
-        // Admin credentials
-        const adminEmail = 'tagthemall@botforall.com';
-        const adminPassword = 'abuusayd2323$'; // Must be at least 8 characters
+        const email = 'tagthemall@botforall.com';
         
-        // Check if admin already exists
-        const existingAdmin = await User.findOne({ email: adminEmail });
-        if (existingAdmin) {
-            console.log('⚠️ Admin user already exists with email:', adminEmail);
-            
-            // Update existing user to be admin
-            existingAdmin.role = 'system_admin';
-            existingAdmin.isAdmin = true;
-            existingAdmin.emailVerified = true;
-            await existingAdmin.save();
-            
-            console.log('✅ Updated existing user to admin privileges');
-            console.log('📧 Email:', adminEmail);
-            console.log('🔑 Use your existing password');
-            process.exit(0);
+        // Find the user
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            console.log('❌ User not found with email:', email);
+            console.log('💡 You need to sign up first at: http://localhost:3000/signup.html');
+            return;
         }
 
-        // Hash password
-        console.log('🔐 Hashing password...');
-        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        console.log('📋 Current user details:');
+        console.log('Name:', user.fullName);
+        console.log('Email:', user.email);
+        console.log('Role:', user.role);
+        console.log('isAdmin:', user.isAdmin);
 
-        // Create admin user with correct field names
-        const adminUser = new User({
-            fullName: 'System Administrator', // This was missing!
-            email: adminEmail,
-            password: hashedPassword,
-            role: 'system_admin', // This matches your enum
-            subscription: 'enterprise', // This should be a string, not object
-            subscriptionExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
-            isAdmin: true,
-            emailVerified: true,
-            whatsappNumber: null,
-            phone: null,
-            sessionId: null,
-            createdAt: new Date(),
-            lastLogin: null
-        });
+        // Make user admin
+        user.role = 'system_admin';
+        user.isAdmin = true;
+        await user.save();
 
-        await adminUser.save();
-
-        console.log('🎉 Admin user created successfully!');
-        console.log('📧 Email:', adminEmail);
-        console.log('🔑 Password:', adminPassword);
-        console.log('👤 Full Name: System Administrator');
-        console.log('🎯 Role: system_admin');
-        console.log('💎 Subscription: enterprise');
-        console.log('');
-        console.log('🚀 You can now login at: http://localhost:3000/admin-login.html');
-        console.log('');
-        console.log('⚠️ IMPORTANT: Change the password after first login!');
+        console.log('\n✅ User updated to admin successfully!');
+        console.log('👑 Role:', user.role);
+        console.log('🛡️ isAdmin:', user.isAdmin);
+        console.log('\n🚀 You can now login at: http://localhost:3000/admin-login.html');
+        console.log('📧 Email: tagthemall@botforall.com');
+        console.log('🔑 Password: abuusayd101010$');
 
     } catch (error) {
-        console.error('❌ Error creating admin user:', error);
-        
-        if (error.code === 11000) {
-            console.log('💡 Tip: User with this email already exists. Try a different email.');
-        }
+        console.error('❌ Error:', error);
     } finally {
-        // Close database connection
         await mongoose.connection.close();
-        console.log('🔌 Database connection closed');
         process.exit(0);
     }
 }
 
-// Run the script
-createAdminUser();
+makeUserAdmin();
