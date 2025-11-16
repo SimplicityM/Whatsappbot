@@ -7,6 +7,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 require('dotenv').config();
 
+
 // Import models and routes
 const User = require('./models/User');
 const Session = require('./models/Session');
@@ -467,6 +468,11 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('❌ Client disconnected:', socket.id);
     });
+});
+
+app.use((req, res, next) => {
+    req.io = io;
+    next();
 });
 
 
