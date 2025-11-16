@@ -403,8 +403,7 @@ async function executeCommand(user, sessionId, command, message) {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('🔌 Client connected:', socket.id);
-    restoreAllSessions(io); // ← RUN AUTO-RESTORE AT STARTUP
-
+    
     // 🔑 EXISTING: User room handling
     socket.on('join-user-room', (userId) => {
         if (!userId) {
