@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+const paymentsRoute = require('./routes/payments');
 require('dotenv').config();
 
 
@@ -60,6 +61,7 @@ app.use((req, res, next) => {
     );
     next();
 });
+
 // Database connection
 const connectDB = async () => {
     try {
