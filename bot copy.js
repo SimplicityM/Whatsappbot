@@ -1,10 +1,127 @@
 const fs = require('fs');
 const path = require('path');
-const { Client, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const crypto = require('crypto');
+const Contact = require('./models/Contact');
+const User = require('./models/User');
+
+
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
+
+// ✅ === OWNER & SUBSCRIPTION EXEMPTION SETTINGS ===
+
+// The owner's WhatsApp number (in international format, without @c.us)
+const BOT_OWNER = '2347067012884';
+
+// Temporary in-memory exemption list
+// You can later store this in DB if needed.
+const exemptedUsers = new Set();
+// Load exempted users from file on startup (optional)
+loadExemptedUsersFromFile();
+
+// Check if user is allowed to use bot commands
+async function isAllowedToUseBot(phoneNumber) {
+    try {
+        // Clean the phone number
+        const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+        
+        // Check if user is exempted
+        if (exemptedUsers.has(cleanNumber)) {
+            console.log(`✅ User ${cleanNumber} is exempted`);
+            return true;
+        }
+        
+        // Check if user is owner
+        const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        if (BOT_OWNER && cleanNumber === BOT_OWNER) {
+            console.log(`👑 User ${cleanNumber} is bot owner`);
+            return true;
+        }
+        
+        // Add your actual subscription checking logic here
+        // For testing purposes, return true (replace with real subscription check)
+        console.log(`🔍 Checking subscription for ${cleanNumber}...`);
+        
+        // TODO: Replace this with your actual subscription validation
+        // Example:
+        // const user = await User.findOne({ whatsappNumber: cleanNumber });
+        // if (!user) return false;
+        // return user.isSubscriptionActive();
+        
+        // For now, return true to test the bot (CHANGE THIS IN PRODUCTION)
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Error checking bot usage permission:', error);
+        return false;
+    }
+}
+
+function exemptUser(phoneNumber, exempt = true) {
+    const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+    
+    if (exempt) {
+        exemptedUsers.add(cleanNumber);
+        console.log(`✅ User ${cleanNumber} exempted from payment`);
+    } else {
+        exemptedUsers.delete(cleanNumber);
+        console.log(`🚫 User ${cleanNumber} exemption removed`);
+    }
+    
+    // Optional: Save exempted users to file for persistence
+    // saveExemptedUsersToFile();
+}
+
+// Optional: Function to save exempted users to file for persistence
+function saveExemptedUsersToFile() {
+    try {
+        const exemptedArray = Array.from(exemptedUsers);
+        const fs = require('fs');
+        const path = require('path');
+        
+        const exemptedFile = path.join(__dirname, 'exempted_users.json');
+        fs.writeFileSync(exemptedFile, JSON.stringify(exemptedArray, null, 2));
+        console.log('💾 Exempted users saved to file');
+    } catch (error) {
+        console.error('❌ Error saving exempted users:', error);
+    }
+}
+
+// Optional: Function to load exempted users from file on startup
+function loadExemptedUsersFromFile() {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        
+        const exemptedFile = path.join(__dirname, 'exempted_users.json');
+        if (fs.existsSync(exemptedFile)) {
+            const exemptedArray = JSON.parse(fs.readFileSync(exemptedFile, 'utf8'));
+            exemptedArray.forEach(number => exemptedUsers.add(number));
+            console.log(`📂 Loaded ${exemptedArray.length} exempted users from file`);
+        }
+    } catch (error) {
+        console.error('❌ Error loading exempted users:', error);
+    }
+}
+
+// Add this near the top of bot.js, after the requires
+process.on('unhandledRejection', (reason, promise) => {
+    console.log(`[${new Date().toISOString()}] ERROR: Unhandled Rejection at:`, promise);
+    console.log('Reason:', reason);
+    
+    // Don't crash the process for EBUSY errors during cleanup
+    if (reason && reason.message && reason.message.includes('EBUSY')) {
+        console.log('⚠️ File system cleanup error (Windows) - continuing operation');
+        return;
+    }
+    
+    // Don't crash for unlink errors either
+    if (reason && reason.message && reason.message.includes('unlink')) {
+        console.log('⚠️ File unlink error during cleanup - continuing operation');
+        return;
+    }
+});
 
 // --- START CONFIGURATION BLOCK ---
 const getDefaultPath = (dirName) => path.join(__dirname, dirName);
@@ -14,7 +131,7 @@ const CONFIG = {
     mediaPath: getDefaultPath('media'),
     authPath: getDefaultPath('auth'),
     adminSettings: {
-        selfChatOnly: false, // Changed default to false for better self-chat handling
+        selfChatOnly: true,
         secondaryAdmins: {}
     }
 };
@@ -90,8 +207,12 @@ let reminderCounter = 1;
 
 const clientGroups = new Map(); 
 const groupRefreshIntervals = new Map(); 
+const senderAdminGroups = new Map();
+const groupCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Add this after line 95 in bot.js
+const userGroupSelections = new Map(); // Store user's selected groups
 
-// Increase chat timeout in client config
 const clientConfig = {
     puppeteer: {
         headless: true,
@@ -104,16 +225,27 @@ const clientConfig = {
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-web-security'
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-field-trial-config', // Faster startup
+            '--disable-ipc-flooding-protection'
         ],
         defaultViewport: null
     },
-    qrMaxRetries: 5,
-    authTimeoutMs: 180000,
+    qrMaxRetries: 3, // Reduced from 5
+    authTimeoutMs: 120000, // Reduced from 180000
     restartOnAuthFail: true,
     takeoverOnConflict: true,
-    takeoverTimeoutMs: 10000,
-    chatLoadingTimeoutMs: 60000  // Add this line (60 seconds)
+    takeoverTimeoutMs: 5000, // Reduced from 10000
+    chatLoadingTimeoutMs: 15000, // Reduced from 60000
+    
+    // Add these new options
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    sessionBackupSyncIntervalMs: 300000
 };
 
 // Initialize authorized numbers
@@ -158,10 +290,458 @@ const logger = {
     error: (message, error) => console.error(`[${new Date().toISOString()}] ERROR: ${message}`, error)
 };
 
+// Function to get groups where sender is admin
+async function getGroupsWhereSenderIsAdmin(client, senderId) {
+    try {
+        logger.info(`🔍 Fetching groups where ${senderId} is admin`);
+        
+        const chats = await client.getChats();
+        logger.info(`📦 Total chats retrieved: ${chats.length}`);
+        
+        const groupChats = chats.filter(chat => chat.isGroup);
+        logger.info(`👥 Group chats found: ${groupChats.length}`);
+        
+        if (groupChats.length === 0) {
+            logger.info(`❌ No group chats found at all`);
+            return [];
+        }
+
+        const senderAdminGroupsList = [];
+        let processedCount = 0;
+        let foundAsAdmin = 0;
+
+        const cleanSenderId = senderId.replace('@c.us', '');
+        const fullSenderId = `${cleanSenderId}@c.us`;
+
+        logger.info(`🔧 Normalized IDs - Clean: ${cleanSenderId}, Full: ${fullSenderId}`);
+
+        for (const chat of groupChats) {
+            try {
+                processedCount++;
+                logger.info(`🔄 Processing group ${processedCount}/${groupChats.length}: "${chat.name}"`);
+                
+                await chat.fetchParticipants();
+                
+                const senderParticipant = chat.participants.find(p => {
+                    const participantId = p.id._serialized;
+                    const participantUser = p.id.user;
+                    
+                 // Clean all numbers to just digits for comparison
+const clean = n => (n || '').replace(/\D/g, '');
+const senderDigits = clean(senderId);
+const participantDigits = clean(participantId);
+
+// Compare last 7 to 13 digits for a loose match
+const matches =
+    senderDigits && participantDigits &&
+    (
+        senderDigits === participantDigits ||
+        participantDigits.endsWith(senderDigits) ||
+        senderDigits.endsWith(participantDigits)
+    );
+                    
+                    if (matches) {
+                        logger.info(`✅ Found participant match: ${participantId} (Admin: ${p.isAdmin})`);
+                    }
+                    
+                    return matches;
+                });
+                
+                if (senderParticipant && senderParticipant.isAdmin) {
+                    foundAsAdmin++;
+                    senderAdminGroupsList.push(chat);
+                    logger.info(`🎉 ADMIN GROUP FOUND: "${chat.name}"`);
+                } else if (senderParticipant) {
+                    logger.info(`👤 Found in "${chat.name}" but not admin`);
+                } else {
+                    logger.info(`❌ Not found in "${chat.name}"`);
+                }
+                
+            } catch (err) {
+                logger.error(`⚠️ Error processing group "${chat.name}":`, err.message);
+            }
+        }
+
+        logger.info(`✅ Final result: ${foundAsAdmin} admin groups found out of ${groupChats.length} total groups`);
+        return senderAdminGroupsList;
+        
+    } catch (error) {
+        logger.error('❌ Critical error in getGroupsWhereSenderIsAdmin:', error);
+        return [];
+    }
+}
+
+// Add this helper function for Windows file cleanup (add near top of bot.js)
+async function removeDirectoryWithRetry(dirPath, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            if (fs.existsSync(dirPath)) {
+                // On Windows, try to unlock files first
+                if (process.platform === 'win32') {
+                    try {
+                        // Small delay to let file handles close
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Force remove with more aggressive options
+                        fs.rmSync(dirPath, { 
+                            recursive: true, 
+                            force: true,
+                            maxRetries: 3,
+                            retryDelay: 1000
+                        });
+                    } catch (rmError) {
+                        // If rmSync fails, try alternative cleanup
+                        const files = fs.readdirSync(dirPath, { withFileTypes: true });
+                        for (const file of files) {
+                            const fullPath = path.join(dirPath, file.name);
+                            if (file.isDirectory()) {
+                                await removeDirectoryWithRetry(fullPath, 1); // Recursive cleanup
+                            } else {
+                                try {
+                                    fs.unlinkSync(fullPath);
+                                } catch (unlinkError) {
+                                    // Skip locked files
+                                    console.log(`⚠️ Skipping locked file: ${file.name}`);
+                                }
+                            }
+                        }
+                        fs.rmdirSync(dirPath);
+                    }
+                } else {
+                    // Non-Windows cleanup
+                    fs.rmSync(dirPath, { recursive: true, force: true });
+                }
+                
+                console.log(`✅ Successfully cleaned up session directory: ${dirPath}`);
+                return;
+            }
+        } catch (error) {
+            console.log(`⚠️ Cleanup attempt ${i + 1}/${maxRetries} failed:`, error.message);
+            
+            if (i === maxRetries - 1) {
+                console.log('⚠️ Final cleanup attempt failed - this is usually non-critical on Windows');
+                return; // Don't throw, just log and continue
+            }
+            
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+        }
+    }
+}
+
+// ✅ Enhanced Subscription Validation Function
+async function checkUserSubscriptionStatus(userId) {
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return {
+        isValid: false,
+        reason: 'User not found',
+        action: 'suspend'
+      };
+    }
+
+    console.log(`🔍 Checking subscription for user: ${userId}`);
+    console.log(`📱 User WhatsApp: ${user.whatsappNumber}`);
+    console.log(`👑 Config Owner: ${CONFIG.owner}`);
+
+    // Normalize numbers
+    const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+    const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
+
+    // 🟢 OWNER EXEMPTION
+    if (ownerNumber && userNumber && userNumber === ownerNumber) {
+      console.log(`👑 OWNER DETECTED (${userNumber}) → bypassing all subscription checks`);
+      return {
+        isValid: true,
+        reason: 'Owner privileges',
+        isOwner: true,
+        user
+      };
+    }
+
+    // 🟢 ADMIN EXEMPTION
+    if (user.exemptFromPayment === true) {
+      console.log(`🛡️ Admin payment exemption detected for user: ${userId}`);
+      return {
+        isValid: true,
+        reason: 'Admin exemption',
+        isExempted: true,
+        user
+      };
+    }
+
+    // 🟢 SECONDARY ADMIN CHECK (if you have such function)
+    const userPhone = user.whatsappNumber || user.phone;
+    if (userPhone && isSecondaryAdmin && isSecondaryAdmin(userPhone)) {
+      console.log(`👨‍💼 Secondary admin detected (${userPhone}) → bypassing subscription check`);
+      return {
+        isValid: true,
+        reason: 'Admin privileges',
+        isAdmin: true,
+        user
+      };
+    }
+
+    // 🟢 FREE 7-DAY TRIAL LOGIC
+    if (!user.subscription || !user.subscription.createdAt) {
+      // Assume `user.createdAt` exists
+      const createdAt = user.createdAt || new Date();
+      const daysSinceSignup = Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysSinceSignup <= 7) {
+        console.log(`🎁 Trial period active (${7 - daysSinceSignup} days left) for ${userNumber}`);
+        return {
+          isValid: true,
+          reason: 'Free 7-day trial active',
+          trial: true,
+          trialDaysLeft: 7 - daysSinceSignup,
+          user
+        };
+      }
+
+      console.log(`⛔ Trial expired for ${userNumber}`);
+      return {
+        isValid: false,
+        reason: 'Free trial expired',
+        action: 'suspend'
+      };
+    }
+
+    console.log(`⚙️ Active subscription found for regular user ${userNumber}`);
+
+    // 🕓 ACTIVE SUBSCRIPTION VALIDATION
+    const sub = user.subscription;
+
+    if (!sub.status || sub.status !== 'active') {
+      console.log(`❌ Subscription inactive for user: ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Inactive subscription',
+        action: 'suspend'
+      };
+    }
+
+    if (sub.expiresAt && new Date() > sub.expiresAt) {
+      console.log(`❌ Subscription expired for ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Subscription expired',
+        action: 'suspend',
+        expiredDate: sub.expiresAt
+      };
+    }
+
+    if (['failed', 'overdue'].includes(sub.paymentStatus)) {
+      console.log(`❌ Payment ${sub.paymentStatus} for ${userId}`);
+      return {
+        isValid: false,
+        reason: 'Payment failed or overdue',
+        action: 'suspend'
+      };
+    }
+
+    // ✅ Everything OK
+    return {
+      isValid: true,
+      reason: 'Active subscription',
+      subscription: sub,
+      user
+    };
+
+  } catch (error) {
+    console.error('❌ Error checking subscription status:', error);
+    return {
+      isValid: false,
+      reason: 'System error',
+      action: 'suspend'
+    };
+  }
+}
+
+
+// Function to suspend a user's bot session (IMPROVED VERSION)
+async function suspendUserSession(userId, sessionId, reason, client, io) {
+    try {
+        console.log(`🚫 Suspending session ${sessionId} for user ${userId}: ${reason}`);
+        
+        // Send notification to user's self-chat
+        if (client && client.info && client.info.wid) {
+            try {
+                const selfId = client.info.wid._serialized;
+                const suspensionMessage = `🚫 *Bot Suspended*\n\n` +
+                    `Reason: ${reason}\n\n` +
+                    `💳 Please renew your subscription to continue using the bot.\n` +
+                    `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment\n\n` +
+                    `✅ Your session will automatically resume after payment - no need to scan QR again!\n\n` +
+                    `📞 Contact support if you believe this is an error.`;
+                
+                await client.sendMessage(selfId, suspensionMessage);
+                console.log('✅ Suspension notification sent to user');
+            } catch (msgError) {
+                console.error('❌ Failed to send suspension message:', msgError);
+            }
+        }
+
+        // Emit suspension event to frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionSuspended', {
+                sessionId,
+                reason,
+                message: 'Bot suspended due to subscription issues'
+            });
+        }
+
+        // Update session status in database (but keep session data)
+        const Session = require('./models/Session');
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'suspended',
+                errorMessage: `Suspended: ${reason}`,
+                suspendedAt: new Date()
+            }
+        );
+
+        // 🔑 KEY CHANGE: Don't destroy client, just mark as suspended
+        // Store the client in a suspended state instead of destroying it
+        const suspendedClients = global.suspendedClients || new Map();
+        suspendedClients.set(sessionId, {
+            client,
+            userId,
+            suspendedAt: new Date(),
+            reason
+        });
+        global.suspendedClients = suspendedClients;
+
+        // Remove from active clients but don't destroy
+        clients.delete(sessionId);
+        
+        console.log(`✅ Session ${sessionId} suspended (not destroyed) - can be resumed after payment`);
+        
+    } catch (error) {
+        console.error('❌ Error suspending user session:', error);
+    }
+}
+
+// Function to resume a suspended session after payment
+async function resumeUserSession(userId, sessionId, io) {
+    try {
+        console.log(`🟢 Resuming session ${sessionId} for user ${userId} after payment`);
+        
+        const suspendedClients = global.suspendedClients || new Map();
+        const suspendedSession = suspendedClients.get(sessionId);
+        
+        if (!suspendedSession) {
+            console.log(`⚠️ No suspended session found for ${sessionId}`);
+            return false;
+        }
+
+        const { client } = suspendedSession;
+        
+        // Verify client is still valid
+        if (!client || !client.info || !client.info.wid) {
+            console.log(`❌ Suspended client is no longer valid for ${sessionId}`);
+            suspendedClients.delete(sessionId);
+            return false;
+        }
+
+        // Move client back to active clients
+        clients.set(sessionId, client);
+        suspendedClients.delete(sessionId);
+
+        // Update session status in database
+        const Session = require('./models/Session');
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'connected',
+                errorMessage: null,
+                suspendedAt: null,
+                resumedAt: new Date()
+            }
+        );
+
+        // Send resume notification to user
+        try {
+            const selfId = client.info.wid._serialized;
+            const resumeMessage = `🟢 *Bot Resumed!*\n\n` +
+                `✅ Your subscription is now active.\n` +
+                `🤖 Bot is ready for commands!\n\n` +
+                `Type !help to see available commands.`;
+            
+            await client.sendMessage(selfId, resumeMessage);
+            console.log('✅ Resume notification sent to user');
+        } catch (msgError) {
+            console.error('❌ Failed to send resume message:', msgError);
+        }
+
+        // Emit resume event to frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionResumed', {
+                sessionId,
+                message: 'Bot resumed after payment confirmation'
+            });
+        }
+
+        console.log(`✅ Session ${sessionId} successfully resumed`);
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Error resuming user session:', error);
+        return false;
+    }
+}
+
+// Periodic subscription checking function
+async function periodicSubscriptionCheck() {
+    console.log('🔍 Running periodic subscription check...');
+    
+    try {
+        const activeClients = Array.from(clients.entries());
+        
+        for (const [sessionId, client] of activeClients) {
+            try {
+                // Get userId from session
+                const Session = require('./models/Session');
+                const session = await Session.findOne({ sessionId });
+                
+                if (!session) {
+                    console.log(`⚠️ Session ${sessionId} not found in database, removing...`);
+                    clients.delete(sessionId);
+                    continue;
+                }
+
+                // 🔑 SKIP CHECK for recently created sessions (give them 5 minutes to set up)
+                const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+                if (sessionAge < 5 * 60 * 1000) { // 5 minutes
+                    console.log(`⏳ Skipping subscription check for new session ${sessionId} (${Math.round(sessionAge/1000)}s old)`);
+                    continue;
+                }
+
+                // Check subscription status
+                const subscriptionCheck = await checkUserSubscriptionStatus(session.userId);
+                
+                if (!subscriptionCheck.isValid) {
+                    console.log(`🚫 Periodic check: Suspending session ${sessionId} for user ${session.userId}`);
+                    await suspendUserSession(session.userId, sessionId, subscriptionCheck.reason, client, null);
+                }
+                
+            } catch (sessionError) {
+                console.error(`❌ Error checking session ${sessionId}:`, sessionError);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in periodic subscription check:', error);
+    }
+}
+
+
 function createNewSession() {
     try {
         const sessionId = Date.now().toString();
-        // Add duplicate session prevention here
         if (clients.has(sessionId)) {
             logger.info(`Session ${sessionId} already exists`);
             return sessionId;
@@ -186,44 +766,96 @@ const savedContacts = new Set(
         : []
 );
 
-async function saveNewContact(client, phoneNumber, name = null) {
+// Enhanced contact saving with email/phone notifications
+async function saveNewContact(contact, client, adminId) {
     try {
-        // Add client readiness check here
-        if (!client.info) {
-            logger.info('Client not ready, skipping contact save');
-            return false;
-        }
-
-        if (savedContacts.has(phoneNumber)) {
-            logger.info(`Contact ${phoneNumber} already saved`);
-            return false;
-        }
+        // Save contact to database (existing logic)
+        const savedContact = {
+            name: contact.pushname || 'Unknown',
+            number: contact.id.user,
+            savedAt: new Date(),
+            adminId: adminId
+        };
         
-        const contactName = name || `New Contact ${phoneNumber}`;
-        await client.pupPage.evaluate((contact, name) => {
-            return window.WWebJS.contactAdd(contact, name);
-        }, phoneNumber, contactName);
+        // Save to your database here
+        // await ContactModel.create(savedContact);
         
-        savedContacts.add(phoneNumber);
-        fs.writeFileSync(SAVED_CONTACTS_FILE, JSON.stringify([...savedContacts]));
-        logger.info(`New contact saved: ${phoneNumber} as "${contactName}"`);
-        return true;
+        // Send email notification
+        await sendEmailNotification(adminId, savedContact);
+        
+        // Send SMS notification (optional)
+        await sendSMSNotification(adminId, savedContact);
+        
+        // Notify admin via WhatsApp self-chat
+        const selfChat = await client.getChatById(adminId);
+        await selfChat.sendMessage(
+            `📞 *New Contact Saved*\n\n` +
+            `*Name:* ${savedContact.name}\n` +
+            `*Number:* ${savedContact.number}\n` +
+            `*Time:* ${savedContact.savedAt.toLocaleString()}`
+        );
+        
+        return savedContact;
+        
     } catch (error) {
-        // Add navigation error handling here
-        if (error.message.includes('context was destroyed') || 
-            error.message.includes('navigation')) {
-            logger.info('Page navigation interrupted contact saving');
-            return false;
-        }
-        logger.error(`Failed to save contact ${phoneNumber}:`, error);
-        return false;
+        console.error('Error saving contact:', error);
+        throw error;
     }
 }
 
+// Email notification function
+async function sendEmailNotification(adminId, contact) {
+    try {
+        // You'll need to install nodemailer: npm install nodemailer
+        const nodemailer = require('nodemailer');
+        
+        // Get admin email from database
+        const adminUser = await User.findOne({ whatsappNumber: adminId });
+        if (!adminUser || !adminUser.email) return;
+        
+        const transporter = nodemailer.createTransporter({
+            // Configure your email service
+            service: 'gmail', // or your email service
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: adminUser.email,
+            subject: 'New WhatsApp Contact Saved',
+            html: `
+                <h2>New Contact Saved</h2>
+                <p><strong>Name:</strong> ${contact.name}</p>
+                <p><strong>Number:</strong> ${contact.number}</p>
+                <p><strong>Time:</strong> ${contact.savedAt.toLocaleString()}</p>
+            `
+        };
+        
+        await transporter.sendMail(mailOptions);
+        console.log('Email notification sent to:', adminUser.email);
+        
+    } catch (error) {
+        console.error('Error sending email notification:', error);
+    }
+}
+
+// SMS notification function (optional)
+async function sendSMSNotification(adminId, contact) {
+    try {
+        // You can use services like Twilio, Nexmo, etc.
+        // This is a placeholder implementation
+        console.log(`SMS notification would be sent for contact: ${contact.name}`);
+        
+    } catch (error) {
+        console.error('Error sending SMS notification:', error);
+    }
+}
 function setupCallHandlers(client) {
     client.on('call', async (call) => {
         try {
-            // Add navigation guard here
             if (!client.info) {
                 logger.info('Ignoring call during authentication');
                 return;
@@ -260,7 +892,6 @@ async function refreshGroupsForSession(client, sessionId) {
         const meId = client.info.wid._serialized;
         logger.info(`🤖 Bot ID: ${meId}`);
 
-        // Add retry mechanism
         let retryCount = 0;
         let chats = [];
         while (retryCount < 3 && chats.length === 0) {
@@ -268,7 +899,7 @@ async function refreshGroupsForSession(client, sessionId) {
                 chats = await client.getChats();
                 logger.info(`📦 Retrieved ${chats.length} chats for session ${sessionId} (attempt ${retryCount + 1})`);
                 if (chats.length === 0) {
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                 }
             } catch (err) {
                 logger.error(`❌ Failed to get chats for session ${sessionId}:`, err);
@@ -287,7 +918,6 @@ async function refreshGroupsForSession(client, sessionId) {
             if (!c.isGroup) continue;
 
             try {
-                // Add timeout to participant fetch
                 const fetchPromise = c.fetchParticipants();
                 const timeoutPromise = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('Fetch participants timeout')), 30000)
@@ -341,432 +971,20 @@ function createClient(sessionId) {
     client.removeAllListeners('message');
     client.removeAllListeners('message_create');
 
-    // Initialize groups for this session
-    clientGroups.set(sessionId, []); // Add this line
+    clientGroups.set(sessionId, []);
 
-    setupClientEvents(client, sessionId);
     setupCallHandlers(client);
     return client;
 }
 
 
-function setupClientEvents(client, sessionId) {
-    let qrRetryCount = 0;
-    let keepAliveInterval;
-    
-    client.on('qr', (qr) => {
-        logger.info(`QR Code received for session ${sessionId}`);
-        qrcode.generate(qr, { small: true });
-    });
-
-    client.on('qr_timeout', () => {
-        logger.error(`QR Code generation timed out for session ${sessionId} after ${clientConfig.qrMaxRetries} attempts`);
-        logger.info(`Creating new session after QR timeout of ${sessionId}`);
-        setTimeout(() => {
-            createNewSession();
-        }, 1000);
-        clients.delete(sessionId);
-    });
-
-    client.on('authenticated', (session) => {
-        logger.info(`Session ${sessionId} authenticated`);
-        try {
-            if (session) {
-                const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
-                fs.writeFileSync(sessionFile, JSON.stringify(session));
-                logger.info(`Session ${sessionId} data saved successfully`);
-            }
-        } catch (error) {
-            logger.error(`Failed to save session data for ${sessionId}:`, error);
-        }
-    });
-    
-    client.on('ready', async () => {
-        logger.info(`Client ${sessionId} is ready`);
-        
-        // Enhanced authentication check with retries
-        const checkAuthState = async (attempts = 3) => {
-            try {
-                const state = await client.getState();
-                console.log("AUTH STATE CHECK:", { state, attempt: 4-attempts });
-                
-                if (state === 'CONNECTED') {
-                    console.log("CLIENT FULLY AUTHENTICATED");
-                    return true;
-                }
-                
-                if (attempts <= 0) {
-                    logger.error(`Failed to verify authentication after 3 attempts (state: ${state})`);
-                    return false;
-                }
-                
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                return checkAuthState(attempts - 1);
-            } catch (error) {
-                logger.error(`Error checking auth state: ${error.message}`);
-                return false;
-            }
-        };
-
-        const isAuthenticated = await checkAuthState();
-        
-        if (!isAuthenticated) {
-            logger.error(`Client ${sessionId} not properly authenticated`);
-            setTimeout(() => {
-                client.destroy().then(() => {
-                    clients.delete(sessionId);
-                    createNewSession();
-                });
-            }, 5000);
-            return;
-        }
-
-        logger.info(`⚙️ Attempting to refresh groups for session ${sessionId}...`);
-        await refreshGroupsForSession(client, sessionId);
-        logger.info(`✅ Finished group refresh call for session ${sessionId}`);
-
-        // Periodic refresh (every 10 minutes)
-        groupRefreshIntervals.set(
-            sessionId,
-            setInterval(() => refreshGroupsForSession(client, sessionId), 600000) // 10 minutes
-        );
-
-        // Only proceed if properly authenticated
-        try {
-            const selfId = client.info.wid._serialized;
-            const chat = await client.getChatById(selfId);
-            
-            // Store the correct session ID
-            userSessions.set(selfId, sessionId);
-            
-            // Send welcome messages without test message
-            await chat.sendMessage(`🤖 *Bot Connected*\n\nYour session ID: \`${sessionId}\``);
-            await chat.sendMessage("👋 Hello, I'm a WhatsApp bot. Use !help to see available commands");    
-            
-            // Set up keep-alive
-            keepAliveInterval = setInterval(async () => {
-                try {
-                    await client.getState();
-                    logger.info(`Keep-alive ping for session ${sessionId}`);
-                } catch (error) {
-                    logger.error(`Keep-alive failed for session ${sessionId}:`, error);
-                }
-            }, 300000);
-        } catch (error) {
-            logger.error('Ready handler failed:', error);
-            setTimeout(() => {
-                client.destroy().then(() => {
-                    clients.delete(sessionId);
-                    createNewSession();
-                });
-            }, 5000);
-        }
-    });
-    
-    client.on('disconnected', (reason) => {
-        logger.info(`Client ${sessionId} disconnected: ${reason}`);
-        if (keepAliveInterval) clearInterval(keepAliveInterval);
-        if (groupRefreshIntervals.has(sessionId)) {
-            clearInterval(groupRefreshIntervals.get(sessionId));
-            groupRefreshIntervals.delete(sessionId);
-        }
-        clientGroups.delete(sessionId);
-        clients.delete(sessionId);
-        if (reason !== 'NAVIGATION' && reason !== 'LOGOUT') {
-            setTimeout(() => createNewSession(), 10000);
-        }
-    });
-
-    // FIXED: Single message handler for regular messages from others
-    client.on('message', async (message) => {
-        try {
-            console.log("RAW MESSAGE RECEIVED:", {
-                from: message.from,
-                body: message.body,
-                fromMe: message.fromMe,
-                type: message.type
-            });
-
-            // Skip messages from self (but allow self-chat commands in message_create)
-            if (message.fromMe) {
-                console.log("Skipping message from self");
-                return;
-            }
-
-            // Skip if: empty body, from broadcast, or from status
-            if (!message.body || 
-                message.from === 'status@broadcast' || 
-                message.type === 'broadcast') {
-                return;
-            }
-
-            // Skip if not a command
-            if (!message.body.trim().startsWith(COMMAND_PREFIX)) {
-                return;
-            }
-            
-            // Debug log client info
-            console.log("CLIENT INFO:", {
-                clientReady: client.info !== undefined,
-                selfId: client.info?.wid?._serialized,
-                sender: message.from
-            });
-
-            // Skip if client not ready
-            if (!client.info) {
-                console.log("Client not fully initialized, skipping message");
-                return;
-            }
-
-            const sender = message.from;
-            const selfId = client.info.wid._serialized;
-            
-            console.log("COMMAND DETECTED:", {
-                sender,
-                selfId,
-                body: message.body,
-                isAuthorized: isAuthorized(sender)
-            });
-
-            // Check authorization for non-self messages
-            if (!isAuthorized(sender)) {
-                console.log(`Unauthorized command from ${sender}`);
-                return await message.reply("🔒 Admin-only command");
-            }
-
-            // Process command
-            const [command, ...args] = message.body
-                .slice(COMMAND_PREFIX.length)
-                .trim()
-                .split(/\s+/);
-                
-            console.log("PROCESSING COMMAND:", { 
-                command: command.toLowerCase(), 
-                args 
-            });
-
-            // Add reaction to show command received
-            try {
-                await message.react(isPrimaryAdmin(message.from) ? '👑' : '🔧');
-            } catch (error) {
-                console.error("Failed to react:", error);
-            }
-
-            await processCommand(message, command, args, client, sessionId);
-        } catch (error) {
-            console.error("Message handler error:", error);
-        }
-    });
-
-    // FIXED: Single message_create handler for self-chat commands
-    client.on('message_create', async (message) => {
-        try {
-            console.log("MESSAGE CREATE EVENT:", {
-                from: message.from,
-                to: message.to,
-                body: message.body,
-                fromMe: message.fromMe
-            });
-            
-            // Skip if client not ready
-            if (!client.info) {
-                console.log("Client not ready in message_create, skipping");
-                return;
-            }
-
-            const selfId = client.info.wid._serialized;
-            
-            // Only process messages TO self (self-chat)
-            if (message.to !== selfId) {
-                return;
-            }
-            
-            // Only process commands
-            if (!message.body || !message.body.trim().startsWith(COMMAND_PREFIX)) {
-                return;
-            }
-            
-            console.log("Processing self-chat command in message_create");
-            
-            const [command, ...args] = message.body
-                .slice(COMMAND_PREFIX.length)
-                .trim()
-                .split(/\s+/);
-            
-            try {
-                await message.react('🤖');
-            } catch (error) {
-                console.error("Failed to react:", error);
-            }
-
-            await processCommand(message, command, args, client, sessionId);
-        } catch (error) {
-            console.error("Message_create handler error:", error);
-        }
-    });
-
-    client.on('auth_failure', (error) => {
-        logger.error(`Authentication failed for session ${sessionId}:`, error);
-        const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
-        if (fs.existsSync(sessionFile)) fs.unlinkSync(sessionFile);
-        clients.delete(sessionId);
-    });
-}
-
-// FIXED: Centralized command processing function
-async function processCommand(message, command, args, client, sessionId) {
-    switch (command.toLowerCase()) {
-        case 'ping':
-            await message.reply('Pong! 🏓');
-            break;
-            
-        case 'help':
-            await message.reply(`*Available Commands:*\n` +
-                '1. !ping - Pong\n' +
-                '2. !help - This help\n' +
-                '3. !list - Groups you admin\n' +
-                '4. !tagall [group numbers] - Mention all in groups\n' +
-                '5. !tagallexcept [group numbers] [phone numbers] - Mention all except specified\n' +
-                '6. !document [type] - Send stored file\n' +
-                '7. !meeting [YYYY-MM-DD] [HH:mm] [title] - Schedule meeting\n' +
-                '8. !event [YYYY-MM-DD] [HH:mm] [title] - Schedule event\n' +
-                '9. !refreshgroups - Refresh group list\n' +
-                '10. !status - Show bot status\n' +
-                '11. !sessionid - Get your session ID');
-            break;
-            
-        case 'list': {
-            try {
-                let groups = clientGroups.get(sessionId) || [];
-                
-                // If no groups found, try refreshing
-                if (groups.length === 0) {
-                    await message.reply('⏳ Refreshing group list, please wait...');
-                    groups = await refreshGroupsForSession(client, sessionId) || [];
-                }
-                
-                if (!groups.length) {
-                    await message.reply('You are not an admin in any groups');
-                    break;
-                }
-                
-                const listText = groups.map((g, i) => 
-                    `${i+1}. ${g.name || g.id._serialized}`
-                ).join('\n');
-                
-                await message.reply(`*Admin Groups:*\n${listText}`);
-            } catch (error) {
-                console.error('Error in !list command:', error);
-                await message.reply('❌ Error fetching groups');
-            }
-            break;
-        }
-        
-        case 'refreshgroups':
-            await message.reply('🔄 Refreshing groups...');
-            const groups = await refreshGroupsForSession(client, sessionId);
-            await message.reply(`✅ Refreshed ${groups.length} groups`);
-            break;
-
-        case 'status':
-            const statusMsg = `*Bot Status:*\n- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m\n- Active sessions: ${clients.size}\n- Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-            await message.reply(statusMsg);
-            break;
-            
-        case 'info':
-            const chatInfo = await message.getChat();
-            let info = `*Chat Info:*\n- Is Group: ${chatInfo.isGroup}\n- Participants: ${chatInfo.isGroup ? chatInfo.participants.length : 'N/A'}\n- Name: ${chatInfo.name || 'N/A'}`;
-            
-            if (chatInfo.isGroup) {
-                info += `\n- Group Description: ${chatInfo.description || 'N/A'}`;
-            }
-            
-            await message.reply(info);
-            break;
-            
-        case 'sessionid':
-            const clientId = client.info.wid._serialized;
-            const storedSessionId = userSessions.get(clientId);
-            await message.reply(`Your session ID: ${storedSessionId}`);
-            break;
-            
-        case 'media':
-            if (fs.existsSync(mediaPath.image)) {
-                const media = MessageMedia.fromFilePath(mediaPath.image);
-                await message.reply(media);
-            } else {
-                await message.reply('No test image found');
-            }
-            break;
-            
-        case 'newsession':
-            const newSessionId = createNewSession();
-            await message.reply(`New session created with ID: ${newSessionId}`);
-            break;
-            
-        case 'shutdown':
-            await handleShutdown(message);
-            break;
-            
-        case 'sudo':
-            await handleSudoCommand(message, args);
-            break;
-            
-        case 'document':
-            await sendDocument(message);
-            break;
-            
-        case 'savecontact':
-            if (args.length < 1) {
-                await message.reply('Usage: !savecontact [phone number] [optional name]');
-                return;
-            }
-            const phoneNumber = args[0];
-            const contactName = args.length > 1 ? args.slice(1).join(' ') : null;
-            const saved = await saveNewContact(client, phoneNumber, contactName);
-            await message.reply(saved ? '✅ Contact saved successfully' : '❌ Failed to save contact');
-            break;
-            
-        case 'contacts':
-            const contactsList = [...savedContacts].join('\n');
-            await message.reply(`*Saved Contacts:*\n${contactsList || 'No contacts saved'}`);
-            break;
-            
-        case 'tagall':
-            await handleGroupTagCommand(message, args, client, sessionId);
-            break;
-
-        case 'tagallexcept':
-            await handleGroupTagExceptCommand(message, args, client, sessionId);
-            break;
-            
-        case 'meeting':
-            await handleMeetingCommand(message, args, client);
-            break;
-            
-        case 'event':
-            await handleEventCommand(message, args, client);
-            break;
-            
-        case 'reminders':
-            await listReminders(message, client);
-            break;
-            
-        case 'cancelreminder':
-            await cancelReminder(message, args);
-            break;
-            
-        default:
-            await message.reply('Unknown command. Try !help');
-    }
-}
 
 let isShuttingDown = false;
     
 process.on('uncaughtException', (err) => logger.error('Uncaught Exception:', err));
-process.on('unhandledRejection', (reason, promise) => logger.error('Unhandled Rejection at:', promise, 'reason:', reason));
+
     
-process.once('SIGTERM', () => {
+process.on('SIGTERM', () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     
@@ -781,7 +999,7 @@ process.once('SIGTERM', () => {
     process.exit(0);
 });
     
-process.once('SIGINT', () => {
+process.on('SIGINT', () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     
@@ -796,7 +1014,7 @@ process.once('SIGINT', () => {
     process.exit(0);
 });
     
-process.once('exit', () => {
+process.on('exit', () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     
@@ -810,7 +1028,7 @@ process.once('exit', () => {
     }
 });
     
-process.once('SIGHUP', () => {
+process.on('SIGHUP', () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     
@@ -841,7 +1059,7 @@ const handleShutdown = async (message) => {
     process.exit(0);
 };
     
-const handleSudoCommand = async (message, args) => {
+const handleSudoCommand = async (message, args, client) => {
     if (!isAuthorized(message.from)) {
         await message.reply('🚫 You are not authorized to use sudo commands');
         return;
@@ -861,12 +1079,52 @@ const handleSudoCommand = async (message, args) => {
             await message.reply(stats);
             break;
             
-        case 'list':
-            const sessionList = Array.from(clients.keys()).map((id, index) => 
-                `${index + 1}. Session ID: ${id}`
-            ).join('\n');
-            await message.reply(`*Active Sessions:*\n${sessionList || 'No active sessions'}`);
+        case 'list': {
+            try {
+                const chatId  = message.from;
+                const selfId  = client.info.wid._serialized;
+                const isGroup = chatId.endsWith('@g.us');
+                
+                const userId  = message.fromMe
+                    ? selfId
+                    : (isGroup
+                        ? message.author
+                        : message.from);
+
+                const isSelfChat = chatId === selfId;
+                const ownerNumber = CONFIG.owner
+                  ? CONFIG.owner.replace(/[^0-9]/g, '') + '@c.us'
+                  : null;
+                  
+                const targetUser = (isSelfChat && ownerNumber)
+                  ? ownerNumber
+                  : userId;
+
+                await message.reply('⚡ Fetching your admin groups…');
+                const groups = await getGroupsWhereSenderIsAdmin(client, targetUser);
+                
+                if (!groups.length) {
+                  return message.reply('❌ You are not admin in any groups');
+                }
+
+                const sessionId = userSessions.get(selfId);
+                senderAdminGroups.set(`${targetUser}_${sessionId}`, groups);
+
+                const listText = groups
+                  .map((g,i) => `${i+1}. ${g.name} (${g.participants?.length||0} members)`)
+                  .join('\n');
+
+                return message.reply(
+                  `*📋 Groups Where You Are Admin (${groups.length})*\n\n` +
+                  listText +
+                  `\n\n💡 Now use !tagall or !tagallexcept with those numbers.`
+                );
+            } catch (err) {
+                logger.error('Error in sudo list:', err);
+                return message.reply('❌ Oops, something went wrong fetching your groups.');
+            }
             break;
+        }
             
         case 'clearsessions':
             const sessionDir = fs.readdirSync(SESSION_DIR);
@@ -946,36 +1204,71 @@ const sendDocument = async (message) => {
         await message.reply('Failed to send document');
     }
 };
-    
+
 const handleGroupTagCommand = async (message, args, client, sessionId) => {
     try {
         if (args.length < 1) {
-            await message.reply('Usage: !tagall [group numbers...]\nExample: !tagall 1 3');
+            await message.reply('Usage: !tagall [group numbers...]\nExample: !tagall 1 3\n\n💡 Use !list first to see your admin groups');
             return;
         }
 
-        const groups = clientGroups.get(sessionId) || [];
-        const groupIndices = args.map(num => parseInt(num) - 1); // Convert to zero-based index
+        const senderId = message.fromMe ? client.info.wid._serialized : message.from;
+        const senderKey = `${senderId}_${sessionId}`;
+        let userAdminGroups = senderAdminGroups.get(senderKey);
+        
+        if (!userAdminGroups) {
+            await message.reply('⏳ Fetching your admin groups...');
+            userAdminGroups = await getGroupsWhereSenderIsAdmin(client, senderId);
+            senderAdminGroups.set(senderKey, userAdminGroups);
+        }
+
+        if (!userAdminGroups.length) {
+            await message.reply('❌ You are not an admin in any groups. Use !list to refresh.');
+            return;
+        }
+
+        const groupIndices = args.map(num => parseInt(num) - 1);
+        let successCount = 0;
 
         for (const index of groupIndices) {
-            if (index >= 0 && index < groups.length) {
-                const group = groups[index];
-                let mentions = [];
-                let text = '';
+            if (index >= 0 && index < userAdminGroups.length) {
+                const group = userAdminGroups[index];
                 
-                for (const participant of group.participants) {
-                    mentions.push(participant.id._serialized);
-                    text += `@${participant.id.user} `;
+                try {
+                    await group.fetchParticipants();
+                    
+                    const senderParticipant = group.participants.find(p => 
+                        p.id._serialized === senderId
+                    );
+                    
+                    if (!senderParticipant || !senderParticipant.isAdmin) {
+                        await message.reply(`❌ You are no longer admin in "${group.name}"`);
+                        continue;
+                    }
+                    
+                    let mentions = [];
+                    let text = `*📢 Tagged by admin*\n\n`;
+                    
+                    for (const participant of group.participants) {
+                        mentions.push(participant.id._serialized);
+                        text += `@${participant.id.user} `;
+                    }
+                    
+                    await client.sendMessage(group.id._serialized, text, { mentions });
+                    logger.info(`${senderId} tagged all members in group: ${group.name}`);
+                    successCount++;
+                } catch (error) {
+                    logger.error(`Error tagging in group ${group.name}:`, error);
+                                        await message.reply(`❌ Failed to tag in "${group.name}"`);
                 }
-                
-                await client.sendMessage(group.id._serialized, text, { mentions });
-                logger.info(`Tagged all members in group: ${group.name}`);
             } else {
-                await message.reply(`Invalid group number: ${index + 1}`);
+                await message.reply(`❌ Invalid group number: ${index + 1}`);
             }
         }
         
-        await message.reply(`✅ Tagged members in ${groupIndices.length} group(s)`);
+        if (successCount > 0) {
+            await message.reply(`✅ Successfully tagged members in ${successCount} group(s)`);
+        }
     } catch (error) {
         logger.error('Error in tagall command:', error);
         await message.reply('❌ Failed to tag members');
@@ -985,47 +1278,113 @@ const handleGroupTagCommand = async (message, args, client, sessionId) => {
 const handleGroupTagExceptCommand = async (message, args, client, sessionId) => {
     try {
         if (args.length < 2) {
-            await message.reply('Usage: !tagallexcept [group numbers...] [phone numbers...]\nExample: !tagallexcept 1 3 1234567890 0987654321');
+            await message.reply('Usage: !tagallexcept [group numbers...] [phone numbers...]\nExample: !tagallexcept 1 3 1234567890 0987654321\n\n💡 Use !list first to see your admin groups');
             return;
         }
 
-        const groups = clientGroups.get(sessionId) || [];
+        const senderId = message.fromMe ? client.info.wid._serialized : message.from;
+        const senderKey = `${senderId}_${sessionId}`;
+        let userAdminGroups = senderAdminGroups.get(senderKey);
+        
+        if (!userAdminGroups) {
+            await message.reply('⏳ Fetching your admin groups...');
+            userAdminGroups = await getGroupsWhereSenderIsAdmin(client, senderId);
+            senderAdminGroups.set(senderKey, userAdminGroups);
+        }
+
+        if (!userAdminGroups.length) {
+            await message.reply('❌ You are not an admin in any groups. Use !list to refresh.');
+            return;
+        }
+
         const groupIndices = [];
         const exceptNumbers = [];
         
-        // Separate group indices from phone numbers
         for (const arg of args) {
-            if (!isNaN(arg)) {
+            if (!isNaN(arg) && parseInt(arg) > 0) {
                 groupIndices.push(parseInt(arg) - 1);
             } else {
-                exceptNumbers.push(arg.includes('@') ? arg : `${arg}@c.us`);
+                let cleanNumber = arg.replace(/[^0-9]/g, '');
+                if (cleanNumber) {
+                    exceptNumbers.push(`${cleanNumber}@c.us`);
+                }
             }
         }
 
+        if (groupIndices.length === 0) {
+            await message.reply('❌ Please specify at least one valid group number');
+            return;
+        }
+
+        if (exceptNumbers.length === 0) {
+            await message.reply('❌ Please specify at least one phone number to exclude');
+            return;
+        }
+
+        let successCount = 0;
+        let totalExcluded = 0;
+
         for (const index of groupIndices) {
-            if (index >= 0 && index < groups.length) {
-                const group = groups[index];
-                let mentions = [];
-                let text = '';
+            if (index >= 0 && index < userAdminGroups.length) {
+                const group = userAdminGroups[index];
                 
-                for (const participant of group.participants) {
-                    if (!exceptNumbers.includes(participant.id._serialized)) {
-                        mentions.push(participant.id._serialized);
-                        text += `@${participant.id.user} `;
+                try {
+                    await group.fetchParticipants();
+                    
+                    const senderParticipant = group.participants.find(p => 
+                        p.id._serialized === senderId
+                    );
+                    
+                    if (!senderParticipant || !senderParticipant.isAdmin) {
+                        await message.reply(`❌ You are no longer admin in "${group.name}"`);
+                        continue;
                     }
+                    
+                    let mentions = [];
+                    let text = `*📢 Tagged by admin (excluding specified members)*\n\n`;
+                    let taggedCount = 0;
+                    let excludedInThisGroup = 0;
+                    
+                    for (const participant of group.participants) {
+                        const participantNumber = participant.id._serialized;
+                        
+                        if (exceptNumbers.includes(participantNumber)) {
+                            excludedInThisGroup++;
+                        } else {
+                            mentions.push(participantNumber);
+                            text += `@${participant.id.user} `;
+                            taggedCount++;
+                        }
+                    }
+                    
+                    if (taggedCount === 0) {
+                        await message.reply(`⚠️ No members to tag in "${group.name}" - all members were excluded`);
+                        continue;
+                    }
+                    
+                    await client.sendMessage(group.id._serialized, text, { mentions });
+                    logger.info(`${senderId} tagged ${taggedCount} members in group ${group.name}, excluded ${excludedInThisGroup} members`);
+                    successCount++;
+                    totalExcluded += excludedInThisGroup;
+                    
+                } catch (error) {
+                    logger.error(`Error tagging in group ${group.name}:`, error);
+                    await message.reply(`❌ Failed to tag in "${group.name}": ${error.message}`);
                 }
-                
-                await client.sendMessage(group.id._serialized, text, { mentions });
-                logger.info(`Tagged members in group ${group.name} except ${exceptNumbers.length} numbers`);
             } else {
-                await message.reply(`Invalid group number: ${index + 1}`);
+                await message.reply(`❌ Invalid group number: ${index + 1}. Use !list to see available groups.`);
             }
         }
         
-        await message.reply(`✅ Tagged members in ${groupIndices.length} group(s) except ${exceptNumbers.length} numbers`);
+        if (successCount > 0) {
+            await message.reply(`✅ Successfully tagged members in ${successCount} group(s)\n📊 Total excluded: ${totalExcluded} members\n📱 Excluded numbers: ${exceptNumbers.length}`);
+        } else {
+            await message.reply('❌ No groups were successfully tagged');
+        }
+        
     } catch (error) {
         logger.error('Error in tagallexcept command:', error);
-        await message.reply('❌ Failed to tag members');
+        await message.reply('❌ Failed to tag members. Please try again.');
     }
 };
 
@@ -1035,10 +1394,6 @@ const handleMeetingCommand = async (message, args, client) => {
 
 const handleEventCommand = async (message, args, client) => {
     await message.reply("🎉 Event command received. Feature under construction.");
-};
-
-const scheduleReminder = (reminder, client) => {
-    console.log("📌 Scheduling reminder:", reminder);
 };
 
 const sendAdvanceNotification = async (reminder, client, timeFrame) => {
@@ -1081,8 +1436,1357 @@ module.exports = {
     clients
 };
 
+// Auto-start the bot if this file is run directly
 if (require.main === module) {
-    console.log('🚀 Starting WhatsApp bot...');
-    const { start } = module.exports;
-    start(); // Start session creation
+    console.log('🚀 Starting WhatsApp Bot...');
+    
+    // Create a basic config.json if it doesn't exist
+    const configPath = path.join(__dirname, 'config.json');
+    if (!fs.existsSync(configPath)) {
+        const defaultConfig = {
+            "owner": "your_phone_number_here",
+            "prefix": "!",
+            "maxSessions": 1,
+            "allowedUsers": []
+        };
+        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+        console.log('📝 Created default config.json - Please edit it with your phone number');
+        console.log('⚠️  Please update config.json with your phone number before running the bot');
+        process.exit(1);
+    }
+
+    // Enhanced command handler with usage limits
+    async function handleCommand(message, client, sessionId, userId) {
+    const commandText = message.body.toLowerCase();
+    const command = commandText.split(' ')[0];
+    const args = commandText.split(' ').slice(1);
+
+    try {
+        // Check usage limits before processing command
+        const limitCheck = await checkUsageLimits(userId, 'use_command', { command: command.substring(1) });
+        
+        if (!limitCheck.canProceed) {
+            await message.reply(`❌ ${limitCheck.reason}\n\n🚀 Upgrade your plan at: ${process.env.DOMAIN}/pricing`);
+            return;
+        }
+
+        // Check message limits
+        const messageLimitCheck = await checkUsageLimits(userId, 'send_message');
+        if (!messageLimitCheck.canProceed) {
+            await message.reply(`📊 ${messageLimitCheck.reason}\n\n💎 Upgrade now: ${process.env.DOMAIN}/pricing`);
+            return;
+        }
+
+        // Track usage
+        await trackUsage(userId, 'command_used', sessionId, command.substring(1));
+        await trackUsage(userId, 'message_sent', sessionId);
+
+        // Process the command
+        switch(command) {
+            case '!help':
+                await handleHelpCommand(message, userId);
+                break;
+            case '!tagall':
+                await handleTagAllCommand(message, args, client, userId);
+                break;
+            case '!status':
+                await handleStatusCommand(message, userId);
+                break;
+            // ... other commands
+            default:
+                await message.reply('❓ Unknown command. Type !help for available commands.');
+        }
+
+    } catch (error) {
+        console.error('Command handling error:', error);
+        await message.reply('⚠️ An error occurred while processing your command.');
+    }
+}}
+
+// Enhanced help command showing available features
+async function handleHelpCommand(message, userId) {
+    const user = await User.findById(userId).populate('subscription');
+    const plan = subscriptionPlans[user.subscription?.planType || 'free'];
+    const usage = await getTodayUsage(userId);
+
+    let helpMessage = `🤖 *TagThemAll Bot Help*\n\n`;
+    helpMessage += `📋 *Your Plan:* ${plan.name}\n`;
+    helpMessage += `📊 *Today's Usage:*\n`;
+    helpMessage += `   • Messages: ${usage.messagesCount}/${plan.maxMessagesPerDay === -1 ? '∞' : plan.maxMessagesPerDay}\n`;
+    helpMessage += `   • Sessions: ${usage.sessionsActive}/${plan.maxSessions === -1 ? '∞' : plan.maxSessions}\n\n`;
+
+    helpMessage += `✅ *Available Commands:*\n`;
+    
+    // Show commands based on plan
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('ping')) {
+        helpMessage += `• !ping - Test bot response\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('status')) {
+        helpMessage += `• !status - Check bot status\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('tagall')) {
+        helpMessage += `• !tagall [message] - Tag all group members\n`;
+    }
+    if (plan.allowedCommands.includes('*') || plan.allowedCommands.includes('broadcast')) {
+        helpMessage += `• !broadcast [message] - Send to all groups\n`;
+    }
+
+    // Show locked features for upgrade encouragement
+    if (!plan.allowedCommands.includes('*')) {
+        helpMessage += `\n🔒 *Upgrade to unlock:*\n`;
+        if (!plan.allowedCommands.includes('tagall')) {
+            helpMessage += `• !tagall - Group tagging (Basic+)\n`;
+        }
+        if (!plan.allowedCommands.includes('scheduler')) {
+            helpMessage += `• !reminder - Set reminders (Premium+)\n`;
+        }
+        if (!plan.allowedCommands.includes('analytics')) {
+            helpMessage += `• !analytics - View statistics (Premium+)\n`;
+        }
+        helpMessage += `\n💎 Upgrade at: ${process.env.DOMAIN}/pricing`;
+    }
+
+    await message.reply(helpMessage);
 }
+
+// Usage limit warning system
+async function sendUsageWarnings(userId) {
+    const usage = await getTodayUsage(userId);
+    const user = await User.findById(userId).populate('subscription');
+    const plan = subscriptionPlans[user.subscription?.planType || 'free'];
+
+    // Check if approaching limits
+    const messagePercentage = (usage.messagesCount / plan.maxMessagesPerDay) * 100;
+    
+    if (messagePercentage >= 80 && messagePercentage < 90) {
+        // Send 80% warning
+        await sendWarningMessage(userId, 'messages', 80, plan.maxMessagesPerDay - usage.messagesCount);
+    } else if (messagePercentage >= 90 && messagePercentage < 100) {
+        // Send 90% warning
+        await sendWarningMessage(userId, 'messages', 90, plan.maxMessagesPerDay - usage.messagesCount);
+    }
+}
+
+async function sendWarningMessage(userId, type, percentage, remaining) {
+    const sessions = await Session.find({ userId: userId, status: 'active' });
+    
+    const warningMessage = `⚠️ *Usage Warning*\n\n` +
+        `You've used ${percentage}% of your daily ${type} limit.\n` +
+        `${remaining} ${type} remaining today.\n\n` +
+        `💎 Upgrade for unlimited usage: ${process.env.DOMAIN}/pricing`;
+
+    // Send warning to all active sessions
+    for (const session of sessions) {
+        const client = activeClients.get(session.sessionId);
+        if (client) {
+            try {
+                await client.sendMessage(session.phoneNumber + '@c.us', warningMessage);
+            } catch (error) {
+                console.error('Warning message send error:', error);
+            }
+        }
+    }
+}
+
+
+// Helper function to execute tagall in specific group
+async function executeTagAllInGroup(client, groupId, message, adminId) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            if (participant.id._serialized !== adminId) {
+                mentions.push(participant.id._serialized);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagall in group:', error);
+        throw error;
+    }
+}
+
+
+
+// Helper function to update usage statistics
+async function updateUsageStats(userId, statType) {
+    try {
+        // This would connect to your database to update stats
+        // Implementation depends on your database structure
+        console.log(`Updated ${statType} for user ${userId}`);
+    } catch (error) {
+        console.error('Error updating usage stats:', error);
+    }
+}
+
+
+
+// Helper function to execute tagallexcept in specific group
+async function executeTagAllExceptInGroup(client, groupId, message, adminId, exceptUsers = []) {
+    try {
+        const chat = await client.getChatById(groupId);
+        await chat.fetchParticipants();
+        
+        const mentions = [];
+        let mentionText = `${message}\n\n`;
+        
+        for (const participant of chat.participants) {
+            const userId = participant.id._serialized;
+            if (userId !== adminId && !exceptUsers.includes(userId)) {
+                mentions.push(userId);
+                mentionText += `@${participant.id.user} `;
+            }
+        }
+        
+        await chat.sendMessage(mentionText, { mentions });
+        
+        // Update usage statistics
+        await updateUsageStats(adminId, 'groupsTagged');
+        
+    } catch (error) {
+        console.error('Error executing tagallexcept in group:', error);
+        throw error;
+    }
+}
+    
+
+
+// Export function for server.js integration
+async function createBotSession(userId, sessionId, io) {
+    try {
+        // Add this variable at the top of the createBotSession function
+            let botPhoneNumber = null;
+            let botSelfId = null;
+      
+    console.log('🤖 BOT: Creating bot session');
+    console.log('👤 User ID:', userId);
+    console.log('📱 Session ID:', sessionId);
+    console.log('🔍 BOT: io object exists?', !!io);
+
+    // 🔑 NEW: Check if this is an admin session
+    const user = await User.findById(userId);
+    const isAdmin = user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
+    
+    console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
+    console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
+
+    const client = new Client({
+        authStrategy: new LocalAuth({ 
+            clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
+            dataPath: './.wwebjs_auth'  // Specify explicit path for better cleanup control
+        }),
+        puppeteer: {
+            ...clientConfig.puppeteer,
+            args: [
+                ...clientConfig.puppeteer.args,
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                // Add Windows-specific cleanup optimizations
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--no-first-run'
+            ],
+            // Add these options for better cleanup on Windows
+            handleSIGINT: false,
+            handleSIGTERM: false,
+        },
+        // Add these sync optimization options
+        takeoverOnConflict: true,
+        takeoverTimeoutMs: 5000,
+        
+        // Skip initial sync to speed up connection
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
+        
+        // Reduce chat loading timeout
+        chatLoadingTimeoutMs: 15000, // Reduced from default 60000
+        
+        // Optimize session loading
+        sessionBackupSyncIntervalMs: 300000, // 5 minutes instead of 1 minute
+        
+        // Keep existing config values
+        qrMaxRetries: clientConfig.qrMaxRetries,
+        authTimeoutMs: clientConfig.authTimeoutMs,
+        restartOnAuthFail: clientConfig.restartOnAuthFail
+    });
+
+    // Store client in existing maps
+    clients.set(sessionId, client);
+
+    // Loading and authentication handlers
+    let loadingComplete = false;
+    let authComplete = false;
+    
+    client.on('loading_screen', (percent, message) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading screen:`, percent + '%', message);
+        
+        // If we reach 95% or higher, consider loading complete
+        if (percent >= 95 && !loadingComplete) {
+            loadingComplete = true;
+            console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading appears complete at`, percent + '%');
+            
+            // Wait a bit then force ready if not already fired
+            setTimeout(() => {
+                if (authComplete && !client.readyFired) {
+                    console.log(`🔧 ${isAdmin ? 'ADMIN' : 'USER'} FORCE: Triggering ready event manually`);
+                    client.readyFired = true;
+                    client.emit('ready');
+                }
+            }, 3000);
+        }
+    });
+
+    // Replace the authenticated event handler
+    client.on('authenticated', (session) => {
+        console.log(`🔑 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Authentication successful!`);
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Session data received`);
+        authComplete = true;
+        
+        // Extract phone number from session data
+        try {
+            if (session && session.WABrowserId) {
+                const sessionString = JSON.stringify(session);
+                const phoneMatch = sessionString.match(/(\d{10,15})/);
+                if (phoneMatch) {
+                    botPhoneNumber = phoneMatch[1];
+                    botSelfId = `${botPhoneNumber}@c.us`;
+                    console.log(`📞 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Extracted phone number:`, botPhoneNumber);
+                    console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Self ID will be:`, botSelfId);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error extracting phone from session:', error.message);
+        }
+        
+        // Fallback to owner number if extraction fails
+        if (!botPhoneNumber && CONFIG.owner) {
+            botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
+            botSelfId = `${botPhoneNumber}@c.us`;
+            console.log(`📞 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Using owner number as fallback:`, botPhoneNumber);
+        }
+    });
+
+    client.on('change_state', (state) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: State changed to:`, state);
+    });
+
+    client.on('qr', async (qr) => {
+        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR CODE GENERATED!`);
+        console.log('📱 Session:', sessionId);
+        console.log('📱 User ID:', userId);
+        console.log('📱 QR Data Length:', qr.length);
+        console.log('📱 QR Preview:', qr.substring(0, 50) + '...');
+        
+        // 🔑 NEW: Emit to appropriate room based on user type
+        const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+        console.log(`📤 ${isAdmin ? 'ADMIN' : 'USER'} BOT: Emitting to room:`, roomName);
+        
+        // Check if io exists
+        if (!io) {
+            console.error(`❌ ${isAdmin ? 'ADMIN' : 'USER'} BOT: io (socket.io) is null/undefined!`);
+            return;
+        }
+        
+        // Emit to specific room
+        io.to(roomName).emit('qrCode', {
+            sessionId,
+            qr,
+            message: 'Scan this QR code with WhatsApp',
+            userId: userId,
+            isAdmin: isAdmin,
+            userType: isAdmin ? 'admin' : 'user'
+        });
+        
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR code emitted to room:`, roomName);
+        
+        // Also emit to all sockets as backup
+        io.emit('qrCode', {
+            sessionId,
+            qr,
+            message: 'Scan this QR code with WhatsApp',
+            userId: userId,
+            isAdmin: isAdmin,
+            userType: isAdmin ? 'admin' : 'user',
+            broadcast: true
+        });
+        
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} BOT: QR code also broadcasted to all sockets`);
+    });
+        // Ready event handler
+client.on('ready', async () => {
+    console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+    
+    try {
+        const selfId = client.info.wid._serialized;
+        const selfNumber = client.info.wid.user;
+        const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
+        
+        // Store for message handler
+        client.selfId = selfId;
+        userSessions.set(selfId, uniqueId);
+        
+        console.log('📱 Self ID:', selfId);
+        console.log('📞 Phone:', selfNumber);
+        console.log('🆔 Session ID:', uniqueId);
+        
+        // Sync all contacts and groups
+        const syncContacts = async () => {
+            try {
+                console.log('📞 Starting contact sync for session:', sessionId);
+                
+                // Get all contacts
+                const contacts = await client.getContacts();
+                console.log(`📋 Found ${contacts.length} contacts`);
+                
+                // Get all chats (includes groups)
+                const chats = await client.getChats();
+                const groupChats = chats.filter(chat => chat.isGroup);
+                console.log(`👥 Found ${groupChats.length} groups`);
+                
+                let savedContacts = 0;
+                let savedGroups = 0;
+                let savedGroupMembers = 0;
+                
+                // Save individual contacts
+                for (const contact of contacts) {
+                    try {
+                        // Skip if it's the bot's own number
+                        if (contact.id._serialized === selfId) continue;
+                        
+                        const contactData = {
+                            sessionId: sessionId,
+                            userId: userId,
+                            whatsappId: contact.id._serialized,
+                            name: contact.name || contact.pushname || contact.number || 'Unknown',
+                            phone: contact.number || null,
+                            type: 'individual',
+                            isGroup: false,
+                            groupId: null,
+                            groupName: null,
+                            profilePicture: null,
+                            hasMessagedBot: false,
+                            lastMessageAt: null,
+                            addedAt: new Date()
+                        };
+                        
+                        // Try to get profile picture
+                        try {
+                            contactData.profilePicture = await contact.getProfilePicUrl();
+                        } catch (picError) {
+                            // Profile pic not available, continue without it
+                        }
+                        
+                        // Save to database (upsert to avoid duplicates)
+                        await Contact.findOneAndUpdate(
+                            { 
+                                sessionId: sessionId,
+                                whatsappId: contact.id._serialized 
+                            },
+                            contactData,
+                            { 
+                                upsert: true, 
+                                new: true 
+                            }
+                        );
+                        
+                        savedContacts++;
+                        
+                    } catch (contactError) {
+                        console.error('❌ Error saving contact:', contact.name, contactError.message);
+                    }
+                }
+                
+                // Save group contacts and members
+                for (const chat of groupChats) {
+                    try {
+                        // Save group info
+                        const groupData = {
+                            sessionId: sessionId,
+                            userId: userId,
+                            whatsappId: chat.id._serialized,
+                            name: chat.name || 'Unnamed Group',
+                            phone: null,
+                            type: 'group',
+                            isGroup: true,
+                            groupId: chat.id._serialized,
+                            groupName: chat.name,
+                            profilePicture: null,
+                            hasMessagedBot: false,
+                            lastMessageAt: null,
+                            addedAt: new Date()
+                        };
+                        
+                        // Try to get group profile picture
+                        try {
+                            groupData.profilePicture = await chat.getProfilePicUrl();
+                        } catch (picError) {
+                            // Group pic not available
+                        }
+                        
+                        await Contact.findOneAndUpdate(
+                            { 
+                                sessionId: sessionId,
+                                whatsappId: chat.id._serialized 
+                            },
+                            groupData,
+                            { 
+                                upsert: true, 
+                                new: true 
+                            }
+                        );
+                        
+                        savedGroups++;
+                        
+                        // Save group members
+                        if (chat.participants && chat.participants.length > 0) {
+                            for (const participant of chat.participants) {
+                                try {
+                                    // Skip if it's the bot's own number
+                                    if (participant.id._serialized === selfId) continue;
+                                    
+                                    const memberData = {
+                                        sessionId: sessionId,
+                                        userId: userId,
+                                        whatsappId: participant.id._serialized,
+                                        name: participant.name || participant.pushname || participant.number || 'Unknown Member',
+                                        phone: participant.number || null,
+                                        type: 'group_member',
+                                        isGroup: false,
+                                        groupId: chat.id._serialized,
+                                        groupName: chat.name,
+                                        profilePicture: null,
+                                        hasMessagedBot: false,
+                                        lastMessageAt: null,
+                                        addedAt: new Date()
+                                    };
+                                    
+                                    await Contact.findOneAndUpdate(
+                                        { 
+                                            sessionId: sessionId,
+                                            whatsappId: participant.id._serialized,
+                                            groupId: chat.id._serialized
+                                        },
+                                        memberData,
+                                        { 
+                                            upsert: true, 
+                                            new: true 
+                                        }
+                                    );
+                                    
+                                    savedGroupMembers++;
+                                    
+                                } catch (memberError) {
+                                    console.error('❌ Error saving group member:', memberError.message);
+                                }
+                            }
+                        }
+                        
+                    } catch (groupError) {
+                        console.error('❌ Error saving group:', chat.name, groupError.message);
+                    }
+                }
+                
+                console.log(`✅ Contact sync completed for session ${sessionId}:`);
+                console.log(`   📞 Individual contacts: ${savedContacts}`);
+                console.log(`   👥 Groups: ${savedGroups}`);
+                console.log(`   👤 Group members: ${savedGroupMembers}`);
+                console.log(`   📊 Total contacts saved: ${savedContacts + savedGroups + savedGroupMembers}`);
+                
+                // Notify admin dashboard about new contacts
+                if (io) {
+                    io.emit('contactsUpdated', {
+                        sessionId,
+                        userId,
+                        stats: {
+                            individuals: savedContacts,
+                            groups: savedGroups,
+                            groupMembers: savedGroupMembers,
+                            total: savedContacts + savedGroups + savedGroupMembers
+                        }
+                    });
+                }
+                
+            } catch (syncError) {
+                console.error('❌ Contact sync failed for session:', sessionId, syncError);
+            }
+        };
+        
+        // Send welcome messages with retry (from your old code)
+        const sendWelcomeMessages = async (retries = 3, delay = 3000) => {
+            try {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                // Get chat reference (your old reliable method)
+                const chat = await client.getChatById(selfId);
+                
+                // Send main welcome message
+                const welcomeMessage = `🤖 *Bot Connected Successfully!*\n\n` +
+                    `📱 *Your Session ID:* \`${uniqueId}\`\n` +
+                    `📞 *Your Number:* ${selfNumber}\n\n` +
+                    `⚡ *Status:* Ready for commands!`;
+                
+                await chat.sendMessage(welcomeMessage);
+                console.log('✅ Welcome message sent');
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Check subscription and send status
+                const user = await User.findOne({ whatsappNumber: selfNumber });
+                if (user) {
+                    const subStatus = await checkUserSubscriptionStatus(user._id);
+                    let statusMessage = '';
+                    
+                    if (subStatus.isOwner) {
+                        statusMessage = '👑 *Bot Owner Detected*\n\nUnlimited access granted!';
+                    } else if (subStatus.trial) {
+                        statusMessage = `🎁 *Free Trial Active*\n\nYou have *${subStatus.trialDaysLeft} day(s)* remaining.`;
+                    } else if (subStatus.isExempted) {
+                        statusMessage = '🛡️ *Payment Exemption Active*\n\nYou are exempted from payments.';
+                    } else if (subStatus.isValid) {
+                        statusMessage = '💳 *Subscription Active*\n\nAll features unlocked!';
+                    } else {
+                        statusMessage = '⚠️ *Subscription Required*\n\nPlease renew to continue.';
+                    }
+                    
+                    await chat.sendMessage(statusMessage);
+                    console.log('✅ Status message sent');
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Send commands help
+                const commandsMessage = `🔧 *Available Commands:*\n\n` +
+                    `• !ping - Test response\n` +
+                    `• !help - Full help menu\n` +
+                    `• !status - Bot status\n` +
+                    `• !myinfo - Account info\n\n` +
+                    `💡 Type commands in this chat only!`;
+                
+                await chat.sendMessage(commandsMessage);
+                console.log('✅ Commands message sent');
+                
+                console.log('🎉 All welcome messages sent successfully!');
+                
+                // Start contact sync after welcome messages
+                console.log('📞 Starting contact sync...');
+                await syncContacts();
+                
+            } catch (error) {
+                console.error(`❌ Failed to send welcome messages (attempt ${4-retries}/3):`, error);
+                if (retries > 0) {
+                    console.log(`🔄 Retrying in ${delay/1000} seconds...`);
+                    return sendWelcomeMessages(retries - 1, delay * 1.5);
+                } else {
+                    console.error('❌ Maximum retries reached.');
+                    // Try simple fallback
+                    try {
+                        await client.sendMessage(selfId, `🤖 Bot ready! Session: ${uniqueId}\nType !ping`);
+                        console.log('✅ Fallback message sent');
+                        
+                        // Still try to sync contacts even if welcome messages failed
+                        await syncContacts();
+                        
+                    } catch (fallbackError) {
+                        console.error('❌ Fallback also failed:', fallbackError);
+                    }
+                }
+            }
+        };
+        
+        // Start welcome message process
+        sendWelcomeMessages();
+        
+        // Set up keep-alive (from your old code)
+        const keepAliveInterval = setInterval(async () => {
+            try {
+                await client.getState();
+                console.log(`💓 Keep-alive for session ${sessionId}`);
+            } catch (error) {
+                console.error(`💔 Keep-alive failed:`, error);
+                if (error.message.includes('Session closed')) {
+                    clearInterval(keepAliveInterval);
+                    console.log('🛑 Keep-alive stopped - session dead');
+                }
+            }
+        }, 300000); // 5 minutes
+        
+        client.keepAliveInterval = keepAliveInterval;
+        
+        // Notify frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionReady', {
+                sessionId,
+                uniqueId,
+                phone: selfNumber,
+                message: 'WhatsApp bot is ready!'
+            });
+        }
+        
+        console.log('✅ Session setup completed');
+        
+    } catch (error) {
+        console.error('❌ Ready handler error:', error);
+    }
+});
+
+        // Disconnected event handler
+        client.on('disconnected', async (reason) => {
+    console.log('❌ BOT: Client disconnected:', reason);
+    
+    // Clean up keep-alive interval
+    if (client.keepAliveInterval) {
+        clearInterval(client.keepAliveInterval);
+        console.log('🛑 Keep-alive interval cleared');
+    }
+            
+            // Emit disconnect event to frontend
+            io.to(`user-${userId}`).emit('sessionDisconnected', {
+                sessionId,
+                reason,
+                message: 'WhatsApp session disconnected'
+            });
+            
+            // Remove from clients map immediately
+            clients.delete(sessionId);
+            
+            // Clean up session files with delay for Windows file system
+            setTimeout(async () => {
+                try {
+                    const authPath = path.join('./.wwebjs_auth', `user-${userId}-${sessionId}`);
+                    if (fs.existsSync(authPath)) {
+                        console.log(`🧹 Attempting cleanup of session directory: ${authPath}`);
+                        await removeDirectoryWithRetry(authPath, 3);
+                    }
+                } catch (cleanupError) {
+                    console.log('⚠️ Session cleanup warning (non-critical):', cleanupError.message);
+                }
+            }, 5000); // 5 second delay to allow file handles to close
+        });
+
+        // Authentication failure event
+        client.on('auth_failure', (message) => {
+            console.log('❌ BOT: Authentication failed:', message);
+            io.to(`user-${userId}`).emit('authFailure', {
+                sessionId,
+                message: 'WhatsApp authentication failed'
+            });
+        });
+
+        // Message handler for bot commands
+client.on('message', async (message) => {
+    try {
+        // Wait for client info to be available
+        if (!client.info || !client.info.wid) {
+            console.log('⚠️ Client info not ready, skipping message');
+            return;
+        }
+
+        // Get self ID and number
+        const selfId = client.info.wid._serialized;
+        const selfNumber = client.info.wid.user;
+
+        // Use your old reliable self-chat detection
+        const isSelfChat = message.fromMe && message.to === selfId;
+        if (!isSelfChat || !message.body.startsWith('!')) return;
+        
+        console.log('✅ Self-chat command received:', message.body);
+        
+        // React to show command received (from your old code)
+        try { 
+            await message.react('🤖'); 
+        } catch (error) { 
+            console.log('Failed to react:', error.message); 
+        }
+        
+        const [command, ...args] = message.body.slice(1).toLowerCase().split(' ');
+        
+        // Check if user is owner
+        const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        const isOwner = BOT_OWNER && selfNumber === BOT_OWNER;
+        
+        console.log(`🔍 Debug: BOT_OWNER=${BOT_OWNER}, selfNumber=${selfNumber}, isOwner=${isOwner}`);
+        
+        // Subscription check for non-owners
+        if (!isOwner) {
+            try {
+                const allowed = await isAllowedToUseBot(selfNumber);
+                if (!allowed) {
+                    await message.reply(`🚫 *Subscription Required*\n\nYour subscription has expired.\n\n💳 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`);
+                    return;
+                }
+            } catch (subscriptionError) {
+                console.error('Subscription check error:', subscriptionError);
+                await message.reply('⚠️ Unable to verify subscription. Please try again.');
+                return;
+            }
+        }
+        
+        // Process commands
+        try {
+            switch (command) {
+                case 'ping':
+                    await message.reply('🏓 Pong! Bot is working perfectly!');
+                    break;
+                    
+                case 'help':
+                    const helpText = `🤖 *WhatsApp Bot Commands*\n\n` +
+                        `📋 *Available Commands:*\n` +
+                        `• !ping - Test bot response\n` +
+                        `• !help - Show this help\n` +
+                        `• !status - Bot status\n` +
+                        `• !myinfo - Account information\n` +
+                        `• !sessionid - Your session ID\n` +
+                        `• !support - Get support\n` +
+                        `• !media [type] - Send media file\n` +
+                        `• !document - Send document\n` +
+                        `• !info - Chat information\n\n` +
+                        `${isOwner ? '👑 *Admin Commands:*\n• !exempt <number> - Exempt user\n• !unexempt <number> - Remove exemption\n• !listexempt - List exempted users\n• !stats - Bot statistics\n\n' : ''}` +
+                        `💡 *Usage:* Type commands in this chat only!\n` +
+                        `🔒 *Privacy:* Only you can see these commands.`;
+                    
+                    await message.reply(helpText);
+                    break;
+                    
+                case 'status':
+                    const uptime = process.uptime();
+                    const hours = Math.floor(uptime / 3600);
+                    const minutes = Math.floor((uptime % 3600) / 60);
+                    const seconds = Math.floor(uptime % 60);
+                    
+                    const statusMsg = `🤖 *Your Bot Status*\n\n` +
+                        `✅ *Status:* Active & Ready\n` +
+                        `📱 *Your Number:* ${selfNumber}\n` +
+                        `📱 *Session:* ${sessionId}\n` +
+                        `⏱️ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n` +
+                        `${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}` +
+                        `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n\n` +
+                        `🚀 *Ready to serve you!*`;
+                    
+                    await message.reply(statusMsg);
+                    break;
+                    
+                case 'support':
+                    const supportMsg = `🆘 *Support Information*\n\n` +
+                        `📞 *Your Number:* ${selfNumber}\n` +
+                        `📱 *Session ID:* ${sessionId}\n` +
+                        `⏰ *Time:* ${new Date().toLocaleString()}\n\n` +
+                        `💬 *Contact Support:*\n` +
+                        `• Website: ${process.env.DOMAIN || 'your-website.com'}\n` +
+                        `• Email: ${process.env.SUPPORT_EMAIL || 'support@yoursite.com'}\n\n` +
+                        `🔧 *Include your session ID when contacting support!*`;
+                    
+                    await message.reply(supportMsg);
+                    break;
+
+                case 'sessionid':
+                    const uniqueId = userSessions.get(selfId) || sessionId;
+                    await message.reply(`📱 *Your Session ID*\n\n\`${uniqueId}\`\n\nUse this ID when contacting support.`);
+                    break;
+
+                case 'media':
+                    const mediaType = args[0] || 'image';
+                    if (mediaPath[mediaType]) {
+                        if (fs.existsSync(mediaPath[mediaType])) {
+                            const media = MessageMedia.fromFilePath(mediaPath[mediaType]);
+                            await message.reply(media);
+                        } else {
+                            await message.reply(`❌ Media file not found: ${mediaPath[mediaType]}`);
+                        }
+                    } else {
+                        await message.reply('❌ Invalid media type. Use: image, audio, or document');
+                    }
+                    break;
+
+                case 'document':
+                    try {
+                        if (!fs.existsSync(mediaPath.document)) {
+                            await message.reply(`❌ Document not found at ${mediaPath.document}`);
+                            break;
+                        }
+                        
+                        const document = MessageMedia.fromFilePath(mediaPath.document);
+                        await message.reply(document, undefined, { 
+                            caption: 'Here is your requested document',
+                            sendMediaAsDocument: true 
+                        });
+                        
+                        console.log(`✅ Document sent to ${selfNumber}`);
+                    } catch (error) {
+                        console.error('Error sending document:', error);
+                        await message.reply('❌ Failed to send document');
+                    }
+                    break;
+
+                case 'info':
+                    const infoMsg = `📋 *Chat Information*\n\n` +
+                        `📱 *Your Number:* ${selfNumber}\n` +
+                        `📱 *Session ID:* ${sessionId}\n` +
+                        `🔗 *Self Chat:* Yes\n` +
+                        `⏰ *Time:* ${new Date().toLocaleString()}\n` +
+                        `${isOwner ? '👑 *Role:* Bot Owner\n' : '👤 *Role:* Subscriber\n'}`;
+                    
+                    await message.reply(infoMsg);
+                    break;
+
+                case 'debug':
+                    const debugInfo = `🔍 *Debug Information*\n\n` +
+                        `📱 *Self ID:* ${selfId}\n` +
+                        `📞 *Self Number:* ${selfNumber}\n` +
+                        `📨 *Message From:* ${message.from}\n` +
+                        `📤 *Message To:* ${message.to}\n` +
+                        `🤖 *From Me:* ${message.fromMe}\n` +
+                        `✅ *Is Self Chat:* ${message.to === selfId}\n` +
+                        `👑 *Is Owner:* ${isOwner}\n` +
+                        `🔧 *Config Owner:* ${CONFIG.owner}\n` +
+                        `⏰ *Time:* ${new Date().toLocaleString()}`;
+                    
+                    await message.reply(debugInfo);
+                    break;
+                    
+                // Owner admin commands
+                case 'exempt':
+                    if (!isOwner) {
+                        await message.reply('🚫 Owner access required');
+                        break;
+                    }
+                    if (args[0]) {
+                        exemptUser(args[0], true);
+                        await message.reply(`✅ *User Exempted*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
+                    } else {
+                        await message.reply('❌ Usage: !exempt <phone_number>');
+                    }
+                    break;
+                    
+                case 'unexempt':
+                    if (!isOwner) {
+                        await message.reply('🚫 Owner access required');
+                        break;
+                    }
+                    if (args[0]) {
+                        exemptUser(args[0], false);
+                        await message.reply(`🚫 *Exemption Removed*\n\n📞 Number: ${args[0]}\n⏰ Date: ${new Date().toLocaleString()}`);
+                    } else {
+                        await message.reply('❌ Usage: !unexempt <phone_number>');
+                    }
+                    break;
+                    
+                case 'listexempt':
+                    if (!isOwner) {
+                        await message.reply('🚫 Owner access required');
+                        break;
+                    }
+                    const exemptedList = [...(exemptedUsers || [])];
+                    const list = exemptedList.length > 0 ? exemptedList.join('\n• ') : 'No users exempted';
+                    await message.reply(`📜 *Exempted Users (${exemptedList.length})*\n\n• ${list}`);
+                    break;
+                    
+                case 'stats':
+                    if (!isOwner) {
+                        await message.reply('🚫 Owner access required');
+                        break;
+                    }
+                    const totalSessions = clients.size;
+                    const statsUptime = Math.floor(process.uptime() / 60);
+                    const statsMsg = `📊 *Bot Statistics*\n\n` +
+                        `👥 *Active Sessions:* ${totalSessions}\n` +
+                        `⏱️ *Uptime:* ${statsUptime}m\n` +
+                        `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
+                        `🛡️ *Exempted Users:* ${exemptedUsers ? exemptedUsers.size : 0}`;
+                    
+                    await message.reply(statsMsg);
+                    break;
+                    
+                default:
+                    await message.reply(`❌ Unknown command: "${command}"\n\nType !help for available commands.`);
+            }
+            
+            console.log(`📊 Command executed: ${command} by ${selfNumber} (${isOwner ? 'Owner' : 'User'})`);
+            
+        } catch (commandError) {
+            console.error(`Command error (${command}):`, commandError);
+            await message.reply('⚠️ An error occurred while processing your command.');
+        }
+        
+    } catch (error) {
+        console.error('❌ Message handler error:', error);
+    }
+});
+        
+        // Initialize the client
+        console.log('🔄 BOT: Initializing WhatsApp client...');
+        await client.initialize();
+        console.log('✅ BOT: Client initialization completed');
+        
+        return client;
+
+    } catch (error) {
+        console.error('❌ BOT: Error creating bot session:', error);
+        console.error('❌ BOT: Error stack:', error.stack);
+        throw error;
+    }
+}    
+
+// Add the missing handleBotCommand function
+async function handleBotCommand({ client, message, command, args, isAdmin, isOwner, selfNumber, selfId, sessionId, userId }) {
+    try {
+        switch (command) {
+            case 'ping':
+                await message.reply('🏓 Pong! Bot is working perfectly!');
+                break;
+                
+            case 'help':
+                const helpMessage = isAdmin 
+                    ? `🔧 *Admin Commands Available:*\n\n` +
+                      `• !ping - Test response\n` +
+                      `• !help - Full help menu\n` +
+                      `• !status - Bot status\n` +
+                      `• !stats - System statistics\n` +
+                      `• !exempt <number> - Exempt user from payment\n` +
+                      `• !unexempt <number> - Remove exemption\n` +
+                      `• !listexempt - List exempted users\n` +
+                      `• !broadcast <message> - Send to all users\n` +
+                      `• !sessions - List all active sessions\n` +
+                      `• !userinfo <number> - Get user information\n\n` +
+                      `👑 *Admin Privileges:* Full system control\n` +
+                      `💡 Type commands in this chat only!`
+                    : `🔧 *Available Commands:*\n\n` +
+                      `• !ping - Test response\n` +
+                      `• !help - Full help menu\n` +
+                      `• !status - Bot status\n` +
+                      `• !myinfo - Account info\n\n` +
+                      `💡 Type commands in this chat only!`;
+                
+                await message.reply(helpMessage);
+                break;
+                
+            case 'status':
+                const uptime = process.uptime();
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                const seconds = Math.floor(uptime % 60);
+                
+                const statusMsg = `🤖 *Your Bot Status*\n\n` +
+                    `✅ *Status:* Active & Ready\n` +
+                    `📱 *Your Number:* ${selfNumber}\n` +
+                    `📱 *Session:* ${sessionId}\n` +
+                    `⏱️ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n` +
+                    `${isOwner ? '👑 *Role:* Bot Owner\n' : (isAdmin ? '👨‍💼 *Role:* Admin\n' : '👤 *Role:* User\n')}` +
+                    `💾 *Memory:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n\n` +
+                    `🚀 *Ready to serve you!*`;
+                
+                await message.reply(statusMsg);
+                break;
+                
+            default:
+                await message.reply(`❌ Unknown command: "${command}"\n\nType !help for available commands.`);
+        }
+        
+        console.log(`📊 Command executed: ${command} by ${selfNumber} (${isOwner ? 'Owner' : (isAdmin ? 'Admin' : 'User')})`);
+        
+    } catch (error) {
+        console.error(`Command error (${command}):`, error);
+        await message.reply('⚠️ An error occurred while processing your command.');
+    }
+}
+
+// Export the function
+module.exports = { 
+    createBotSession,
+    resumeUserSession,
+    clients,
+    userSessions
+};
+
+// Start global periodic subscription checking
+setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
+
+// Also check on startup
+setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup
+
+// Enhanced welcome message function that should be inside sendWelcomeMessages
+async function sendCommandsMessage(chat, isAdmin, uniqueId) {
+    try {
+        const commandsMessage = isAdmin 
+            ? `🔧 *Admin Commands Available:*\n\n` +
+              `• !ping - Test response\n` +
+              `• !help - Full help menu\n` +
+              `• !status - Bot status\n` +
+              `• !stats - System statistics\n` +
+              `• !exempt <number> - Exempt user from payment\n` +
+              `• !unexempt <number> - Remove exemption\n` +
+              `• !listexempt - List exempted users\n` +
+              `• !broadcast <message> - Send to all users\n` +
+              `• !sessions - List all active sessions\n` +
+              `• !userinfo <number> - Get user information\n\n` +
+              `👑 *Admin Privileges:* Full system control\n` +
+              `💡 Type commands in this chat only!`
+            : `🔧 *Available Commands:*\n\n` +
+              `• !ping - Test response\n` +
+              `• !help - Full help menu\n` +
+              `• !status - Bot status\n` +
+              `• !myinfo - Account info\n\n` +
+              `💡 Type commands in this chat only!`;
+
+        await chat.sendMessage(commandsMessage);
+        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
+        
+        return true;
+    } catch (error) {
+        console.error(`❌ Failed to send commands message:`, error);
+        return false;
+    }
+}
+
+// Enhanced contact sync with proper error handling
+async function performContactSync(client, sessionId, userId, io, isAdmin) {
+    try {
+        console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
+        
+        // Your existing syncContacts logic here
+        const contacts = await client.getContacts();
+        const chats = await client.getChats();
+        const groupChats = chats.filter(chat => chat.isGroup);
+        
+        console.log(`📋 Found ${contacts.length} contacts and ${groupChats.length} groups`);
+        
+        // Notify frontend about sync completion
+        if (io) {
+            io.to(`${isAdmin ? 'admin' : 'user'}-${userId}`).emit('contactSyncComplete', {
+                sessionId,
+                contactCount: contacts.length,
+                groupCount: groupChats.length,
+                message: 'Contact sync completed successfully'
+            });
+        }
+        
+        console.log(`✅ Contact sync completed for ${isAdmin ? 'ADMIN' : 'USER'}`);
+        return true;
+        
+    } catch (error) {
+        console.error(`❌ Contact sync failed for ${isAdmin ? 'ADMIN' : 'USER'}:`, error);
+        return false;
+    }
+}
+
+
+// Add this function to handle background sync
+async function handleBotCommand({ client, message, command, args, isAdmin, isOwner, selfNumber, selfId, sessionId, userId }) {
+    try {
+
+        switch (command) {
+
+            /* ================================
+                   BASIC COMMANDS
+            ================================= */
+            case 'ping':
+                await message.reply('🏓 Pong! Bot is working perfectly!');
+                break;
+
+            case 'help':
+                const helpMessage = 
+                    `🔧 *Available Commands:*\n\n` +
+                    `• !ping - Test bot\n` +
+                    `• !help - Help menu\n` +
+                    `• !status - Bot status\n` +
+                    `• !list - Groups where you are admin\n` +
+                    `• !tagall <group-number>\n` +
+                    `• !tagexcept <group-number> <numbers...>\n\n` +
+                    `💡 Type commands in this chat only!`;
+
+                await message.reply(helpMessage);
+                break;
+
+            case 'status': {
+                const uptime = process.uptime();
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                const seconds = Math.floor(uptime % 60);
+
+                const statusMsg =
+                    `🤖 *Your Bot Status*\n\n` +
+                    `📱 *Your Number:* ${selfNumber}\n` +
+                    `🆔 *Session:* ${sessionId}\n` +
+                    `⏱️ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n\n` +
+                    `🚀 Ready to serve you!`;
+
+                await message.reply(statusMsg);
+                break;
+            }
+
+            /* ================================
+                LIST GROUPS WHERE BOT IS ADMIN
+            ================================= */
+                        case 'list': {
+                try {
+                    const chats = await client.getChats();
+                    const groups = chats.filter(c => c.isGroup);
+
+                    let adminGroups = [];
+
+                    for (const gp of groups) {
+                        try { await gp.fetchParticipants(); } catch {}
+
+                        const me = gp.participants.find(p => p.id._serialized === selfId);
+                        if (me && me.isAdmin) adminGroups.push(gp);
+                    }
+
+                    if (!adminGroups.length)
+                        return await message.reply("❌ You are not an admin in any group.");
+
+                    let txt = "📋 *Groups Where You Are Admin:*\n\n";
+
+                    adminGroups.forEach((g, i) => {
+                        txt += `${i + 1}. ${g.name}\n`;
+                    });
+
+                    // store groups for tagall/tagexcept
+                    clientGroups.set(sessionId, adminGroups);
+
+                    return await message.reply(txt);
+
+                } catch (err) {
+                    console.error('Error in !list:', err);
+                    return await message.reply("⚠️ Failed to fetch groups.");
+                }
+            }
+            break;
+
+
+            /* ================================
+                        TAG ALL
+            ================================= */
+                        case 'tagall': {
+                try {
+                    if (args.length < 1)
+                        return message.reply("Usage:\n!tagall <group-number>");
+
+                    const index = parseInt(args[0]) - 1;
+                    const adminGroups = clientGroups.get(sessionId) || [];
+
+                    if (!adminGroups[index])
+                        return message.reply("❌ Invalid group number. Use !list first.");
+
+                    const group = adminGroups[index];
+                    await group.fetchParticipants();
+
+                    let mentions = [];
+                    let text = "*📢 Tagging all members:*\n\n";
+
+                    for (const p of group.participants) {
+                        mentions.push(p.id._serialized);
+                        text += `@${p.id.user} `;
+                    }
+
+                    await client.sendMessage(group.id._serialized, text, { mentions });
+
+                    return message.reply(`✅ Tagged everyone in *${group.name}*`);
+
+                } catch (err) {
+                    console.error('Error in !tagall:', err);
+                    return message.reply("⚠️ Failed to tag members.");
+                }
+            }
+            break;
+                
+
+            /* ================================
+                    TAG EXCEPT
+            ================================= */
+                        case 'tagexcept': {
+                try {
+                    if (args.length < 2)
+                        return message.reply("Usage:\n!tagexcept <group-number> <numbers...>");
+
+                    const index = parseInt(args[0]) - 1;
+                    const adminGroups = clientGroups.get(sessionId) || [];
+
+                    if (!adminGroups[index])
+                        return message.reply("❌ Invalid group number. Use !list first.");
+
+                    const group = adminGroups[index];
+                    await group.fetchParticipants();
+
+                    const excluded = args
+                        .slice(1)
+                        .map(n => n.replace(/[^0-9]/g, "") + "@c.us");
+
+                    let mentions = [];
+                    let text = "*📢 Tagging members (excluding selected numbers):*\n\n";
+
+                    for (const p of group.participants) {
+                        if (excluded.includes(p.id._serialized)) continue;
+
+                        mentions.push(p.id._serialized);
+                        text += `@${p.id.user} `;
+                    }
+
+                    await client.sendMessage(group.id._serialized, text, { mentions });
+
+                    return message.reply(`✅ Tagging completed in *${group.name}*`);
+
+                } catch (err) {
+                    console.error('Error in !tagexcept:', err);
+                    return message.reply("⚠️ Failed to tag members.");
+                }
+            }
+            break;
+
+
+            /* ================================
+                     UNKNOWN COMMAND
+            ================================= */
+            default:
+                await message.reply(`❌ Unknown command: "${command}"`);
+        }
+
+    } catch (error) {
+        console.error(`Command error (${command}):`, error);
+        await message.reply('⚠️ Error occurred while processing command.');
+    }
+}
+
+
+
+
+// Add this function in bot.js
+function debugClientState(client, sessionId) {
+    console.log(`🔍 DEBUG CLIENT STATE for ${sessionId}:`);
+    console.log(`  - Client exists: ${!!client}`);
+    console.log(`  - Client.info exists: ${!!client?.info}`);
+    console.log(`  - Client.info.wid exists: ${!!client?.info?.wid}`);
+    console.log(`  - Client state: ${client ? 'unknown' : 'null'}`);
+    
+    if (client?.info?.wid) {
+        console.log(`  - Self ID: ${client.info.wid._serialized}`);
+        console.log(`  - Phone: ${client.info.wid.user}`);
+    }
+}
+
+
+// Export the function
+module.exports = { 
+    createBotSession,
+    resumeUserSession,  // Add this new export
+    clients,
+    userSessions
+}
+
+
+// Start global periodic subscription checking (add at the very end)
+setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
+
+// Also check on startup
+setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup

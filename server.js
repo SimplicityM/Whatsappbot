@@ -13,7 +13,13 @@ const Session = require('./models/Session');
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
 
 // Import bot functionality
-const { createBotSession } = require('./bot');
+const { 
+    createBotSession, 
+    restoreAllSessions,
+    restoreUserSessionAfterPayment,
+    clients 
+} = require('./bot');
+
 
 // Initialize Express app
 const app = express();
@@ -394,6 +400,7 @@ async function executeCommand(user, sessionId, command, message) {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('🔌 Client connected:', socket.id);
+    restoreAllSessions(io); // ← RUN AUTO-RESTORE AT STARTUP
 
     // 🔑 EXISTING: User room handling
     socket.on('join-user-room', (userId) => {
