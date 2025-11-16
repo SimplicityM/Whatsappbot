@@ -3,8 +3,8 @@ const crypto = require('crypto');
 const axios = require('axios');
 const User = require('../models/User');
 const { authenticate } = require('../middleware/auth');
-const router = express.Router();
-const express = require('express');
+const router = express.Router();   // ✅ KEEP THIS
+// const express = require('express');  ❌ REMOVED DUPLICATE
 
 // Paystack configuration
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
@@ -167,7 +167,7 @@ router.get('/verify/:reference', authenticate, async (req, res) => {
                 user.subscription = subscription;
                 user.paymentStatus = 'paid';
                 user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
-                user.status = 'approved'; // Auto-approve paid users
+                user.status = 'approved';
                 await user.save();
 
                 res.json({
@@ -249,7 +249,7 @@ router.post('/webhook', (req, res) => {
     }
 });
 
-// Handle successful payment
+// Successful payment handler
 async function handleSuccessfulPayment(data) {
     try {
         const { metadata, amount, customer, reference } = data;
@@ -266,55 +266,41 @@ async function handleSuccessfulPayment(data) {
             await user.save();
 
             console.log(`Payment successful for user ${user.email}: ${reference}`);
-            
-            // Here you could send confirmation email or notification
-            // await sendPaymentConfirmationEmail(user, { reference, amount, subscription });
         }
     } catch (error) {
         console.error('Error handling successful payment:', error);
     }
 }
 
-// Handle failed payment
 async function handleFailedPayment(data) {
     try {
         const { metadata, reference } = data;
         const userId = metadata.userId;
-
         console.log(`Payment failed for user ${userId}: ${reference}`);
-        
-        // Here you could send failure notification
-        // await sendPaymentFailureEmail(userId, reference);
     } catch (error) {
         console.error('Error handling failed payment:', error);
     }
 }
 
-// Handle subscription creation
 async function handleSubscriptionCreate(data) {
     try {
         const { customer, plan } = data;
         console.log('Subscription created:', { customer, plan });
-        
-        // Handle recurring subscription logic here
     } catch (error) {
         console.error('Error handling subscription creation:', error);
     }
 }
 
-// Handle subscription disable
 async function handleSubscriptionDisable(data) {
     try {
         const { customer, plan } = data;
         console.log('Subscription disabled:', { customer, plan });
-        
-        // Handle subscription cancellation logic here
     } catch (error) {
         console.error('Error handling subscription disable:', error);
     }
 }
 
-// Get payment history
+// Payment history
 router.get('/history', authenticate, async (req, res) => {
     try {
         const user = req.user;
@@ -382,7 +368,7 @@ router.get('/history', authenticate, async (req, res) => {
     }
 });
 
-// Get subscription plans
+// Plans
 router.get('/plans', (req, res) => {
     try {
         const plans = Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
@@ -407,7 +393,6 @@ router.get('/plans', (req, res) => {
     }
 });
 
-// Get subscription features
 function getSubscriptionFeatures(subscription) {
     const features = {
         starter: [
@@ -456,14 +441,12 @@ router.post('/cancel-subscription', authenticate, async (req, res) => {
     try {
         const user = req.user;
 
-        // Update user subscription to expire at the end of current period
-        // Don't immediately revoke access, let it expire naturally
         user.paymentStatus = 'expired';
         await user.save();
 
         res.json({
             success: true,
-            message: 'Subscription cancelled. Access will continue until expiry date.',
+            message: 'Subscription cancelled. Access continues until expiry.',
             data: {
                 subscriptionExpiry: user.subscriptionExpiry
             }
@@ -491,8 +474,6 @@ router.post('/reactivate-subscription', authenticate, async (req, res) => {
             });
         }
 
-        // This would typically redirect to payment flow
-        // For now, just update the user's intended subscription
         user.subscription = subscription;
         await user.save();
 
@@ -514,7 +495,7 @@ router.post('/reactivate-subscription', authenticate, async (req, res) => {
     }
 });
 
-// Get current subscription status
+// Subscription status
 router.get('/subscription-status', authenticate, async (req, res) => {
     try {
         const user = req.user;
@@ -541,20 +522,25 @@ router.get('/subscription-status', authenticate, async (req, res) => {
     }
 });
 
+async function activateUserSubscription(userId) {
+    const user = await User.findById(userId);
+    if (!user) return null;
 
+    // Mark subscription active
+    user.paymentStatus = 'paid';
+    user.subscriptionExpiry = new Date(Date.now() + 30*24*60*60*1000);
+    await user.save();
 
+    return user;
+}
 
-const { activateUserSubscription } = require('../controllers/subscriptionController');
-const { restoreUserSessionAfterPayment } = require('../bot'); // IMPORTANT
+const { restoreUserSessionAfterPayment } = require('../bot');
 
 router.post('/payment/success', async (req, res) => {
     const { userId } = req.body;
 
     try {
-        // 1️⃣ Update subscription
         await activateUserSubscription(userId);
-
-        // 2️⃣ Restore WhatsApp bot session
         await restoreUserSessionAfterPayment(userId, req.io);
 
         res.json({
@@ -570,7 +556,6 @@ router.post('/payment/success', async (req, res) => {
         });
     }
 });
-
 
 
 module.exports = router;

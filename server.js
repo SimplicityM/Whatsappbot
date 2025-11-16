@@ -5,7 +5,6 @@ const mongoose = require('mongoose');
 const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
-const paymentsRoute = require('./routes/payments');
 require('dotenv').config();
 
 
@@ -13,6 +12,7 @@ require('dotenv').config();
 const User = require('./models/User');
 const Session = require('./models/Session');
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const paymentsRoute = require('./routes/payment.js');
 
 // Import bot functionality
 const { 
