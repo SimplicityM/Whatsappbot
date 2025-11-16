@@ -4,6 +4,7 @@ const axios = require('axios');
 const User = require('../models/User');
 const { authenticate } = require('../middleware/auth');
 const router = express.Router();
+const express = require('express');
 
 // Paystack configuration
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
@@ -539,5 +540,37 @@ router.get('/subscription-status', authenticate, async (req, res) => {
         });
     }
 });
+
+
+
+
+const { activateUserSubscription } = require('../controllers/subscriptionController');
+const { restoreUserSessionAfterPayment } = require('../bot'); // IMPORTANT
+
+router.post('/payment/success', async (req, res) => {
+    const { userId } = req.body;
+
+    try {
+        // 1️⃣ Update subscription
+        await activateUserSubscription(userId);
+
+        // 2️⃣ Restore WhatsApp bot session
+        await restoreUserSessionAfterPayment(userId, req.io);
+
+        res.json({
+            success: true,
+            message: "Subscription activated & bot session restored successfully"
+        });
+
+    } catch (err) {
+        console.error("Payment success error:", err);
+        res.status(500).json({
+            success: false,
+            message: "Payment success but failed to restore bot session"
+        });
+    }
+});
+
+
 
 module.exports = router;
