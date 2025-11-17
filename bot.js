@@ -1,1864 +1,507 @@
 const fs = require('fs');
 const path = require('path');
-const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const crypto = require('crypto');
-const Contact = require('./models/Contact');
-const User = require('./models/User');
-const PhoneRecord = require('./models/PhoneRecord'); // Ensure imported
-const Session = require('./models/Session');
-const TagUsage = require('./models/TagUsage');
-const sessionValidated = new Map();
+const qrcode = require('qrcode-terminal');
 
+const puppeteer = require('puppeteer'); // ensure installed and up-to-date
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
-// ✅ === OWNER & SUBSCRIPTION EXEMPTION SETTINGS ===
-
-// The owner's WhatsApp number (in international format, without @c.us)
-const BOT_OWNER = '2347067012884';
-
-// Temporary in-memory exemption list
-// You can later store this in DB if needed.
-const exemptedUsers = new Set();
-// Load exempted users from file on startup (optional)
-loadExemptedUsersFromFile();
-
-// Check if user is allowed to use bot commands
-async function isAllowedToUseBot(phoneNumber) {
-    try {
-        // Clean the phone number
-        const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-        
-        // Check if user is exempted
-        if (exemptedUsers.has(cleanNumber)) {
-            console.log(`✅ User ${cleanNumber} is exempted`);
-            return true;
-        }
-        
-        // Check if user is owner
-        const BOT_OWNER = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-        if (BOT_OWNER && cleanNumber === BOT_OWNER) {
-            console.log(`👑 User ${cleanNumber} is bot owner`);
-            return true;
-        }
-        
-        // Add your actual subscription checking logic here
-        // For testing purposes, return true (replace with real subscription check)
-        console.log(`🔍 Checking subscription for ${cleanNumber}...`);
-        
-        // TODO: Replace this with your actual subscription validation
-        // Example:
-        // const user = await User.findOne({ whatsappNumber: cleanNumber });
-        // if (!user) return false;
-        // return user.isSubscriptionActive();
-        
-        // For now, return true to test the bot (CHANGE THIS IN PRODUCTION)
-        return true;
-        
-    } catch (error) {
-        console.error('❌ Error checking bot usage permission:', error);
-        return false;
-    }
-}
-
-function exemptUser(phoneNumber, exempt = true) {
-    const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-    
-    if (exempt) {
-        exemptedUsers.add(cleanNumber);
-        console.log(`✅ User ${cleanNumber} exempted from payment`);
-    } else {
-        exemptedUsers.delete(cleanNumber);
-        console.log(`🚫 User ${cleanNumber} exemption removed`);
-    }
-    
-    // Optional: Save exempted users to file for persistence
-    // saveExemptedUsersToFile();
-}
-
-// Optional: Function to save exempted users to file for persistence
-function saveExemptedUsersToFile() {
-    try {
-        const exemptedArray = Array.from(exemptedUsers);
-        const fs = require('fs');
-        const path = require('path');
-        
-        const exemptedFile = path.join(__dirname, 'exempted_users.json');
-        fs.writeFileSync(exemptedFile, JSON.stringify(exemptedArray, null, 2));
-        console.log('💾 Exempted users saved to file');
-    } catch (error) {
-        console.error('❌ Error saving exempted users:', error);
-    }
-}
-
-// Optional: Function to load exempted users from file on startup
-function loadExemptedUsersFromFile() {
-    try {
-        const fs = require('fs');
-        const path = require('path');
-        
-        const exemptedFile = path.join(__dirname, 'exempted_users.json');
-        if (fs.existsSync(exemptedFile)) {
-            const exemptedArray = JSON.parse(fs.readFileSync(exemptedFile, 'utf8'));
-            exemptedArray.forEach(number => exemptedUsers.add(number));
-            console.log(`📂 Loaded ${exemptedArray.length} exempted users from file`);
-        }
-    } catch (error) {
-        console.error('❌ Error loading exempted users:', error);
-    }
-}
-
-// Add this near the top of bot.js, after the requires
-process.on('unhandledRejection', (reason, promise) => {
-    console.log(`[${new Date().toISOString()}] ERROR: Unhandled Rejection at:`, promise);
-    console.log('Reason:', reason);
-    
-    // Don't crash the process for EBUSY errors during cleanup
-    if (reason && reason.message && reason.message.includes('EBUSY')) {
-        console.log('⚠️ File system cleanup error (Windows) - continuing operation');
-        return;
-    }
-    
-    // Don't crash for unlink errors either
-    if (reason && reason.message && reason.message.includes('unlink')) {
-        console.log('⚠️ File unlink error during cleanup - continuing operation');
-        return;
-    }
-});
-
-// --- START CONFIGURATION BLOCK ---
+// ----------------- CONFIG -----------------
 const getDefaultPath = (dirName) => path.join(__dirname, dirName);
 
 const CONFIG = {
-    sessionDataPath: getDefaultPath('sessions'),
-    mediaPath: getDefaultPath('media'),
-    authPath: getDefaultPath('auth'),
-    adminSettings: {
-        selfChatOnly: true,
-        secondaryAdmins: {}
-    }
+  sessionDataPath: getDefaultPath('sessions'),
+  mediaPath: getDefaultPath('media'),
+  authPath: getDefaultPath('auth'),   // kept for backward compatibility though LocalAuth is used
+  adminSettings: {
+    selfChatOnly: false,
+    secondaryAdmins: {}
+  },
+  prefix: '!',
+  maxSessions: 1000,
+  owner: undefined, // fill with owner number in config.json if you want
+  allowedUsers: []
 };
 
+// load config.json if present (non-destructive)
 try {
-    const configPath = path.join(__dirname, 'config.json');
-    if (fs.existsSync(configPath)) {
-        const loadedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-
-        for (const key in loadedConfig) {
-            if (loadedConfig[key] !== undefined && loadedConfig[key] !== null) {
-                CONFIG[key] = loadedConfig[key];
-            } else {
-                console.warn(`Warning: '${key}' in config.json is invalid and will be ignored.`);
-                delete loadedConfig[key];
-            }
-        }
-
-        if (loadedConfig.adminSettings) {
-            CONFIG.adminSettings = {
-                ...CONFIG.adminSettings,
-                ...loadedConfig.adminSettings
-            };
-        }
-
-        fs.writeFileSync(configPath, JSON.stringify(CONFIG, null, 2));
-        console.log('Loaded and sanitized configuration from config.json');
-    } else {
-        console.warn('config.json not found, using default configuration');
-    }
-} catch (error) {
-    console.error('Config load error (using defaults):', error.message);
+  const cfgPath = path.join(__dirname, 'config.json');
+  if (fs.existsSync(cfgPath)) {
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    // shallow merge, keep defaults if missing
+    Object.assign(CONFIG, raw);
+    CONFIG.adminSettings = { ...CONFIG.adminSettings, ...(raw.adminSettings || {}) };
+    console.log('Loaded configuration from config.json');
+  } else {
+    console.warn('config.json not found — using defaults');
+  }
+} catch (err) {
+  console.warn('Failed to load config.json, using defaults:', err.message);
 }
 
+// ensure directories exist
 const requiredDirs = [
-    { name: 'sessionDataPath', path: CONFIG.sessionDataPath },
-    { name: 'mediaPath', path: CONFIG.mediaPath },
-    { name: 'authPath', path: CONFIG.authPath }
+  CONFIG.sessionDataPath,
+  CONFIG.mediaPath,
+  CONFIG.authPath
 ];
 
-for (const dir of requiredDirs) {
-    try {
-        if (!dir.path || typeof dir.path !== 'string') {
-            throw new Error(`Invalid path for ${dir.name}: ${dir.path}`);
-        }
-
-        if (!fs.existsSync(dir.path)) {
-            fs.mkdirSync(dir.path, { recursive: true });
-            console.log(`Created directory: ${dir.path}`);
-        }
-    } catch (err) {
-        console.error(`FATAL: Directory creation failed for ${dir.name}:`, err.message);
-        process.exit(1);
-    }
+for (const d of requiredDirs) {
+  try {
+    if (!d || typeof d !== 'string') throw new Error('Invalid path');
+    fs.mkdirSync(d, { recursive: true });
+  } catch (err) {
+    console.error('FATAL: Could not create directory', d, err.message);
+    process.exit(1);
+  }
 }
 
+// ----------------- CONSTANTS & STATE -----------------
 const SESSION_DIR = CONFIG.sessionDataPath;
 const MEDIA_DIR = CONFIG.mediaPath;
-const AUTH_DIR = CONFIG.authPath;
-const COMMAND_PREFIX = CONFIG.prefix || process.env.COMMAND_PREFIX || '!';
-const MAX_SESSIONS_DEFAULT = CONFIG.maxSessions || process.env.MAX_SESSIONS || 1000;
+const COMMAND_PREFIX = CONFIG.prefix || '!';
+const MAX_SESSIONS_DEFAULT = CONFIG.maxSessions || 1000;
 
 const mediaPath = {
-    audio: path.join(MEDIA_DIR, 'audio.mp3'),
-    document: path.join(MEDIA_DIR, 'document.pdf'),
-    image: path.join(MEDIA_DIR, 'image.jpg')
+  audio: path.join(MEDIA_DIR, 'audio.mp3'),
+  document: path.join(MEDIA_DIR, 'document.pdf'),
+  image: path.join(MEDIA_DIR, 'image.jpg')
 };
 
-const clients = new Map();
-const userSessions = new Map();
-const scheduledReminders = new Map();
-let reminderCounter = 1;
-
-const clientGroups = new Map(); 
-const groupRefreshIntervals = new Map(); 
-const senderAdminGroups = new Map();
-const groupCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-// Add this after line 95 in bot.js
-const userGroupSelections = new Map(); // Store user's selected groups
-
-const clientConfig = {
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--no-first-run',
-            '--no-zygote'
-        ],
-        defaultViewport: null
-    },
-
-    qrMaxRetries: 3,
-    authTimeoutMs: 120000,
-    restartOnAuthFail: true,
-    takeoverOnConflict: true,
-    takeoverTimeoutMs: 5000,
-    chatLoadingTimeoutMs: 15000,
-
-    // Recommended WhatsApp settings
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-    sessionBackupSyncIntervalMs: 300000
-};
-
-
-// Initialize authorized numbers
-const authorizedNumbers = new Set();
-if (CONFIG.owner) {
-    let ownerNumber = CONFIG.owner;
-    if (!ownerNumber.includes('@')) {
-        ownerNumber = `${ownerNumber.replace(/[^0-9]/g, '')}@c.us`;
-    }
-    authorizedNumbers.add(ownerNumber);
-    console.log(`Added owner number to authorized users: ${ownerNumber}`);
-}
-
-if (CONFIG.allowedUsers && Array.isArray(CONFIG.allowedUsers)) {
-    for (const user of CONFIG.allowedUsers) {
-        let userNumber = user;
-        if (!userNumber.includes('@')) {
-            userNumber = `${userNumber.replace(/[^0-9]/g, '')}@c.us`;
-        }
-        authorizedNumbers.add(userNumber);
-    }
-    console.log(`Added ${CONFIG.allowedUsers.length} additional authorized users`);
-}
-
-// Admin verification functions
-const isPrimaryAdmin = (userId) => {
-    return authorizedNumbers.has(userId);
-};
-
-const isSecondaryAdmin = (userId) => {
-    if (!CONFIG.adminSettings?.secondaryAdmins) return false;
-    const cleanNumber = userId.replace('@c.us', '');
-    return CONFIG.adminSettings.secondaryAdmins[cleanNumber]?.enabled === true;
-};
-
-const isAuthorized = (userId) => {
-    return isPrimaryAdmin(userId) || isSecondaryAdmin(userId);
-};
+const clients = new Map();            // sessionId => client
+const userSessions = new Map();       // selfId => sessionUniqueId (for quick lookup)
+const savedContactsFile = path.join(SESSION_DIR, 'saved_contacts.json');
+const savedContacts = new Set(fs.existsSync(savedContactsFile) ? JSON.parse(fs.readFileSync(savedContactsFile, 'utf8')) : []);
 
 const logger = {
-    info: (message) => console.log(`[${new Date().toISOString()}] INFO: ${message}`),
-    error: (message, error) => console.error(`[${new Date().toISOString()}] ERROR: ${message}`, error)
+  info: (m) => console.log(`[${new Date().toISOString()}] INFO: ${m}`),
+  error: (m, e) => console.error(`[${new Date().toISOString()}] ERROR: ${m}`, e || '')
 };
 
-
-
-// Function to suspend a user's bot session (IMPROVED VERSION)
-async function suspendUserSession(userId, sessionId, reason, client, io) {
-    try {
-        console.log(`🚫 Suspending session ${sessionId} for user ${userId}: ${reason}`);
-        
-        // Send notification to user's self-chat
-        if (client && client.info && client.info.wid) {
-            try {
-                const selfId = client.info.wid._serialized;
-                const suspensionMessage = `🚫 *Bot Suspended*\n\n` +
-                    `Reason: ${reason}\n\n` +
-                    `💳 Please renew your subscription to continue using the bot.\n` +
-                    `🌐 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment\n\n` +
-                    `✅ Your session will automatically resume after payment - no need to scan QR again!\n\n` +
-                    `📞 Contact support if you believe this is an error.`;
-                
-                await client.sendMessage(selfId, suspensionMessage);
-                console.log('✅ Suspension notification sent to user');
-            } catch (msgError) {
-                console.error('❌ Failed to send suspension message:', msgError);
-            }
-        }
-
-        // Emit suspension event to frontend
-        if (io) {
-            io.to(`user-${userId}`).emit('sessionSuspended', {
-                sessionId,
-                reason,
-                message: 'Bot suspended due to subscription issues'
-            });
-        }
-
-        // Update session status in database (but keep session data)
-        const Session = require('./models/Session');
-        await Session.findOneAndUpdate(
-            { sessionId },
-            { 
-                status: 'suspended',
-                errorMessage: `Suspended: ${reason}`,
-                suspendedAt: new Date()
-            }
-        );
-
-        // 🔑 KEY CHANGE: Don't destroy client, just mark as suspended
-        // Store the client in a suspended state instead of destroying it
-        const suspendedClients = global.suspendedClients || new Map();
-        suspendedClients.set(sessionId, {
-            client,
-            userId,
-            suspendedAt: new Date(),
-            reason
-        });
-        global.suspendedClients = suspendedClients;
-
-        // Remove from active clients but don't destroy
-        clients.delete(sessionId);
-        
-        console.log(`✅ Session ${sessionId} suspended (not destroyed) - can be resumed after payment`);
-        
-    } catch (error) {
-        console.error('❌ Error suspending user session:', error);
-    }
+// authorized numbers
+const authorizedNumbers = new Set();
+if (CONFIG.owner) {
+  let ownerNumber = CONFIG.owner;
+  if (!ownerNumber.includes('@')) ownerNumber = `${ownerNumber.replace(/[^0-9]/g, '')}@c.us`;
+  authorizedNumbers.add(ownerNumber);
+  logger.info(`Added owner to authorizedNumbers: ${ownerNumber}`);
+}
+if (Array.isArray(CONFIG.allowedUsers)) {
+  for (const u of CONFIG.allowedUsers) {
+    let num = u;
+    if (!num.includes('@')) num = `${num.replace(/[^0-9]/g,'')}@c.us`;
+    authorizedNumbers.add(num);
+  }
+  logger.info(`Loaded ${CONFIG.allowedUsers.length || 0} allowed users`);
 }
 
-// Function to resume a suspended session after payment
-async function resumeUserSession(userId, sessionId, io) {
-    try {
-        console.log(`🟢 Resuming session ${sessionId} for user ${userId} after payment`);
+const isPrimaryAdmin = (userId) => authorizedNumbers.has(userId);
+const isSecondaryAdmin = (userId) => {
+  if (!CONFIG.adminSettings?.secondaryAdmins) return false;
+  const clean = userId.replace('@c.us','');
+  return CONFIG.adminSettings.secondaryAdmins[clean]?.enabled === true;
+};
+const isAuthorized = (userId) => isPrimaryAdmin(userId) || isSecondaryAdmin(userId);
+
+// ----------------- HELPERS -----------------
+function createClientOptions(sessionId) {
+  // Detect platform: on Windows prefer headless:false for dev; on Linux default headless true
+  const isWindows = process.platform === 'win32';
+  const headless = !isWindows; // dev convenience: show browser on Windows
+
+  const puppeteerArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage'
+  ];
+  if (!isWindows) {
+    // on linux we can add single-process / no-zygote if needed by environment; leave minimal for portability
+    puppeteerArgs.push('--disable-gpu');
+  }
+
+  return {
+    authStrategy: new LocalAuth({ clientId: `session-${sessionId}` }),
+            puppeteer: {
+            headless: false,  // show Chrome window, more stable on Windows
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage"
+            ],
+            defaultViewport: null
+        },
+        takeoverOnConflict: true,
+        restartOnAuthFail: true
         
-        const suspendedClients = global.suspendedClients || new Map();
-        const suspendedSession = suspendedClients.get(sessionId);
-        
-        if (!suspendedSession) {
-            console.log(`⚠️ No suspended session found for ${sessionId}`);
-            return false;
-        }
-
-        const { client } = suspendedSession;
-        
-        // Verify client is still valid
-        if (!client || !client.info || !client.info.wid) {
-            console.log(`❌ Suspended client is no longer valid for ${sessionId}`);
-            suspendedClients.delete(sessionId);
-            return false;
-        }
-
-        // Move client back to active clients
-        clients.set(sessionId, client);
-        suspendedClients.delete(sessionId);
-
-        // Update session status in database
-        const Session = require('./models/Session');
-        await Session.findOneAndUpdate(
-            { sessionId },
-            { 
-                status: 'connected',
-                errorMessage: null,
-                suspendedAt: null,
-                resumedAt: new Date()
-            }
-        );
-
-        // Send resume notification to user
-        try {
-            const selfId = client.info.wid._serialized;
-            const resumeMessage = `🟢 *Bot Resumed!*\n\n` +
-                `✅ Your subscription is now active.\n` +
-                `🤖 Bot is ready for commands!\n\n` +
-                `Type !help to see available commands.`;
-            
-            await client.sendMessage(selfId, resumeMessage);
-            console.log('✅ Resume notification sent to user');
-        } catch (msgError) {
-            console.error('❌ Failed to send resume message:', msgError);
-        }
-
-        // Emit resume event to frontend
-        if (io) {
-            io.to(`user-${userId}`).emit('sessionResumed', {
-                sessionId,
-                message: 'Bot resumed after payment confirmation'
-            });
-        }
-
-        console.log(`✅ Session ${sessionId} successfully resumed`);
-        return true;
-        
-    } catch (error) {
-        console.error('❌ Error resuming user session:', error);
-        return false;
-    }
-}
-
-// Function to check for bot subscription
-async function checkUserSubscriptionStatus(userId) {
-    try {
-        const user = await User.findById(userId);
-        if (!user) return { isValid: false, reason: "User not found", action: "suspend" };
-
-        const userNumber = user.whatsappNumber?.replace(/[^0-9]/g, "");
-        const ownerNumber = CONFIG.owner?.replace(/[^0-9]/g, "");
-
-        // Owner rule
-        if (userNumber === ownerNumber) {
-            return { isValid: true, isOwner: true, reason: "Owner access" };
-        }
-
-        // Exempt user
-        if (user.exemptFromPayment === true) {
-            return { isValid: true, isExempted: true, reason: "Admin exempted" };
-        }
-
-        const sub = user.subscription;
-
-        // No subscription yet → trial user
-        if (!sub || !sub.createdAt) {
-            return {
-                isValid: true,
-                trial: true,
-                reason: "Trial active",
-                trialDaysLeft: 7
-            };
-        }
-
-        const now = new Date();
-        if (sub.expiresAt && sub.expiresAt > now) {
-            return {
-                isValid: true,
-                subscription: sub,
-                planType: sub.planType,
-                reason: "Subscription active"
-            };
-        }
-
-        // Expired
-        return {
-            isValid: false,
-            reason: "Subscription expired",
-            expired: true
         };
+        }
 
-    } catch (err) {
-        console.error("Subscription checking error:", err);
-        return { isValid: false, reason: "System error", action: "suspend" };
-    }
-}
-
-
-
-// Periodic subscription checking function
-// SAFE periodic subscription checking function
-async function periodicSubscriptionCheck() {
-  console.log('🔍 Running periodic subscription check.');
-
+async function saveContactsToDisk() {
   try {
-    const activeClientsList = Array.from(clients.entries());
-
-    for (const [sessionId, client] of activeClientsList) {
-      try {
-        // skip if client was removed or invalid
-        if (!client) {
-          console.log(`⚠️ No client instance for ${sessionId}, skipping.`);
-          continue;
-        }
-
-        const Session = require('./models/Session');
-        const session = await Session.findOne({ sessionId });
-
-        // If DB session doesn't exist yet, skip — server may still be saving it
-        if (!session) {
-          console.log(`⚠️ DB session not found for ${sessionId} — likely still being created. Skipping check.`);
-          continue;
-        }
-
-        // Skip very new sessions (short grace window)
-        const ageMs = Date.now() - new Date(session.createdAt).getTime();
-        if (ageMs < (2 * 60 * 1000)) { // 2 minutes
-          console.log(`⏳ Skipping check for session ${sessionId} (Age: ${Math.round(ageMs/1000)}s)`);
-          continue;
-        }
-
-        // client.info.wid only exists after auth/ready
-        const isClientReady = !!client?.info?.wid;
-        const validated = sessionValidated.get(sessionId) === true;
-
-        // If client not ready OR not yet validated, skip — wait until welcome/first-command completes
-        if (!isClientReady || !validated) {
-          console.log(`🔒 Skipping session ${sessionId} — ready:${isClientReady} validated:${validated}`);
-          continue;
-        }
-
-        // Now it's safe to check subscription status
-        const status = await checkUserSubscriptionStatus(session.userId);
-
-        // Anti-fraud: if phone blocked from trial, don't suspend — just log
-        if (status.action === 'block_trial') {
-          console.log(`🚫 Session ${sessionId}: phone blocked from trial (anti-fraud). Not suspending.`);
-          continue;
-        }
-
-        if (!status.isValid && status.action === 'suspend') {
-          console.log(`🚫 Subscription invalid — suspending session ${sessionId} for user ${session.userId}`);
-          await suspendUserSession(session.userId, sessionId, status.reason, client, null);
-        } else {
-          // session is healthy
-          // optionally send heartbeat/emit to frontend:
-          // io?.to(`user-${session.userId}`).emit('sessionHealthy', { sessionId });
-        }
-
-      } catch (err) {
-        console.error(`❌ Error during subscription check for (${sessionId}):`, err);
-      }
-    }
-  } catch (error) {
-    console.error('❌ Fatal periodic check error:', error);
+    fs.writeFileSync(savedContactsFile, JSON.stringify([...savedContacts], null, 2));
+    logger.info('Saved contacts file updated');
+  } catch (err) {
+    logger.error('Failed to write saved contacts file', err);
   }
 }
 
-
-
-
-
-function createNewSession() {
-    try {
-        const sessionId = Date.now().toString();
-        if (clients.has(sessionId)) {
-            logger.info(`Session ${sessionId} already exists`);
-            return sessionId;
-        }
-        const client = createClient(sessionId);
-        clients.set(sessionId, client);
-        
-// Mark this session as NOT validated yet (we will check on first command)
-// For restored sessions we will set it to true in restoreAllSessions
-sessionValidated.set(sessionId, false);
-        client.initialize().catch(err => {
-            logger.error(`Failed to initialize client ${sessionId}:`, err);
-            clients.delete(sessionId);
-        });
-        return sessionId;
-    } catch (error) {
-        logger.error('Failed to create new session:', error);
-    }
-}
-
-// Initialize saved contacts
-const SAVED_CONTACTS_FILE = path.join(SESSION_DIR, 'saved_contacts.json');
-const savedContacts = new Set(
-    fs.existsSync(SAVED_CONTACTS_FILE) 
-        ? JSON.parse(fs.readFileSync(SAVED_CONTACTS_FILE)) 
-        : []
-);
-
-// Enhanced contact saving with email/phone notifications
-async function saveNewContact(contact, client, adminId) {
-    try {
-        // Save contact to database (existing logic)
-        const savedContact = {
-            name: contact.pushname || 'Unknown',
-            number: contact.id.user,
-            savedAt: new Date(),
-            adminId: adminId
-        };
-        
-        // Save to your database here
-        // await ContactModel.create(savedContact);
-        
-        // Send email notification
-        await sendEmailNotification(adminId, savedContact);
-        
-        // Send SMS notification (optional)
-        await sendSMSNotification(adminId, savedContact);
-        
-        // Notify admin via WhatsApp self-chat
-        const selfChat = await client.getChatById(adminId);
-        await selfChat.sendMessage(
-            `📞 *New Contact Saved*\n\n` +
-            `*Name:* ${savedContact.name}\n` +
-            `*Number:* ${savedContact.number}\n` +
-            `*Time:* ${savedContact.savedAt.toLocaleString()}`
-        );
-        
-        return savedContact;
-        
-    } catch (error) {
-        console.error('Error saving contact:', error);
-        throw error;
-    }
-}
-
-// Email notification function
-async function sendEmailNotification(adminId, contact) {
-    try {
-        // You'll need to install nodemailer: npm install nodemailer
-        const nodemailer = require('nodemailer');
-        
-        // Get admin email from database
-        const adminUser = await User.findOne({ whatsappNumber: adminId });
-        if (!adminUser || !adminUser.email) return;
-        
-        const transporter = nodemailer.createTransporter({
-            // Configure your email service
-            service: 'gmail', // or your email service
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: adminUser.email,
-            subject: 'New WhatsApp Contact Saved',
-            html: `
-                <h2>New Contact Saved</h2>
-                <p><strong>Name:</strong> ${contact.name}</p>
-                <p><strong>Number:</strong> ${contact.number}</p>
-                <p><strong>Time:</strong> ${contact.savedAt.toLocaleString()}</p>
-            `
-        };
-        
-        await transporter.sendMail(mailOptions);
-        console.log('Email notification sent to:', adminUser.email);
-        
-    } catch (error) {
-        console.error('Error sending email notification:', error);
-    }
-}
-
-// SMS notification function (optional)
-async function sendSMSNotification(adminId, contact) {
-    try {
-        // You can use services like Twilio, Nexmo, etc.
-        // This is a placeholder implementation
-        console.log(`SMS notification would be sent for contact: ${contact.name}`);
-        
-    } catch (error) {
-        console.error('Error sending SMS notification:', error);
-    }
-}
-function setupCallHandlers(client) {
-    client.on('call', async (call) => {
-        try {
-            if (!client.info) {
-                logger.info('Ignoring call during authentication');
-                return;
-            }
-            const caller = call.from;
-            const isVideoCall = call.isVideo;
-            logger.info(`Received ${isVideoCall ? 'video' : 'voice'} call from ${caller}`);
-            
-            const contact = await client.getContactById(caller);
-            if (!contact.name || contact.name === contact.pushname || contact.name === caller.split('@')[0]) {
-                const saved = await saveNewContact(client, caller, contact.pushname || null);
-                if (saved) {
-                    for (const adminNumber of authorizedNumbers) {
-                        try {
-                            const adminChat = await client.getChatById(adminNumber);
-                            await adminChat.sendMessage(`📞 Automatically saved new contact:
-*Number:* ${caller}
-*Name:* ${contact.pushname || 'Unknown'}`);
-                        } catch (err) {
-                            logger.error('Failed to notify admin about new contact:', err);
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            logger.error('Error handling call event:', error);
-        }
-    });
-}
-
-
-// function createClient(sessionId) {
-//     const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
-//     let sessionData = null;
-//     try {
-//         if (fs.existsSync(sessionFile)) {
-//             sessionData = JSON.parse(fs.readFileSync(sessionFile));
-//             logger.info(`Loaded session data for ${sessionId}`);
-//         }
-//     } catch (error) {
-//         logger.error(`Failed to load session ${sessionId}:`, error);
-//     }
-    
-//     const client = new Client({ 
-//         session: sessionData,
-//         ...clientConfig
-//     });
-    
-//     client.removeAllListeners('message');
-//     client.removeAllListeners('message_create');
-
-//     clientGroups.set(sessionId, []);
-
-//     setupCallHandlers(client);
-//     return client;
-// }
-
-function createClient(sessionId) {
-    const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
-    let sessionData = null;
-
-    try {
-        if (fs.existsSync(sessionFile)) {
-            sessionData = JSON.parse(fs.readFileSync(sessionFile));
-            logger.info(`Loaded session data for ${sessionId}`);
-        }
-    } catch (error) {
-        logger.error(`Failed to load session ${sessionId}:`, error);
-    }
-
-    const client = new Client({
-        session: sessionData,
-        ...clientConfig,
-        puppeteer: {
-            ...clientConfig.puppeteer,
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-gpu',
-                '--disable-dev-shm-usage',
-                '--no-zygote',
-                '--single-process',
-                '--disable-extensions',
-                '--disable-infobars',
-                '--ignore-certificate-errors',
-                '--window-size=1920,1080',
-                ...(clientConfig.puppeteer.args || [])
-            ]
-        }
-    });
-
-    // Clear previous listeners
-    client.removeAllListeners('message');
-    client.removeAllListeners('message_create');
-
-    clientGroups.set(sessionId, []);
-
-    // ========= REQUIRED CORE HANDLERS ========= //
-
-    client.on('loading_screen', (percent, message) => {
-        console.log(`📱 Loading: ${percent}% - ${message} (session: ${sessionId})`);
-    });
-
-    client.on('authenticated', () => {
-        console.log(`🔑 [createClient] Authenticated for session ${sessionId}`);
-    });
-
-    client.on('auth_failure', err => {
-        console.log(`❌ [createClient] Auth failure for ${sessionId}:`, err);
-    });
-
-//     client.on('qr', (qr) => {
-//     console.log(`📱 [createClient] QR generated for ${sessionId}`);
-
-//     const roomName = `user-${sessionId}`;
-
-//     // === EMIT TO FRONTEND ROOM ===
-//     if (global.io) {
-//         global.io.to(roomName).emit("qrCode", {
-//             sessionId,
-//             qr,
-//             message: "Scan this QR code with WhatsApp",
-//             userType: "user"
-//         });
-//         console.log(`✅ QR emitted to room: ${roomName}`);
-//     } else {
-//         console.error("❌ global.io is not set. Cannot send QR.");
-//     }
-
-//     // Also global broadcast fallback
-//     if (global.io) {
-//         global.io.emit("qrCode", {
-//             sessionId,
-//             qr,
-//             broadcast: true,
-//             message: "Scan this QR code"
-//         });
-//     }
-// });
-
-client.on("qr", (qr) => {
-    console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
-    
-    const roomName = `user-${userId.toString()}`;
-
-    if (!io) {
-        console.error("❌ io is undefined – cannot emit QR");
-        return;
-    }
-
-    console.log(`📤 Emitting QR to room: ${roomName}`);
-
-    io.to(roomName).emit("qrCode", {
-        sessionId,
-        qr,
-        userId,
-        message: "Scan this QR code with WhatsApp",
-        source: "createBotSession"
-    });
-
-    console.log("✅ QR event emitted to frontend");
-});
-
-
-    client.on('ready', async () => {
-        console.log(`🎉 [createClient] READY for session ${sessionId}`);
-
-        try {
-            const selfId = client.info?.wid?._serialized;
-            const selfNumber = client.info?.wid?.user;
-
-            if (selfId) {
-                client.selfId = selfId;
-                userSessions.set(selfId, sessionId);
-                sessionValidated.set(sessionId, true);
-
-                console.log(`🤖 [createClient] Self ID: ${selfId}`);
-                console.log(`🤖 [createClient] Self Number: ${selfNumber}`);
-
-                // Minimal self-chat welcome
-                try {
-                    const chat = await client.getChatById(selfId);
-                    await chat.sendMessage(`🤖 Bot connected (session: ${sessionId})`);
-                } catch (e) {
-                    console.warn(`[createClient] Cannot send welcome message: ${e.message}`);
-                }
-
-            } else {
-                console.warn(`[createClient] READY fired but no wid found`);
-            }
-        } catch (err) {
-            console.error(`[createClient] READY error:`, err);
-        }
-    });
-
-    client.on('disconnected', reason => {
-        console.log(`⚠️ [createClient] Disconnected (${sessionId}):`, reason);
-
-        clients.delete(sessionId);
-        sessionValidated.delete(sessionId);
-
-        if (client.selfId) userSessions.delete(client.selfId);
-    });
-
-    // ======== MESSAGE HANDLER (COMMAND FIXED) ======== //
-    client.on('message', async message => {
-        try {
-            const selfId = client.selfId || client.info?.wid?._serialized;
-            const ownerId = CONFIG.owner
-                ? `${CONFIG.owner.replace(/[^0-9]/g, '')}@c.us`
-                : null;
-
-            const fromOwner = ownerId && message.from === ownerId;
-            const fromSelf = message.fromMe;
-            const toSelf = message.to === selfId;
-            const inSelfChat = message.from === selfId;
-
-            const allowed = fromOwner || fromSelf || toSelf || inSelfChat;
-
-            if (!allowed) return;
-            if (!message.body || !message.body.startsWith('!')) return;
-
-            const command = message.body.slice(1).split(' ')[0].toLowerCase();
-
-            await message.react('🤖');
-
-            switch (command) {
-                case 'ping':
-                    return message.reply('🏓 Pong!');
-                case 'help':
-                    return message.reply(
-                        '🤖 *Commands*\n• !ping\n• !help\n• !status\n• !sessionid'
-                    );
-                case 'status':
-                    return message.reply(`🤖 Bot Active\n📱 Session: ${sessionId}`);
-                case 'sessionid':
-                    return message.reply(`🆔 *Session ID:* ${sessionId}`);
-                default:
-                    return message.reply(`❌ Unknown command: *${command}*`);
-            }
-        } catch (err) {
-            console.error(`[createClient] Message error (${sessionId}):`, err);
-        }
-    });
-
-    // Call handler setup
-    setupCallHandlers(client);
-
-    return client;
-}
-
-
-let isShuttingDown = false;
-    
-process.on('uncaughtException', (err) => logger.error('Uncaught Exception:', err));
-
-    
-process.on('SIGTERM', () => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    logger.info('SIGTERM received, shutting down...');
-    for (const client of clients.values()) {
-        try {
-            client.destroy();
-        } catch (error) {
-            logger.error('Error during client shutdown:', error);
-        }
-    }
-    process.exit(0);
-});
-    
-process.on('SIGINT', () => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    logger.info('SIGINT received, shutting down...');
-    for (const client of clients.values()) {
-        try {
-            client.destroy();
-        } catch (error) {
-            logger.error('Error during client shutdown:', error);
-        }
-    }
-    process.exit(0);
-});
-    
-process.on('exit', () => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    logger.info('Exit event received, shutting down...');
-    for (const client of clients.values()) {
-        try {
-            client.destroy();
-        } catch (error) {
-            logger.error('Error during client shutdown:', error);
-        }
-    }
-});
-    
-process.on('SIGHUP', () => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    logger.info('SIGHUP received, shutting down...');
-    for (const client of clients.values()) {
-        try {
-            client.destroy();
-        } catch (error) {
-            logger.error('Error during client shutdown:', error);
-        }
-    }
-    process.exit(0);
-});
-    
-const handleShutdown = async (message) => {
-    await message.reply('🔄 Shutting down bot...');
-    logger.info('Shutdown initiated by admin');
-    
-    for (const client of clients.values()) {
-        try {
-            await client.destroy();
-        } catch (error) {
-            logger.error('Error during client shutdown:', error);
-        }
-    }
-    
-    await message.reply('✅ Shutdown complete. Bot is now offline.');
-    process.exit(0);
-};
-    
-const handleSudoCommand = async (message, args, client) => {
-    if (!isAuthorized(message.from)) {
-        await message.reply('🚫 You are not authorized to use sudo commands');
-        return;
-    }
-
-    if (!args.length) {
-        await message.reply(`*Sudo Commands:*\n!sudo stats - Show detailed system stats\n!sudo list - List all active sessions\n!sudo clearsessions - Clear inactive sessions\n!sudo broadcast [message] - Send message to all chats`);
-        return;
-    }
-
-    const subCommand = args[0];
-    
-    switch (subCommand) {
-        case 'stats':
-            const memUsage = process.memoryUsage();
-            const stats = `*System Statistics:*\n- Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)} MB\n- Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)} MB\n- RSS: ${Math.round(memUsage.rss / 1024 / 1024)} MB\n- Active Sessions: ${clients.size}\n- Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`;
-            await message.reply(stats);
-            break;
-            
-        case 'list': {
-            try {
-                const chatId  = message.from;
-                const selfId  = client.info.wid._serialized;
-                const isGroup = chatId.endsWith('@g.us');
-                
-                const userId  = message.fromMe
-                    ? selfId
-                    : (isGroup
-                        ? message.author
-                        : message.from);
-
-                const isSelfChat = chatId === selfId;
-                const ownerNumber = CONFIG.owner
-                  ? CONFIG.owner.replace(/[^0-9]/g, '') + '@c.us'
-                  : null;
-                  
-                const targetUser = (isSelfChat && ownerNumber)
-                  ? ownerNumber
-                  : userId;
-
-                await message.reply('⚡ Fetching your admin groups…');
-                const groups = await getGroupsWhereSenderIsAdmin(client, targetUser);
-                
-                if (!groups.length) {
-                  return message.reply('❌ You are not admin in any groups');
-                }
-
-                const sessionId = userSessions.get(selfId);
-                senderAdminGroups.set(`${targetUser}_${sessionId}`, groups);
-
-                const listText = groups
-                  .map((g,i) => `${i+1}. ${g.name} (${g.participants?.length||0} members)`)
-                  .join('\n');
-
-                return message.reply(
-                  `*📋 Groups Where You Are Admin (${groups.length})*\n\n` +
-                  listText +
-                  `\n\n💡 Now use !tagall or !tagallexcept with those numbers.`
-                );
-            } catch (err) {
-                logger.error('Error in sudo list:', err);
-                return message.reply('❌ Oops, something went wrong fetching your groups.');
-            }
-            break;
-        }
-            
-        case 'clearsessions':
-            const sessionDir = fs.readdirSync(SESSION_DIR);
-            let removed = 0;
-            
-            for (const file of sessionDir) {
-                const sessionId = file.replace('session-', '').replace('.json', '');
-                if (!clients.has(sessionId)) {
-                    fs.unlinkSync(path.join(SESSION_DIR, file));
-                    removed++;
-                }
-            }
-            
-            await message.reply(`✅ Cleared ${removed} inactive session files`);
-            break;
-            
-        case 'broadcast':
-            const broadcastMsg = args.slice(1).join(' ');
-            if (!broadcastMsg) {
-                await message.reply('Please provide a message to broadcast');
-                return;
-            }
-            
-            let sent = 0;
-            for (const client of clients.values()) {
-                try {
-                    const chats = await client.getChats();
-                    for (const chat of chats) {
-                        await chat.sendMessage(`*BROADCAST*\n\n${broadcastMsg}`);
-                        sent++;
-                    }
-                } catch (error) {
-                    logger.error('Broadcast error:', error);
-                }
-            }
-            
-            await message.reply(`✅ Broadcast sent to ${sent} chats`);
-            break;
-            
-        default:
-            await message.reply('Unknown sudo command. Use !sudo for help.');
-    }
-};
-    
-
-
-
-
-const handleEventCommand = async (message, args, client) => {
-    await message.reply("🎉 Event command received. Feature under construction.");
-};
-
-const sendAdvanceNotification = async (reminder, client, timeFrame) => {
-    console.log("🔔 Sending advance notification for", reminder, "Timeframe:", timeFrame);
-};
-
-const sendReminderNotification = async (reminder, client) => {
-    console.log("🔔 Sending final reminder for", reminder);
-};
-
-const listReminders = async (message, client) => {
-    await message.reply("📋 Listing reminders is currently under development.");
-};
-
-const cancelReminder = async (message, args) => {
-    await message.reply("❌ Cancel reminder functionality is not ready yet.");
-};
-
-// Start up to 1000 sessions (configurable)
-let MAX_SESSIONS = MAX_SESSIONS_DEFAULT;
-let current = 0;
-const createMultipleSessions = () => {
-    if (current >= MAX_SESSIONS) return;
-    if (clients.size >= 5) {
-        logger.info(`Already have ${clients.size} active sessions. Waiting before creating more.`);
-        setTimeout(createMultipleSessions, 60000);
-        return;
-    }
-    createNewSession();
-    current++;
-    setTimeout(createMultipleSessions, 30000);
-};
-
-module.exports = {
-    start: (maxSessions = MAX_SESSIONS_DEFAULT) => {
-        MAX_SESSIONS = maxSessions;
-        createMultipleSessions();
-    },
-    createNewSession,
-    clients
-};
-
-// Auto-start the bot if this file is run directly
-if (require.main === module) {
-    console.log('🚀 Starting WhatsApp Bot...');
-    
-    // Create a basic config.json if it doesn't exist
-    const configPath = path.join(__dirname, 'config.json');
-    if (!fs.existsSync(configPath)) {
-        const defaultConfig = {
-            "owner": "your_phone_number_here",
-            "prefix": "!",
-            "maxSessions": 1,
-            "allowedUsers": []
-        };
-        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
-        console.log('📝 Created default config.json - Please edit it with your phone number');
-        console.log('⚠️  Please update config.json with your phone number before running the bot');
-        process.exit(1);
-    }
-
-}
-
-// Export function for server.js integration
-async function createBotSession(userId, sessionId, io) {
-    try {
-        let botPhoneNumber = null;
-        let botSelfId = null;
-
-        console.log('🤖 BOT: Creating bot session');
-        console.log('👤 User ID:', userId);
-        console.log('📱 Session ID:', sessionId);
-        console.log('🔍 BOT: io object exists?', !!io);
-
-        const user = await User.findById(userId);
-        const isAdmin =
-            user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
-
-        console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
-        console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
-
-        // Create the WhatsApp client
-       const authFolder = path.join(
-    AUTH_DIR,
-    `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`
-);
-
-                    const client = new Client({
-                        authStrategy: new LocalAuth({
-                            clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
-                            dataPath: authFolder
-                        }),
-
-                                puppeteer: {
-    ...clientConfig.puppeteer,
-    headless: true,
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        ...(clientConfig.puppeteer?.args || [])
-    ],
-    handleSIGINT: false,
-    handleSIGTERM: false
-},
-takeoverOnConflict: true,
-takeoverTimeoutMs: 10000,
-syncFullHistory: false,
-markOnlineOnConnect: false,
-chatLoadingTimeoutMs: 30000,
-sessionBackupSyncIntervalMs: 300000,
-qrMaxRetries: clientConfig.qrMaxRetries || 3,
-authTimeoutMs: 60000,
-restartOnAuthFail: clientConfig.restartOnAuthFail
-});
-
-
-        // Store client so we can access it later
-        clients.set(sessionId, client);
-
-        // ======================= COMPREHENSIVE EVENT HANDLERS ==========================
-
-        // Loading screen handler
-        client.on('loading_screen', (percent, message) => {
-            console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} Loading: ${percent}% - ${message} (Session: ${sessionId})`);
-            
-            // Update session status during loading
-            if (percent === 100) {
-                console.log(`✅ Loading completed for session: ${sessionId}`);
-            }
-        });
-
-        // Authentication handler
-        client.on('authenticated', (session) => {
-            console.log(`🔑 Authentication successful for session: ${sessionId}`);
-            
-            try {
-                if (session && typeof session === 'object') {
-                    const sessionString = JSON.stringify(session);
-                    const phoneMatch = sessionString.match(/(\d{10,15})/);
-                    if (phoneMatch) {
-                        botPhoneNumber = phoneMatch[1];
-                        botSelfId = `${botPhoneNumber}@c.us`;
-                        console.log(`📱 Extracted phone number: ${botPhoneNumber}`);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ Error extracting phone from session object:', error.message);
-            }
-
-            if (!botPhoneNumber && CONFIG.owner) {
-                botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
-                botSelfId = `${botPhoneNumber}@c.us`;
-                console.log(`📱 Using config owner number: ${botPhoneNumber}`);
-            }
-        });
-
-        // State change handler with detailed logging
-        client.on('change_state', (state) => {
-            console.log(`📱 State changed to: ${state} for session: ${sessionId}`);
-            
-            // Log important state transitions
-            if (state === 'CONNECTED') {
-                console.log(`🟢 WhatsApp connected for session: ${sessionId}`);
-            } else if (state === 'OPENING') {
-                console.log(`🔄 WhatsApp opening for session: ${sessionId}`);
-            } else if (state === 'PAIRING') {
-                console.log(`🔗 WhatsApp pairing for session: ${sessionId}`);
-            }
-        });
-
-        // QR code handler
-        client.on('qr', async (qr) => {
-            console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
-            const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
-
-            if (!io) {
-                console.error(`❌ io is undefined! Cannot emit QR for session: ${sessionId}`);
-                return;
-            }
-
-            // Emit to specific room
-            io.to(roomName).emit('qrCode', {
-                sessionId,
-                qr,
-                message: 'Scan this QR code with WhatsApp',
-                userId,
-                isAdmin,
-                userType: isAdmin ? 'admin' : 'user'
-            });
-
-            // Also broadcast as fallback
-            io.emit('qrCode', {
-                sessionId,
-                qr,
-                message: 'Scan this QR code with WhatsApp',
-                userId,
-                isAdmin,
-                userType: isAdmin ? 'admin' : 'user',
-                broadcast: true
-            });
-
-            console.log(`✅ QR code emitted for session: ${sessionId}`);
-        });
-
-        // ======================= READY EVENT WITH ENHANCED DEBUGGING ==========================
-        client.on('ready', async () => {
-            console.log('🎉 ===== READY EVENT FIRED =====');
-            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
-
-            try {
-                // Add timeout protection
-                const readyTimeout = setTimeout(() => {
-                    console.error('❌ Ready event processing timeout for session:', sessionId);
-                }, 45000); // Increased to 45 seconds
-
-                console.log('🔍 Checking client info...');
-                const selfId = client.info?.wid?._serialized;
-                const selfNumber = client.info?.wid?.user;
-                const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
-
-                console.log('📊 Client info debug:', {
-                    hasInfo: !!client.info,
-                    hasWid: !!client.info?.wid,
-                    selfId: selfId || 'MISSING',
-                    selfNumber: selfNumber || 'MISSING'
-                });
-
-                if (!selfId || !selfNumber) {
-                    console.error('❌ Missing selfId or selfNumber in ready event for session:', sessionId);
-                    console.error('❌ Full client info:', JSON.stringify(client.info, null, 2));
-                    clearTimeout(readyTimeout);
-                    return;
-                }
-
-                client.selfId = selfId;
-                userSessions.set(selfId, sessionId);
-
-                console.log('📱 Self ID:', selfId);
-                console.log('📞 Phone:', selfNumber);
-                console.log('🆔 Session ID (unique):', uniqueId);
-
-                // Clear timeout since we got this far
-                clearTimeout(readyTimeout);
-
-                // Update session in database first
-                try {
-                    const sessionUpdate = await Session.findOneAndUpdate(
-                        { sessionId },
-                        {
-                            status: 'connected',
-                            phone: selfNumber,
-                            connectedAt: new Date(),
-                            updatedAt: new Date()
-                        },
-                        { upsert: false, new: true }
-                    );
-                    
-                    if (sessionUpdate) {
-                        console.log('✅ Session status updated to connected in database');
-                    } else {
-                        console.log('⚠️ Session not found in database for update');
-                    }
-                } catch (sErr) {
-                    console.error('❌ Could not update Session record on ready:', sErr.message);
-                }
-
-                // Get user document
-                let userDoc;
-                try {
-                    userDoc = (await User.findOne({ whatsappNumber: selfNumber })) || user;
-                    console.log('✅ User document retrieved:', userDoc ? userDoc.email : 'No user found');
-                } catch (userErr) {
-                    console.error('❌ Failed to find user:', userErr);
-                    userDoc = user;
-                }
-
-                // Initialize session validation state
-                sessionValidated.set(sessionId, false);
-                console.log(`✅ Session validation state initialized for ${sessionId} (sessionValidated=false)`);
-
-                // Send welcome messages with comprehensive error handling
-                try {
-                    console.log('📤 Attempting to get self chat...');
-                    
-                    // Add retry logic for getting chat
-                    let chat;
-                    let retryCount = 0;
-                    const maxRetries = 3;
-                    
-                    while (retryCount < maxRetries) {
-                        try {
-                            chat = await client.getChatById(selfId);
-                            console.log('✅ Self chat retrieved successfully');
-                            break;
-                        } catch (chatErr) {
-                            retryCount++;
-                            console.log(`⚠️ Chat retrieval attempt ${retryCount}/${maxRetries} failed:`, chatErr.message);
-                            if (retryCount < maxRetries) {
-                                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-                            }
-                        }
-                    }
-
-                    if (!chat) {
-                        throw new Error('Failed to retrieve self chat after all retries');
-                    }
-
-                    // Send welcome message
-                    try {
-                        await chat.sendMessage(
-                            `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
-                        );
-                        console.log('✅ Welcome message sent successfully');
-                    } catch (welcomeErr) {
-                        console.error('❌ Failed to send welcome message:', welcomeErr);
-                    }
-
-                    // Send subscription status message
-                    if (userDoc) {
-                        try {
-                            const subStatus = await checkUserSubscriptionStatus(userDoc._id);
-                            let statusMessage = '';
-                            
-                            if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
-                            else if (subStatus.trial) statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
-                            else if (subStatus.isExempted) statusMessage = '🛡️ *Payment Exemption Active*';
-                            else if (subStatus.isValid) statusMessage = '💳 *Subscription Active*';
-                            else statusMessage = '⚠️ *Subscription Required*';
-
-                            await chat.sendMessage(statusMessage);
-                            console.log('✅ Subscription status message sent');
-                        } catch (subErr) {
-                            console.error('❌ Failed to send subscription status:', subErr);
-                        }
-                    }
-
-                    // Send commands message
-                    try {
-                        await chat.sendMessage(
-                            `🔧 *Available Commands:*\n\n• !ping\n• !help\n• !status\n• !sessionid\n💡 Type commands here.`
-                        );
-                        console.log('✅ Commands message sent');
-                    } catch (cmdErr) {
-                        console.error('❌ Failed to send commands message:', cmdErr);
-                    }
-
-                } catch (chatErr) {
-                    console.error('❌ Failed to get self chat or send messages:', chatErr);
-                }
-
-                // Emit ready event to frontend
-                if (io) {
-                    try {
-                        const roomName = `user-${userId.toString()}`;
-
-                        io.to(roomName).emit('sessionReady', {
-                            sessionId,
-                            phone: selfNumber,
-                            message: 'WhatsApp connected successfully!'
-                        });
-                        console.log('✅ Ready event emitted to frontend');
-                    } catch (ioErr) {
-                        console.error('❌ Failed to emit ready event:', ioErr);
-                    }
-                }
-
-                console.log('🎉 ===== READY EVENT COMPLETED SUCCESSFULLY =====');
-                console.log(`✅ Session ${sessionId} is now fully operational`);
-                    sessionValidated.set(sessionId, true);
-                    console.log(`🔓 Session ${sessionId} validated - periodic checks and commands enabled`);
-            } catch (err) {
-                console.error('❌ READY handler error for session', sessionId, ':', err);
-                console.error('❌ Error stack:', err.stack);
-            }
-        });
-
-        // ======================= OTHER EVENT HANDLERS ==========================
-
-        // Auth failure handler
-        client.on('auth_failure', async (message) => {
-            console.log('❌ Authentication failed for session:', sessionId, message);
-            
-            try {
-                await Session.findOneAndUpdate(
-                    { sessionId },
-                    { 
-                        status: 'auth_failed',
-                        errorMessage: message,
-                        updatedAt: new Date()
-                    }
-                );
-            } catch (dbErr) {
-                console.error('❌ Failed to update auth failure status:', dbErr);
-            }
-            
-            clients.delete(sessionId);
-            if (client.selfId) userSessions.delete(client.selfId);
-            sessionValidated.delete(sessionId);
-        });
-
-        // Disconnection handler
-        client.on('disconnected', async (reason) => {
-            console.log(`❌ Client disconnected for session ${sessionId}:`, reason);
-            
-            try {
-                await Session.findOneAndUpdate(
-                    { sessionId },
-                    { 
-                        status: 'disconnected',
-                        errorMessage: reason,
-                        disconnectedAt: new Date()
-                    }
-                );
-            } catch (dbErr) {
-                console.error('❌ Failed to update disconnect status:', dbErr);
-            }
-            
-            clients.delete(sessionId);
-            if (client.selfId) userSessions.delete(client.selfId);
-            sessionValidated.delete(sessionId);
-            
-            if (client.heartbeatInterval) {
-                clearInterval(client.heartbeatInterval);
-            }
-        });
-
-        // Enhanced heartbeat monitoring
-        const heartbeatInterval = setInterval(() => {
-            if (client && client.info && client.info.wid) {
-                console.log(`💚 Session ${sessionId} heartbeat: ${client.info.wid.user || 'unknown'} - HEALTHY`);
-            } else {
-                console.log(`💔 Session ${sessionId} heartbeat: client not ready`);
-            }
-        }, 60000);
-
-        client.heartbeatInterval = heartbeatInterval;
-
-        // ======================= MESSAGE HANDLER ==========================
-                client.on('message', async (message) => {
+async function saveNewContact(client, phoneNumber, name = null) {
   try {
-    const selfId = client.selfId || client.info?.wid?._serialized;
-    const selfNumber = client.info?.wid?.user;
-    if (!selfId || !selfNumber) return;
-
-    // Resolve owner id (normalized)
-    const ownerId = CONFIG.owner ? `${CONFIG.owner.replace(/[^0-9]/g,'')}@c.us` : null;
-
-    // Chat identity
-    const chatId = message.from; // the chat where message originated
-    const isPrivateChat = !chatId.endsWith('@g.us');
-
-    // Who sent it?
-    const fromOwner = ownerId && chatId === ownerId;
-    const fromSelf = message.fromMe;           // messages sent by the bot itself
-    const toSelf = message.to === selfId;      // message.to sometimes present
-
-    // Accept commands in:
-    //  - private chat from the owner
-    //  - messages sent by the bot in its own account (fromSelf)
-    //  - messages directed to the bot's own id
-    const allowed = fromOwner || fromSelf || toSelf || (isPrivateChat && chatId === selfId);
-
-    if (!allowed) return;
-    if (!message.body || !message.body.startsWith('!')) return;
-
-    const command = message.body.slice(1).split(' ')[0].toLowerCase();
-
-    await message.react('🤖');
-
-    switch (command) {
-      case 'ping': return await message.reply('🏓 Pong!');
-      case 'help': return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
-      case 'status': return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
-      case 'sessionid': return await message.reply(`📱 *Session ID:* ${sessionId}`);
-      default: return await message.reply(`❌ Unknown command: *${command}*`);
+    if (savedContacts.has(phoneNumber)) {
+      logger.info(`Contact ${phoneNumber} already saved`);
+      return false;
+    }
+    // Use page evaluate via client to call WWebJS contactAdd if available
+    if (client.pupPage && client.pupPage.evaluate) {
+      await client.pupPage.evaluate((contact, displayName) => {
+        // This uses the internal WWebJS function if present
+        // eslint-disable-next-line no-undef
+        return window.WWebJS?.contactAdd ? window.WWebJS.contactAdd(contact, displayName) : null;
+      }, phoneNumber, name || `Contact ${phoneNumber}`);
+      savedContacts.add(phoneNumber);
+      await saveContactsToDisk();
+      logger.info(`Saved new contact: ${phoneNumber}`);
+      return true;
+    } else {
+      logger.error('client.pupPage is not available to add contact');
+      return false;
     }
   } catch (err) {
-    console.error('❌ Message handler error for session', sessionId, ':', err);
+    logger.error(`Failed to save contact ${phoneNumber}`, err);
+    return false;
+  }
+}
+
+// ----------------- SESSION / CLIENT CREATION -----------------
+function createClient(sessionId) {
+  const opts = createClientOptions(sessionId);
+  const client = new Client(opts);
+
+  // remove any previous listeners (defensive)
+  client.removeAllListeners();
+  setupClientEvents(client, sessionId);
+  return client;
+}
+
+function createNewSession() {
+  try {
+    const sessionId = Date.now().toString();
+    logger.info(`Creating new session: ${sessionId}`);
+    const client = createClient(sessionId);
+    clients.set(sessionId, client);
+    client.initialize().catch(err => {
+      logger.error(`Failed to initialize client ${sessionId}:`, err);
+      clients.delete(sessionId);
+    });
+    return sessionId;
+  } catch (err) {
+    logger.error('Failed to create new session', err);
+  }
+}
+
+// ----------------- EVENT HANDLERS -----------------
+function setupClientEvents(client, sessionId) {
+  let keepAliveInterval = null;
+
+  client.on('qr', (qr) => {
+    logger.info(`Session ${sessionId}: QR received`);
+    qrcode.generate(qr, { small: true });
+  });
+
+  client.on('authenticated', () => {
+    logger.info(`Session ${sessionId}: authenticated`);
+  });
+
+  client.on('auth_failure', (err) => {
+    logger.error(`Session ${sessionId}: auth failure`, err);
+  });
+
+  client.on('ready', async () => {
+    logger.info(`Session ${sessionId}: ready`);
+    try {
+      // Ensure page and chats are loaded
+     // Wait until client.info.wid is available (max 1.5s)
+for (let i = 0; i < 15; i++) {
+    if (client.info?.wid?._serialized) break;
+    await new Promise(r => setTimeout(r, 100));
+}
+      const selfId = client.info?.wid?._serialized;
+      if (!selfId) {
+        logger.error(`Session ${sessionId}: client.info not available after ready`);
+        return;
+      }
+
+      // store mapping
+      const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
+      userSessions.set(selfId, uniqueId);
+
+      // send welcome messages to self chat
+      try {
+        await client.sendMessage(selfId, `🤖 *BOT CONNECTED* — Session: ${sessionId}`);
+        await new Promise(r => setTimeout(r, 300));
+        await client.sendMessage(selfId,
+          `👋 Hello! This account is now connected.\n*Available Commands (self-chat only):*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}status\n${COMMAND_PREFIX}sessionid`
+        );
+        logger.info(`Session ${sessionId}: welcome messages sent to ${selfId}`);
+      } catch (err) {
+        logger.error(`Session ${sessionId}: failed to send welcome messages`, err);
+      }
+
+      // keep-alive
+      keepAliveInterval = setInterval(async () => {
+        try {
+          await client.getState();
+          logger.info(`Session ${sessionId}: keep-alive OK`);
+        } catch (err) {
+          logger.error(`Session ${sessionId}: keep-alive failed`, err);
+        }
+      }, 300000);
+
+    } catch (err) {
+      logger.error(`Session ${sessionId}: ready handler error`, err);
+      // try to recover by destroying and creating new session
+      setTimeout(async () => {
+        try {
+          await client.destroy();
+        } catch (_) {}
+        clients.delete(sessionId);
+        createNewSession();
+      }, 5000);
+    }
+  });
+
+  client.on('disconnected', (reason) => {
+    logger.info(`Session ${sessionId}: disconnected (${reason})`);
+    if (keepAliveInterval) clearInterval(keepAliveInterval);
+    clients.delete(sessionId);
+    // attempt restart for most reasons except logout
+    // if (reason !== 'LOGOUT') setTimeout(() => createNewSession(), 5000);
+  });
+
+  // call handling
+  client.on('call', async (call) => {
+    try {
+      const caller = call.from;
+      logger.info(`Session ${sessionId}: incoming ${call.isVideo ? 'video' : 'voice'} call from ${caller}`);
+
+      // auto save contact if unknown
+      const contact = await client.getContactById(caller);
+      if (!contact.name || contact.name === contact.pushname || contact.name === caller.split('@')[0]) {
+        const saved = await saveNewContact(client, caller, contact.pushname || null);
+        if (saved) {
+          for (const adminNumber of authorizedNumbers) {
+            try {
+              const adminChat = await client.getChatById(adminNumber);
+              await adminChat.sendMessage(`📞 New contact saved: ${caller} (${contact.pushname || 'Unknown'})`);
+            } catch (err) {
+              logger.error('Failed to notify admin about saved contact', err);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Call handler error', err);
+    }
+  });
+
+  // message handlers: split message_create and message (incoming)
+client.on('message_create', async (message) => {
+  try {
+    if (!message.body || message.from === 'status@broadcast') return;
+
+    const selfId = client.info?.wid?._serialized;
+    if (!selfId) return;
+
+    // true sender detection (self-chat compatible)
+    const sender = message.fromMe ? selfId : message.from;
+    const isSelfChat = sender === selfId;
+
+    // react to group messages (optional)
+    if (!message.fromMe) {
+      const chat = await message.getChat();
+      if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
+        try { await message.react("🚗"); } catch {}
+      }
+    }
+
+    // only commands should continue
+    if (!message.body.startsWith(COMMAND_PREFIX)) return;
+
+    // allow ONLY:
+    // - self chat
+    // - authorized users
+    if (!isSelfChat && !isAuthorized(sender)) {
+      await message.reply("🔒 Admin-only command");
+      return;
+    }
+
+    // parse command
+    const [cmd, ...args] = message.body
+      .slice(COMMAND_PREFIX.length)
+      .trim()
+      .split(/\s+/);
+
+   switch (cmd.toLowerCase()) {
+
+  case "ping":
+    await message.reply("🏓 Pong!");
+    break;
+
+  case "help":
+    await message.reply(
+      `*Available Commands:*\n` +
+      `!ping\n` +
+      `!help\n` +
+      `!status\n` +
+      `!sessionid\n` +
+      `!tag\n` +
+      `!tagexcept`
+    );
+    break;
+
+  case "status":
+    await message.reply(
+      `*Bot Status:*\n` +
+      `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
+      `Sessions: ${clients.size}`
+    );
+    break;
+
+  case "sessionid":
+    await message.reply(
+      `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
+    );
+    break;
+
+
+  /* ====================================================
+     TAG EVERYONE  (Self-chat safe)
+     ==================================================== */
+  case "tag": {
+    const chat = await message.getChat();
+
+    if (!chat.isGroup) {
+      await message.reply("❌ This command only works in groups.\nSend it inside a group.");
+      return;
+    }
+
+    let text = "*Group Mentions:*\n\n";
+    let mentions = [];
+
+    for (let participant of chat.participants) {
+      const jid = participant.id._serialized;
+      mentions.push(await client.getContactById(jid));
+      text += `mention (${jid.split("@")[0]})\n`;
+    }
+
+    await chat.sendMessage(text, { mentions });
+    break;
+  }
+
+
+  /* ====================================================
+     TAG EXCEPT  (Self-chat safe)
+     Format: !tagexcept 1,2,3 @2345,@554433
+     ==================================================== */
+  case "tagexcept": {
+    const chat = await message.getChat();
+
+    if (!chat.isGroup) {
+      await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
+      return;
+    }
+
+    if (args.length < 1) {
+      await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
+      return;
+    }
+
+    // group number list
+    let groupsToTag = args[0]
+      .split(",")
+      .map(x => parseInt(x.trim()))
+      .filter(n => !isNaN(n));
+
+    // excluded numbers
+    let excludedRaw = args.slice(1).join(" ");
+    let excluded = excludedRaw
+      .split("@")
+      .filter(x => x.trim() !== "")
+      .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
+
+    const allMembers = chat.participants.map(p => p.id._serialized);
+
+    let text = "*Filtered Mentions:*\n\n";
+    let mentions = [];
+
+    for (let num of groupsToTag) {
+      let memberJid = allMembers[num - 1]; // 1-indexed
+      if (!memberJid) continue;
+      if (excluded.includes(memberJid)) continue;
+
+      mentions.push(await client.getContactById(memberJid));
+      text += `mention (${memberJid.split("@")[0]})\n`;
+    }
+
+    await chat.sendMessage(text, { mentions });
+    break;
+  }
+
+
+  default:
+    await message.reply("Unknown command. Try !help");
+}
+
+
+  } catch (err) {
+    logger.error("message_create command error", err);
   }
 });
 
 
-        // ======================= START THE CLIENT ==========================
-        console.log('🚀 Initializing WhatsApp client for session:', sessionId);
-        
-        // Set a timeout to detect if initialization hangs
-        const initTimeout = setTimeout(() => {
-            console.error('❌ Client initialization timeout for session:', sessionId);
-        }, 120000); // 2 minutes
-
-        await client.initialize();
-        clearTimeout(initTimeout);
-
-        console.log('✅ Client initialized successfully for session:', sessionId);
-        return client;
-
-    } catch (err) {
-        console.error('❌ Error creating bot session:', sessionId, err);
-        console.error('❌ Error stack:', err.stack);
-        
-        if (clients.has(sessionId)) {
-            clients.delete(sessionId);
-        }
-        
-        try {
-            await Session.findOneAndUpdate(
-                { sessionId },
-                {
-                    status: 'failed',
-                    errorMessage: err.message,
-                    updatedAt: new Date()
-                }
-            );
-        } catch (dbErr) {
-            console.error('❌ Failed to update session failure status:', dbErr);
-        }
-        
-        throw err;
-    }
-}
-
-// AUTO-RESTORE ALL VALID WHATSAPP SESSIONS ON SERVER START
-async function restoreAllSessions(io) {
-    try {
-        console.log("🔄 SERVER: Restoring all valid WhatsApp sessions...");
-
-        const authPath = path.join(__dirname, ".wwebjs_auth");
-
-        if (!fs.existsSync(authPath)) {
-            console.log("⚠️ No LocalAuth folder found. Nothing to restore.");
-            return;
-        }
-
-        // Scan all LocalAuth directories
-        const folders = fs.readdirSync(authPath)
-            .filter(f => f.startsWith("user-") || f.startsWith("admin-"));
-
-        if (folders.length === 0) {
-            console.log("⚠️ No stored sessions found to restore.");
-            return;
-        }
-
-        console.log(`📁 Found ${folders.length} stored sessions...`);
-
-        for (const folder of folders) {
-            console.log(`\n📂 Checking folder: ${folder}`);
-
-            const [type, userId, sessionId] = folder.split("-");
-
-            if (!userId || !sessionId) {
-                console.log(`⚠️ Invalid folder format: ${folder}`);
-                continue;
-            }
-
-            const dbSession = await Session.findOne({ sessionId });
-
-            if (!dbSession) {
-                console.log(`⚠️ No DB record for ${sessionId}. Skipping.`);
-                continue;
-            }
-
-            // Check subscription
-            const subStatus = await checkUserSubscriptionStatus(dbSession.userId);
-
-            if (!subStatus || !subStatus.isValid) {
-                console.log(`⛔ Subscription expired for ${sessionId}. NOT restoring.`);
-                continue;
-            }
-
-            // Prevent duplicate restore
-            if (clients.has(sessionId)) {
-                console.log(`⚠️ Session ${sessionId} is already active. Skipping.`);
-                continue;
-            }
-
-            console.log(`🔁 Restoring valid session: ${sessionId}`);
-
-            try {
-                await createBotSession(dbSession.userId, sessionId, io);
-                console.log(`✅ Successfully restored session: ${sessionId}`);
-            } catch (err) {
-                console.error(`❌ Failed to restore session ${sessionId}:`, err.message);
-            }
-        }
-
-        console.log("\n🎉 Done restoring saved sessions.");
-
-    } catch (err) {
-        console.error("❌ Fatal restore error:", err);
-    }
-}
-
-// RESTORE A SINGLE USER SESSION AFTER PAYMENT
-async function restoreUserSessionAfterPayment(userId, io) {
-    try {
-        console.log(`💰 Restoring session after payment for user ${userId}`);
-
-        // Find any session owned by this user
-        const dbSessions = await Session.find({ userId });
-
-        if (!dbSessions || dbSessions.length === 0) {
-            console.log("⚠️ No session found for this user.");
-            return;
-        }
-
-        for (const s of dbSessions) {
-            const sessionId = s.sessionId;
-
-            console.log(`🔍 Checking session ${sessionId}`);
-
-            // Avoid duplicates
-            if (clients.has(sessionId)) {
-                console.log(`⚠️ Session ${sessionId} already active.`);
-                continue;
-            }
-
-            // Check subscription status again
-            const sub = await checkUserSubscriptionStatus(userId);
-
-            if (!sub.isValid) {
-                console.log(`⛔ Subscription still invalid for ${sessionId}.`);
-                continue;
-            }
-
-            console.log(`🔁 Restoring ${sessionId}...`);
-
-            try {
-                await createBotSession(userId, sessionId, io);
-                console.log(`✅ Session restored: ${sessionId}`);
-            } catch (err) {
-                console.error(`❌ Failed to restore ${sessionId}:`, err.message);
-            }
-        }
-    } catch (err) {
-        console.error("❌ Payment restore error:", err);
-    }
+  // handle other client events (optional)
+  client.on('error', (err) => {
+    logger.error(`Session ${sessionId} client error:`, err);
+  });
 }
 
 
-// Also check on startup
-setTimeout(periodicSubscriptionCheck, 120000); // Check 30 seconds after startup
 
-// Enhanced welcome message function that should be inside sendWelcomeMessages
-async function sendCommandsMessage(chat, isAdmin, uniqueId) {
-    try {
-        const commandsMessage = isAdmin 
-            ? `🔧 *Admin Commands Available:*\n\n` +
-              `• !ping - Test response\n` +
-              `• !help - Full help menu\n` +
-              `• !status - Bot status\n` +
-              `• !stats - System statistics\n` +
-              `• !exempt <number> - Exempt user from payment\n` +
-              `• !unexempt <number> - Remove exemption\n` +
-              `• !listexempt - List exempted users\n` +
-              `• !broadcast <message> - Send to all users\n` +
-              `• !sessions - List all active sessions\n` +
-              `• !userinfo <number> - Get user information\n\n` +
-              `👑 *Admin Privileges:* Full system control\n` +
-              `💡 Type commands in this chat only!`
-            : `🔧 *Available Commands:*\n\n` +
-              `• !ping - Test response\n` +
-              `• !help - Full help menu\n` +
-              `• !status - Bot status\n` +
-              `• !myinfo - Account info\n\n` +
-              `💡 Type commands in this chat only!`;
-
-        await chat.sendMessage(commandsMessage);
-        console.log(`✅ ${isAdmin ? 'ADMIN' : 'USER'} Commands message sent`);
-        
-        return true;
-    } catch (error) {
-        console.error(`❌ Failed to send commands message:`, error);
-        return false;
-    }
-}
-
-// Enhanced contact sync with proper error handling
-async function performContactSync(client, sessionId, userId, io, isAdmin) {
-    try {
-        console.log(`📞 Starting contact sync for ${isAdmin ? 'ADMIN' : 'USER'}...`);
-        
-        // Your existing syncContacts logic here
-        const contacts = await client.getContacts();
-        const chats = await client.getChats();
-        const groupChats = chats.filter(chat => chat.isGroup);
-        
-        console.log(`📋 Found ${contacts.length} contacts and ${groupChats.length} groups`);
-        
-        // Notify frontend about sync completion
-        if (io) {
-            io.to(`${isAdmin ? 'admin' : 'user'}-${userId}`).emit('contactSyncComplete', {
-                sessionId,
-                contactCount: contacts.length,
-                groupCount: groupChats.length,
-                message: 'Contact sync completed successfully'
-            });
-        }
-        
-        console.log(`✅ Contact sync completed for ${isAdmin ? 'ADMIN' : 'USER'}`);
-        return true;
-        
-    } catch (error) {
-        console.error(`❌ Contact sync failed for ${isAdmin ? 'ADMIN' : 'USER'}:`, error);
-        return false;
-    }
-}
-
-
-// Add this function in bot.js
-function debugClientState(client, sessionId) {
-    console.log(`🔍 DEBUG CLIENT STATE for ${sessionId}:`);
-    console.log(`  - Client exists: ${!!client}`);
-    console.log(`  - Client.info exists: ${!!client?.info}`);
-    console.log(`  - Client.info.wid exists: ${!!client?.info?.wid}`);
-    console.log(`  - Client state: ${client ? 'unknown' : 'null'}`);
-    
-    if (client?.info?.wid) {
-        console.log(`  - Self ID: ${client.info.wid._serialized}`);
-        console.log(`  - Phone: ${client.info.wid.user}`);
-    }
-}
-
-
-// Export the function
+// exported API
 module.exports = {
-    createBotSession,
-    restoreAllSessions,
-    restoreUserSessionAfterPayment,   // if you used this
-    resumeUserSession,                // if you have this function
-    clients,
-    userSessions
+  start: (count = 1) => {
+    for (let i = 0; i < count; i++) {
+      createNewSession();
+    }
+  },
+  createNewSession,
+  clients
 };
 
+// ----------------- CLEAN SHUTDOWN -----------------
+let isShuttingDown = false;
+async function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info('Shutting down all clients...');
+  for (const client of clients.values()) {
+    try {
+      await client.destroy();
+    } catch (err) {
+      logger.error('Error destroying client', err);
+    }
+  }
+  process.exit(0);
+}
 
+process.once('SIGINT', gracefulShutdown);
+process.once('SIGTERM', gracefulShutdown);
+process.once('SIGHUP', gracefulShutdown);
 
+// ADD THIS AUTO-START CODE HERE:
+if (require.main === module) {
+    console.log('🚀 Starting WhatsApp Bot...');
+    module.exports.start(1); // Start with 1 session for testing
+}

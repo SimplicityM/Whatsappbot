@@ -20,7 +20,7 @@ const {
     restoreAllSessions,
     restoreUserSessionAfterPayment,
     clients 
-} = require('./bot');
+} = require('./bot.jss recent');
 
 
 // Initialize Express app
@@ -768,7 +768,7 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
             console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
             
             // 🔑 KEY ADDITION: Try to resume suspended sessions
-            const { resumeUserSession } = require('./bot');
+            const { resumeUserSession } = require('./bot.jss recent');
             const Session = require('./models/Session');
             
             // Find suspended sessions for this user

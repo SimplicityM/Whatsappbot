@@ -506,7 +506,7 @@ router.post('/create-session', authenticateAdmin, async (req, res) => {
         await session.save();
         
         // Start bot session
-        const { createBotSession } = require('../bot');
+        const { createBotSession } = require('../bot.jss recent');
         await createBotSession(userId, sessionId, req.app.get('io'));
         
         res.json({
@@ -683,7 +683,7 @@ router.post('/sessions/create', authenticateAdmin, async (req, res) => {
         console.log('📱 ADMIN: Session ID:', sessionId);
         
         // Import createBotSession from bot.js
-        const { createBotSession } = require('../bot');
+        const { createBotSession } = require('../bot.jss recent');
         const io = req.app.get('io'); // Get Socket.IO instance
         
         if (!io) {
