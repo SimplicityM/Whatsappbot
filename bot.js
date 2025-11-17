@@ -8,6 +8,8 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
+const sessionValidated = new Map()
+
 // ----------------- CONFIG -----------------
 const getDefaultPath = (dirName) => path.join(__dirname, dirName);
 
@@ -205,10 +207,50 @@ function createNewSession() {
 function setupClientEvents(client, sessionId) {
   let keepAliveInterval = null;
 
+  // client.on('qr', (qr) => {
+  //   logger.info(`Session ${sessionId}: QR received`);
+  //   qrcode.generate(qr, { small: true });
+  // });
+
   client.on('qr', (qr) => {
-    logger.info(`Session ${sessionId}: QR received`);
+    console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
+    
+    // Emit to frontend dashboard
+    if (global.io) {
+        // Extract userId from sessionId (format: session-userId-timestamp)
+        const userIdMatch = sessionId.match(/session-([^-]+)-/);
+        const userId = userIdMatch ? userIdMatch[1] : 'unknown';
+        const roomName = `user-${userId}`;
+        
+        global.io.to(roomName).emit('qrCode', {
+            sessionId,
+            qr,
+            message: 'Scan this QR code with WhatsApp',
+            userId,
+            userType: 'user',
+            broadcast: true
+        });
+        
+        // Also global broadcast
+        global.io.emit('qrCode', {
+            sessionId,
+            qr,
+            broadcast: true,
+            message: 'Scan this QR code'
+        });
+        
+        console.log(`✅ QR emitted to dashboard for user: ${userId}`);
+    } else {
+        console.error('❌ global.io not available - cannot emit QR to dashboard');
+    }
+    
+    // Also show in terminal for debugging
     qrcode.generate(qr, { small: true });
-  });
+});
+
+// Mark session as validated
+sessionValidated.set(sessionId, true);
+console.log(`🔓 Session ${sessionId} validated - ready for commands`);
 
   client.on('authenticated', () => {
     logger.info(`Session ${sessionId}: authenticated`);
@@ -467,17 +509,44 @@ client.on('message_create', async (message) => {
   });
 }
 
+// Multi-session function for dashboard integration
+async function createBotSession(userId, sessionId, io) {
+    try {
+        console.log('🤖 BOT: Creating bot session');
+        console.log('👤 User ID:', userId);
+        console.log('📱 Session ID:', sessionId);
+        console.log('🔍 BOT: io object exists?', !!io);
 
+        // Set global.io if not already set
+        if (io && !global.io) {
+            global.io = io;
+        }
+
+        // Create a new session using existing createSession logic
+        await createSession(sessionId);
+        
+        console.log('✅ Bot session created successfully');
+        
+        // Return the client for compatibility
+        return clients.get(sessionId);
+        
+    } catch (error) {
+        console.error('❌ Error creating bot session:', error);
+        throw error;
+    }
+}
 
 // exported API
 module.exports = {
   start: (count = 1) => {
+    // existing start code
     for (let i = 0; i < count; i++) {
-      createNewSession();
+      createSession(`session-${Date.now()}-${i}`);
     }
   },
-  createNewSession,
-  clients
+  createBotSession,  // Add this for dashboard integration
+  clients,           // Export clients map
+  userSessions      // Export user sessions
 };
 
 // ----------------- CLEAN SHUTDOWN -----------------
