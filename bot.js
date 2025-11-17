@@ -1665,627 +1665,1073 @@ if (require.main === module) {
 //     }
 // }
 
+// async function createBotSession(userId, sessionId, io) {
+//     try {
+//         let botPhoneNumber = null;
+//         let botSelfId = null;
+//         console.log('🤖 BOT: Creating bot session');
+//     console.log('👤 User ID:', userId);
+//     console.log('📱 Session ID:', sessionId);
+//     console.log('🔍 BOT: io object exists?', !!io);
+
+//     const user = await User.findById(userId);
+//     const isAdmin =
+//         user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
+
+//     console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
+//     console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
+
+//     // Create the WhatsApp client
+//     const client = new Client({
+//         authStrategy: new LocalAuth({
+//             clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
+//             dataPath: './.wwebjs_auth'
+//         }),
+//         puppeteer: {
+//             ...clientConfig.puppeteer,
+//             args: [
+//                 ...clientConfig.puppeteer.args,
+//                 '--no-sandbox',
+//                 '--disable-setuid-sandbox',
+//                 '--disable-gpu',
+//                 '--disable-dev-shm-usage',
+//                 '--no-first-run',
+//                 '--no-zygote'
+//             ],
+//             handleSIGINT: false,
+//             handleSIGTERM: false
+//         },
+//         takeoverOnConflict: true,
+//         takeoverTimeoutMs: 5000,
+//         syncFullHistory: false,
+//         markOnlineOnConnect: false,
+//         chatLoadingTimeoutMs: 15000,
+//         sessionBackupSyncIntervalMs: 300000,
+//         qrMaxRetries: clientConfig.qrMaxRetries,
+//         authTimeoutMs: clientConfig.authTimeoutMs,
+//         restartOnAuthFail: clientConfig.restartOnAuthFail
+//     });
+
+//     // Store client so we can access it later
+//     clients.set(sessionId, client);
+
+//     // ======================= EVENT HANDLERS ==========================
+
+//     client.on('loading_screen', (percent, message) => {
+//         console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading screen:`, percent + '%', message);
+//     });
+
+//     client.on('authenticated', (session) => {
+//         console.log(`🔑 Authentication successful for session: ${sessionId}`);
+//         try {
+//             if (session && typeof session === 'object') {
+//                 const sessionString = JSON.stringify(session);
+//                 const phoneMatch = sessionString.match(/(\d{10,15})/);
+//                 if (phoneMatch) {
+//                     botPhoneNumber = phoneMatch[1];
+//                     botSelfId = `${botPhoneNumber}@c.us`;
+//                     console.log(`📱 Extracted phone number: ${botPhoneNumber}`);
+//                 }
+//             }
+//         } catch (error) {
+//             console.error('❌ Error extracting phone from session object:', error.message);
+//         }
+
+//         if (!botPhoneNumber && CONFIG.owner) {
+//             botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
+//             botSelfId = `${botPhoneNumber}@c.us`;
+//             console.log(`📱 Using config owner number: ${botPhoneNumber}`);
+//         }
+//     });
+
+//     client.on('change_state', (state) => {
+//         console.log(`📱 State changed to: ${state} for session: ${sessionId}`);
+        
+//         // Update last activity in database
+//         Session.findOneAndUpdate(
+//             { sessionId },
+//             { lastActive: new Date() }
+//         ).catch(err => console.error('Failed to update last activity:', err));
+//     });
+
+//     client.on('qr', async (qr) => {
+//         console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
+//         const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+
+//         if (!io) {
+//             console.error(`❌ io is undefined! Cannot emit QR for session: ${sessionId}`);
+//             return;
+//         }
+
+//         // Emit to specific room
+//         io.to(roomName).emit('qrCode', {
+//             sessionId,
+//             qr,
+//             message: 'Scan this QR code with WhatsApp',
+//             userId,
+//             isAdmin,
+//             userType: isAdmin ? 'admin' : 'user'
+//         });
+
+//         // Also broadcast as fallback
+//         io.emit('qrCode', {
+//             sessionId,
+//             qr,
+//             message: 'Scan this QR code with WhatsApp',
+//             userId,
+//             isAdmin,
+//             userType: isAdmin ? 'admin' : 'user',
+//             broadcast: true
+//         });
+
+//         console.log(`✅ QR code emitted for session: ${sessionId}`);
+//     });
+
+//     // ======================= READY EVENT ==========================
+//     client.on('ready', async () => {
+//         console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+
+//         try {
+//             // Add timeout protection
+//             const readyTimeout = setTimeout(() => {
+//                 console.error('❌ Ready event timeout for session:', sessionId);
+//             }, 30000);
+
+//             const selfId = client.info?.wid?._serialized;
+//             const selfNumber = client.info?.wid?.user;
+//             const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
+
+//             if (!selfId || !selfNumber) {
+//                 console.error('❌ Missing selfId or selfNumber in ready event for session:', sessionId);
+//                 console.error('❌ Client info:', client.info);
+//                 clearTimeout(readyTimeout);
+//                 return;
+//             }
+
+//             client.selfId = selfId;
+//             userSessions.set(selfId, sessionId);
+
+//             console.log('📱 Self ID:', selfId);
+//             console.log('📞 Phone:', selfNumber);
+//             console.log('🆔 Session ID (unique):', uniqueId);
+
+//             // Clear timeout since we got this far
+//             clearTimeout(readyTimeout);
+
+//             // Reload user from DB by whatsappNumber if possible, fallback to user
+//             let userDoc;
+//             try {
+//                 userDoc = (await User.findOne({ whatsappNumber: selfNumber })) || user;
+//                 console.log('✅ User document retrieved:', userDoc ? userDoc.email : 'No user found');
+//             } catch (userErr) {
+//                 console.error('❌ Failed to find user:', userErr);
+//                 userDoc = user; // fallback to original user
+//             }
+
+//             // Create or update PhoneRecord (if PhoneRecord model exists)
+//             try {
+//                 let PhoneRecord;
+//                 try {
+//                     PhoneRecord = require('./models/PhoneRecord');
+//                 } catch (modelErr) {
+//                     console.log('⚠️ PhoneRecord model not found, skipping phone record creation');
+//                     PhoneRecord = null;
+//                 }
+
+//                 if (PhoneRecord) {
+//                     let phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
+//                     if (!phoneRecord) {
+//                         phoneRecord = await PhoneRecord.create({
+//                             phone: selfNumber,
+//                             usedByUserId: userDoc?._id || null,
+//                             trialUsed: true,
+//                             trialStartedAt: new Date(),
+//                             trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+//                             firstCommandDone: false
+//                         });
+//                         console.log(`📌 PhoneRecord created for ${selfNumber}`);
+//                     } else {
+//                         if (!phoneRecord.usedByUserId && userDoc?._id) {
+//                             phoneRecord.usedByUserId = userDoc._id;
+//                             await phoneRecord.save();
+//                             console.log(`🔧 PhoneRecord ${selfNumber} linked to user ${userDoc._id}`);
+//                         }
+//                     }
+//                 }
+//             } catch (phoneErr) {
+//                 console.error('❌ PhoneRecord operation failed:', phoneErr.message);
+//                 // Continue execution - this is not critical
+//             }
+
+//             // Update Session DB to connected
+//             try {
+//                 const sessionUpdate = await Session.findOneAndUpdate(
+//                     { sessionId },
+//                     {
+//                         status: 'connected',
+//                         phone: selfNumber,
+//                         connectedAt: new Date(),
+//                         updatedAt: new Date()
+//                     },
+//                     { upsert: false, new: true }
+//                 );
+                
+//                 if (sessionUpdate) {
+//                     console.log('✅ Session status updated to connected');
+//                 } else {
+//                     console.log('⚠️ Session not found in database for update');
+//                 }
+//             } catch (sErr) {
+//                 console.error('❌ Could not update Session record on ready:', sErr.message);
+//             }
+
+//             // Send welcome messages with proper error handling
+//             try {
+//                 console.log('📤 Attempting to get self chat...');
+//                 const chat = await client.getChatById(selfId);
+//                 console.log('✅ Self chat retrieved successfully');
+
+//                 // Send welcome message
+//                 try {
+//                     await chat.sendMessage(
+//                         `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
+//                     );
+//                     console.log('✅ Welcome message sent');
+//                 } catch (welcomeErr) {
+//                     console.error('❌ Failed to send welcome message:', welcomeErr);
+//                 }
+
+//                 // Send subscription status message
+//                 if (userDoc) {
+//                     try {
+//                         const subStatus = await checkUserSubscriptionStatus(userDoc._id);
+//                         let statusMessage = '';
+                        
+//                         if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
+//                         else if (subStatus.trial) statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
+//                         else if (subStatus.isExempted) statusMessage = '🛡️ *Payment Exemption Active*';
+//                         else if (subStatus.isValid) statusMessage = '💳 *Subscription Active*';
+//                         else statusMessage = '⚠️ *Subscription Required*';
+
+//                         await chat.sendMessage(statusMessage);
+//                         console.log('✅ Subscription status message sent');
+//                     } catch (subErr) {
+//                         console.error('❌ Failed to send subscription status:', subErr);
+//                     }
+//                 }
+
+//                 // Send commands message
+//                 try {
+//                     if (typeof sendCommandsMessage === 'function') {
+//                         await sendCommandsMessage(chat, !!(userDoc && (userDoc.isAdmin || userDoc.role === 'system_admin')), uniqueId);
+//                         console.log('✅ Commands message sent via helper function');
+//                     } else {
+//                         await chat.sendMessage(
+//                             `🔧 *Available Commands:*\n\n• !ping\n• !help\n• !status\n• !sessionid\n💡 Type commands here.`
+//                         );
+//                         console.log('✅ Default commands message sent');
+//                     }
+//                 } catch (helperErr) {
+//                     console.error('❌ Failed to send commands message:', helperErr.message);
+//                 }
+
+//             } catch (chatErr) {
+//                 console.error('❌ Failed to get self chat or send messages:', chatErr);
+//             }
+
+//             // Initialize session validation state
+//             sessionValidated.set(sessionId, false);
+//             console.log(`✅ Session validation state initialized for ${sessionId} (sessionValidated=false)`);
+
+//             // Emit ready event to frontend
+//             if (io) {
+//                 try {
+//                     const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+//                     io.to(roomName).emit('sessionReady', {
+//                         sessionId,
+//                         phone: selfNumber,
+//                         message: 'WhatsApp connected successfully!'
+//                     });
+//                     console.log('✅ Ready event emitted to frontend');
+//                 } catch (ioErr) {
+//                     console.error('❌ Failed to emit ready event:', ioErr);
+//                 }
+//             }
+
+//             console.log(`✅ READY completed successfully for session ${sessionId}`);
+
+//         } catch (err) {
+//             console.error('❌ READY handler error for session', sessionId, ':', err);
+//             console.error('❌ Error stack:', err.stack);
+            
+//             // Try to update session status to error
+//             try {
+//                 await Session.findOneAndUpdate(
+//                     { sessionId },
+//                     {
+//                         status: 'error',
+//                         errorMessage: err.message,
+//                         updatedAt: new Date()
+//                     }
+//                 );
+//             } catch (updateErr) {
+//                 console.error('❌ Failed to update session error status:', updateErr);
+//             }
+//         }
+//     });
+
+//     // ======================= AUTH FAILURE HANDLER ==========================
+//     client.on('auth_failure', async (message) => {
+//         console.log('❌ Authentication failed for session:', sessionId, message);
+        
+//         try {
+//             // Update session status in database
+//             await Session.findOneAndUpdate(
+//                 { sessionId },
+//                 { 
+//                     status: 'auth_failed',
+//                     errorMessage: message,
+//                     updatedAt: new Date()
+//                 }
+//             );
+//             console.log('✅ Session status updated to auth_failed');
+//         } catch (dbErr) {
+//             console.error('❌ Failed to update auth failure status:', dbErr);
+//         }
+        
+//         // Remove from active clients
+//         clients.delete(sessionId);
+        
+//         // Clean up session data
+//         if (client.selfId) {
+//             userSessions.delete(client.selfId);
+//         }
+//         sessionValidated.delete(sessionId);
+        
+//         // Notify frontend
+//         if (io) {
+//             try {
+//                 const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+//                 io.to(roomName).emit('authFailure', {
+//                     sessionId,
+//                     message: 'WhatsApp authentication failed'
+//                 });
+//                 console.log('✅ Auth failure event emitted to frontend');
+//             } catch (ioErr) {
+//                 console.error('❌ Failed to emit auth failure event:', ioErr);
+//             }
+//         }
+        
+//         console.log(`🧹 Cleaned up session data for ${sessionId} after auth failure`);
+//     });
+
+//     // ======================= DISCONNECTION HANDLER ==========================
+//     client.on('disconnected', async (reason) => {
+//         console.log(`❌ Client disconnected for session ${sessionId}:`, reason);
+        
+//         try {
+//             // Update session status in database
+//             await Session.findOneAndUpdate(
+//                 { sessionId },
+//                 { 
+//                     status: 'disconnected',
+//                     errorMessage: reason,
+//                     disconnectedAt: new Date()
+//                 }
+//             );
+//             console.log('✅ Session status updated to disconnected');
+//         } catch (dbErr) {
+//             console.error('❌ Failed to update disconnect status:', dbErr);
+//         }
+        
+//         // Clean up session data
+//         clients.delete(sessionId);
+//         if (client.selfId) {
+//             userSessions.delete(client.selfId);
+//         }
+//         sessionValidated.delete(sessionId);
+        
+//         // Clear heartbeat interval if it exists
+//         if (client.heartbeatInterval) {
+//             clearInterval(client.heartbeatInterval);
+//             console.log(`🧹 Cleared heartbeat interval for session ${sessionId}`);
+//         }
+        
+//         // Notify frontend
+//         if (io) {
+//             try {
+//                 const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+//                 io.to(roomName).emit('sessionDisconnected', {
+//                     sessionId,
+//                     reason,
+//                     message: 'WhatsApp session disconnected'
+//                 });
+//                 console.log('✅ Disconnect event emitted to frontend');
+//             } catch (ioErr) {
+//                 console.error('❌ Failed to emit disconnect event:', ioErr);
+//             }
+//         }
+        
+//         console.log(`🧹 Cleaned up session data for ${sessionId} after disconnect`);
+//     });
+
+//     // ======================= HEARTBEAT MONITORING ==========================
+//     const heartbeatInterval = setInterval(() => {
+//         if (client && client.info && client.info.wid) {
+//             console.log(`💓 Session ${sessionId} heartbeat: ${client.info.wid.user || 'unknown'}`);
+//         } else {
+//             console.log(`💔 Session ${sessionId} heartbeat: client not ready`);
+            
+//             // If client is not ready for too long, you could add cleanup logic here
+//             // For now, just log the issue
+//         }
+//     }, 60000); // Every minute
+
+//     // Store the interval ID so we can clear it later
+//     client.heartbeatInterval = heartbeatInterval;
+
+//     // ======================= MESSAGE HANDLER ==========================
+//     client.on('message', async (message) => {
+//         try {
+//             const selfId = client.selfId || client.info?.wid?._serialized;
+//             const selfNumber = client.info?.wid?.user;
+//             if (!selfId || !selfNumber) return;
+
+//             const isSelfChat = message.fromMe && message.to === selfId;
+//             if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
+
+//             const raw = message.body.trim();
+//             const command = raw.slice(1).split(' ')[0].toLowerCase();
+
+//             console.log(`📨 Command received in session ${sessionId}: ${command}`);
+
+//             await message.react('🤖');
+
+//             const BASIC = new Set(['ping', 'help', 'status', 'sessionid']);
+//             const TRIAL_ONLY = new Set(['tag', 'list']);
+
+//             // Reload phoneRecord & user each message (keeps state fresh)
+//             let phoneRecord;
+//             let PhoneRecord;
+//             try {
+//                 PhoneRecord = require('./models/PhoneRecord');
+//                 phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
+//             } catch (modelErr) {
+//                 console.log('⚠️ PhoneRecord model not available');
+//                 phoneRecord = null;
+//             }
+
+//             const userDoc = await User.findOne({ whatsappNumber: selfNumber });
+//             const userObjId = userDoc?._id;
+
+//             if (!userDoc) {
+//                 return await message.reply("⚠️ Error: User record not found.");
+//             }
+
+//             // 1) BASIC commands always allowed
+//             if (BASIC.has(command)) {
+//                 switch (command) {
+//                     case 'ping': 
+//                         return await message.reply('🏓 Pong!');
+//                     case 'help':
+//                         return await message.reply(
+//                             `🤖 *Bot Commands*\n\n` +
+//                             `• !ping — check if bot is alive\n` +
+//                             `• !help — show help menu\n` +
+//                             `• !status — check your bot account status\n` +
+//                             `• !sessionid — show your session ID\n\n` +
+//                              `🔸 *Trial Commands*: !tag, !list (available only during 7-day trial)\n` +
+//                                 `🔸 *Paid Commands* depend on your subscription level\n`
+//                             );
+//                         case 'status': {
+//                             const s = await checkUserSubscriptionStatus(userObjId);
+//                             return await message.reply(
+//                                 `📊 *Bot Status*\n\n` +
+//                                 `📱 Number: ${selfNumber}\n` +
+//                                 `🆔 Session ID: ${sessionId}\n` +
+//                                 `📌 Status: ${s.reason || 'Unknown'}`
+//                             );
+//                         }
+//                         case 'sessionid': 
+//                             return await message.reply(`📱 *Session ID:* ${sessionId}`);
+//                     }
+//                 }
+
+//                 // 2) Owner/exempt bypass
+//                 const subStatus = await checkUserSubscriptionStatus(userObjId);
+//                 if (subStatus.isOwner || subStatus.isExempted) {
+//                     console.log(`👑 Admin/Owner access granted for command: ${command}`);
+//                     return await message.reply(`👑 Admin/Owner access granted for *${command}*`);
+//                 }
+
+//                 const now = new Date();
+
+//                 // 3) TRIAL active handling
+//                 if (phoneRecord && phoneRecord.trialUsed && phoneRecord.usedByUserId?.toString() === userObjId?.toString()) {
+//                     if (phoneRecord.trialExpiresAt && phoneRecord.trialExpiresAt > now) {
+//                         if (TRIAL_ONLY.has(command)) {
+//                             if (command === 'tag') {
+//                                 const today = new Date().toISOString().slice(0, 10);
+                                
+//                                 // Check if TagUsage model exists
+//                                 let TagUsage;
+//                                 try {
+//                                     TagUsage = require('./models/TagUsage');
+//                                 } catch (modelErr) {
+//                                     console.log('⚠️ TagUsage model not found, allowing command');
+//                                     TagUsage = null;
+//                                 }
+
+//                                 if (TagUsage) {
+//                                     let usage = await TagUsage.findOne({ phone: selfNumber, date: today });
+//                                     if (!usage) {
+//                                         usage = await TagUsage.create({ phone: selfNumber, date: today, tagsToday: 0 });
+//                                     }
+//                                     if (usage.tagsToday >= 3) {
+//                                         return await message.reply(
+//                                             `🚫 *Trial Limit Reached*\nYou can only tag **3 groups/day** during trial.\nUpgrade: ${process.env.DOMAIN}/payment`
+//                                         );
+//                                     }
+//                                     usage.tagsToday++;
+//                                     await usage.save();
+//                                 }
+
+//                                 // Mark firstCommand if not done
+//                                 if (!phoneRecord.firstCommandDone) {
+//                                     phoneRecord.firstCommandDone = true;
+//                                     await phoneRecord.save();
+//                                     sessionValidated.set(sessionId, true);
+//                                     console.log(`🔓 Session ${sessionId} validated by first command (trial)`);
+//                                 }
+                                
+//                                 const usageCount = TagUsage ? (await TagUsage.findOne({ phone: selfNumber, date: today }))?.tagsToday || 1 : 1;
+//                                 return await message.reply(`📌 *TAG executed* (${usageCount}/3 today)`);
+//                             }
+                            
+//                             if (command === 'list') {
+//                                 if (!phoneRecord.firstCommandDone) {
+//                                     phoneRecord.firstCommandDone = true;
+//                                     await phoneRecord.save();
+//                                     sessionValidated.set(sessionId, true);
+//                                     console.log(`🔓 Session ${sessionId} validated by first command (trial)`);
+//                                 }
+//                                 return await message.reply('📃 *LIST executed (trial)*');
+//                             }
+//                         }
+//                         // Trial active but command not allowed
+//                         return await message.reply(`🚫 *Command not allowed during trial:* ${command}\nAvailable: !tag, !list`);
+//                     }
+//                 }
+
+//                 // 4) Fraud-prevention: phone used on other account
+//                 if (phoneRecord && phoneRecord.usedByUserId?.toString() !== userObjId?.toString()) {
+//                     return await message.reply(
+//                         `🚫 *Trial not available for this phone number*\nThis number already used a free trial on another account.\nSubscribe: ${process.env.DOMAIN}/payment`
+//                     );
+//                 }
+
+//                 // 5) FIRST-COMMAND GRACE for expired users (and expired paid users)
+//                 if (phoneRecord && !phoneRecord.firstCommandDone) {
+//                     // Mark first command done and validate session, but only allow BASIC commands as an info step
+//                     phoneRecord.firstCommandDone = true;
+//                     await phoneRecord.save();
+//                     sessionValidated.set(sessionId, true);
+//                     console.log(`🔓 Session ${sessionId} validated by first command; periodic checks enabled for this session.`);
+
+//                     if (!TRIAL_ONLY.has(command)) {
+//                         return await message.reply(
+//                             `ℹ️ *Welcome back!* Your free trial/subscription has expired.\n` +
+//                             `You can use basic commands (ping/help/status/sessionid).\n` +
+//                             `To continue using features, please subscribe:\n${process.env.DOMAIN}/payment`
+//                         );
+//                     }
+//                 }
+
+//                 // 6) Now enforce subscription for non-trial users
+//                 if (!subStatus.isValid) {
+//                     return await message.reply(
+//                         `🚫 *Subscription Required*\nYour subscription is inactive. Renew: ${process.env.DOMAIN}/payment`
+//                     );
+//                 }
+
+//                 // 7) Paid users - level based access
+//                 const paidPlan = userDoc.subscription?.planType || 'starter';
+//                 const PLAN_RULES = {
+//                     starter: ['tag-basic', 'autoreply-basic'],
+//                     professional: ['tag-advanced', 'list-advanced', 'autoreply', 'scheduler'],
+//                     business: ['all'],
+//                     enterprise: ['all']
+//                 };
+
+//                 if (!PLAN_RULES[paidPlan]) {
+//                     return await message.reply('⚠️ Invalid subscription plan.');
+//                 }
+
+//                 if (PLAN_RULES[paidPlan][0] !== 'all' && !PLAN_RULES[paidPlan].includes(command)) {
+//                     return await message.reply(
+//                         `🚫 *Command not available in your plan (${paidPlan})*\nUpgrade: ${process.env.DOMAIN}/payment`
+//                     );
+//                 }
+
+//                 // Paid command allowed
+//                 console.log(`💎 Paid command executed: ${command} for session: ${sessionId}`);
+//                 return await message.reply(`💎 *Paid command executed:* ${command}`);
+                
+//             } catch (err) {
+//                 console.error('❌ Message handler error for session', sessionId, ':', err);
+//                 await message.reply('❌ An error occurred while processing your command. Please try again.');
+//             }
+//         });
+
+//         // ======================= START THE CLIENT ==========================
+//         console.log('🚀 Initializing WhatsApp client for session:', sessionId);
+//         await client.initialize();
+
+//         console.log('✅ Client initialized successfully for session:', sessionId);
+//         return client;
+
+//     } catch (err) {
+//         console.error('❌ Error creating bot session:', sessionId, err);
+//         console.error('❌ Error stack:', err.stack);
+        
+//         // Clean up if client was created but failed
+//         if (clients.has(sessionId)) {
+//             clients.delete(sessionId);
+//         }
+        
+//         // Update session status to failed
+//         try {
+//             await Session.findOneAndUpdate(
+//                 { sessionId },
+//                 {
+//                     status: 'failed',
+//                     errorMessage: err.message,
+//                     updatedAt: new Date()
+//                 }
+//             );
+//         } catch (dbErr) {
+//             console.error('❌ Failed to update session failure status:', dbErr);
+//         }
+        
+//         throw err; // REQUIRED so server.js can detect failure
+//     }
+// }
+
 async function createBotSession(userId, sessionId, io) {
     try {
         let botPhoneNumber = null;
         let botSelfId = null;
+
         console.log('🤖 BOT: Creating bot session');
-    console.log('👤 User ID:', userId);
-    console.log('📱 Session ID:', sessionId);
-    console.log('🔍 BOT: io object exists?', !!io);
+        console.log('👤 User ID:', userId);
+        console.log('📱 Session ID:', sessionId);
+        console.log('🔍 BOT: io object exists?', !!io);
 
-    const user = await User.findById(userId);
-    const isAdmin =
-        user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
+        const user = await User.findById(userId);
+        const isAdmin =
+            user && (user.isAdmin || user.adminLevel !== 'none' || user.role === 'system_admin');
 
-    console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
-    console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
+        console.log(`🤖 Creating ${isAdmin ? 'ADMIN' : 'USER'} bot session`);
+        console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
 
-    // Create the WhatsApp client
-    const client = new Client({
-        authStrategy: new LocalAuth({
-            clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
-            dataPath: './.wwebjs_auth'
-        }),
-        puppeteer: {
-            ...clientConfig.puppeteer,
-            args: [
-                ...clientConfig.puppeteer.args,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-gpu',
-                '--disable-dev-shm-usage',
-                '--no-first-run',
-                '--no-zygote'
-            ],
-            handleSIGINT: false,
-            handleSIGTERM: false
-        },
-        takeoverOnConflict: true,
-        takeoverTimeoutMs: 5000,
-        syncFullHistory: false,
-        markOnlineOnConnect: false,
-        chatLoadingTimeoutMs: 15000,
-        sessionBackupSyncIntervalMs: 300000,
-        qrMaxRetries: clientConfig.qrMaxRetries,
-        authTimeoutMs: clientConfig.authTimeoutMs,
-        restartOnAuthFail: clientConfig.restartOnAuthFail
-    });
+        // Create the WhatsApp client
+        const client = new Client({
+            authStrategy: new LocalAuth({
+                clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
+                dataPath: './.wwebjs_auth'
+            }),
+            puppeteer: {
+                ...clientConfig.puppeteer,
+                args: [
+                    ...clientConfig.puppeteer.args,
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-extensions',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding'
+                ],
+                handleSIGINT: false,
+                handleSIGTERM: false
+            },
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 10000, // Increased timeout
+            syncFullHistory: false,
+            markOnlineOnConnect: false,
+            chatLoadingTimeoutMs: 30000, // Increased timeout
+            sessionBackupSyncIntervalMs: 300000,
+            qrMaxRetries: clientConfig.qrMaxRetries,
+            authTimeoutMs: 60000, // Increased timeout
+            restartOnAuthFail: clientConfig.restartOnAuthFail
+        });
 
-    // Store client so we can access it later
-    clients.set(sessionId, client);
+        // Store client so we can access it later
+        clients.set(sessionId, client);
 
-    // ======================= EVENT HANDLERS ==========================
+        // ======================= COMPREHENSIVE EVENT HANDLERS ==========================
 
-    client.on('loading_screen', (percent, message) => {
-        console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} DEBUG: Loading screen:`, percent + '%', message);
-    });
-
-    client.on('authenticated', (session) => {
-        console.log(`🔑 Authentication successful for session: ${sessionId}`);
-        try {
-            if (session && typeof session === 'object') {
-                const sessionString = JSON.stringify(session);
-                const phoneMatch = sessionString.match(/(\d{10,15})/);
-                if (phoneMatch) {
-                    botPhoneNumber = phoneMatch[1];
-                    botSelfId = `${botPhoneNumber}@c.us`;
-                    console.log(`📱 Extracted phone number: ${botPhoneNumber}`);
-                }
+        // Loading screen handler
+        client.on('loading_screen', (percent, message) => {
+            console.log(`📱 ${isAdmin ? 'ADMIN' : 'USER'} Loading: ${percent}% - ${message} (Session: ${sessionId})`);
+            
+            // Update session status during loading
+            if (percent === 100) {
+                console.log(`✅ Loading completed for session: ${sessionId}`);
             }
-        } catch (error) {
-            console.error('❌ Error extracting phone from session object:', error.message);
-        }
-
-        if (!botPhoneNumber && CONFIG.owner) {
-            botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
-            botSelfId = `${botPhoneNumber}@c.us`;
-            console.log(`📱 Using config owner number: ${botPhoneNumber}`);
-        }
-    });
-
-    client.on('change_state', (state) => {
-        console.log(`📱 State changed to: ${state} for session: ${sessionId}`);
-        
-        // Update last activity in database
-        Session.findOneAndUpdate(
-            { sessionId },
-            { lastActive: new Date() }
-        ).catch(err => console.error('Failed to update last activity:', err));
-    });
-
-    client.on('qr', async (qr) => {
-        console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
-        const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
-
-        if (!io) {
-            console.error(`❌ io is undefined! Cannot emit QR for session: ${sessionId}`);
-            return;
-        }
-
-        // Emit to specific room
-        io.to(roomName).emit('qrCode', {
-            sessionId,
-            qr,
-            message: 'Scan this QR code with WhatsApp',
-            userId,
-            isAdmin,
-            userType: isAdmin ? 'admin' : 'user'
         });
 
-        // Also broadcast as fallback
-        io.emit('qrCode', {
-            sessionId,
-            qr,
-            message: 'Scan this QR code with WhatsApp',
-            userId,
-            isAdmin,
-            userType: isAdmin ? 'admin' : 'user',
-            broadcast: true
+        // Authentication handler
+        client.on('authenticated', (session) => {
+            console.log(`🔑 Authentication successful for session: ${sessionId}`);
+            
+            try {
+                if (session && typeof session === 'object') {
+                    const sessionString = JSON.stringify(session);
+                    const phoneMatch = sessionString.match(/(\d{10,15})/);
+                    if (phoneMatch) {
+                        botPhoneNumber = phoneMatch[1];
+                        botSelfId = `${botPhoneNumber}@c.us`;
+                        console.log(`📱 Extracted phone number: ${botPhoneNumber}`);
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error extracting phone from session object:', error.message);
+            }
+
+            if (!botPhoneNumber && CONFIG.owner) {
+                botPhoneNumber = CONFIG.owner.replace(/[^0-9]/g, '');
+                botSelfId = `${botPhoneNumber}@c.us`;
+                console.log(`📱 Using config owner number: ${botPhoneNumber}`);
+            }
         });
 
-        console.log(`✅ QR code emitted for session: ${sessionId}`);
-    });
+        // State change handler with detailed logging
+        client.on('change_state', (state) => {
+            console.log(`📱 State changed to: ${state} for session: ${sessionId}`);
+            
+            // Log important state transitions
+            if (state === 'CONNECTED') {
+                console.log(`🟢 WhatsApp connected for session: ${sessionId}`);
+            } else if (state === 'OPENING') {
+                console.log(`🔄 WhatsApp opening for session: ${sessionId}`);
+            } else if (state === 'PAIRING') {
+                console.log(`🔗 WhatsApp pairing for session: ${sessionId}`);
+            }
+        });
 
-    // ======================= READY EVENT ==========================
-    client.on('ready', async () => {
-        console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+        // QR code handler
+        client.on('qr', async (qr) => {
+            console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
+            const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
 
-        try {
-            // Add timeout protection
-            const readyTimeout = setTimeout(() => {
-                console.error('❌ Ready event timeout for session:', sessionId);
-            }, 30000);
-
-            const selfId = client.info?.wid?._serialized;
-            const selfNumber = client.info?.wid?.user;
-            const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
-
-            if (!selfId || !selfNumber) {
-                console.error('❌ Missing selfId or selfNumber in ready event for session:', sessionId);
-                console.error('❌ Client info:', client.info);
-                clearTimeout(readyTimeout);
+            if (!io) {
+                console.error(`❌ io is undefined! Cannot emit QR for session: ${sessionId}`);
                 return;
             }
 
-            client.selfId = selfId;
-            userSessions.set(selfId, sessionId);
+            // Emit to specific room
+            io.to(roomName).emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp',
+                userId,
+                isAdmin,
+                userType: isAdmin ? 'admin' : 'user'
+            });
 
-            console.log('📱 Self ID:', selfId);
-            console.log('📞 Phone:', selfNumber);
-            console.log('🆔 Session ID (unique):', uniqueId);
+            // Also broadcast as fallback
+            io.emit('qrCode', {
+                sessionId,
+                qr,
+                message: 'Scan this QR code with WhatsApp',
+                userId,
+                isAdmin,
+                userType: isAdmin ? 'admin' : 'user',
+                broadcast: true
+            });
 
-            // Clear timeout since we got this far
-            clearTimeout(readyTimeout);
+            console.log(`✅ QR code emitted for session: ${sessionId}`);
+        });
 
-            // Reload user from DB by whatsappNumber if possible, fallback to user
-            let userDoc;
+        // ======================= READY EVENT WITH ENHANCED DEBUGGING ==========================
+        client.on('ready', async () => {
+            console.log('🎉 ===== READY EVENT FIRED =====');
+            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+
             try {
-                userDoc = (await User.findOne({ whatsappNumber: selfNumber })) || user;
-                console.log('✅ User document retrieved:', userDoc ? userDoc.email : 'No user found');
-            } catch (userErr) {
-                console.error('❌ Failed to find user:', userErr);
-                userDoc = user; // fallback to original user
-            }
+                // Add timeout protection
+                const readyTimeout = setTimeout(() => {
+                    console.error('❌ Ready event processing timeout for session:', sessionId);
+                }, 45000); // Increased to 45 seconds
 
-            // Create or update PhoneRecord (if PhoneRecord model exists)
-            try {
-                let PhoneRecord;
-                try {
-                    PhoneRecord = require('./models/PhoneRecord');
-                } catch (modelErr) {
-                    console.log('⚠️ PhoneRecord model not found, skipping phone record creation');
-                    PhoneRecord = null;
+                console.log('🔍 Checking client info...');
+                const selfId = client.info?.wid?._serialized;
+                const selfNumber = client.info?.wid?.user;
+                const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
+
+                console.log('📊 Client info debug:', {
+                    hasInfo: !!client.info,
+                    hasWid: !!client.info?.wid,
+                    selfId: selfId || 'MISSING',
+                    selfNumber: selfNumber || 'MISSING'
+                });
+
+                if (!selfId || !selfNumber) {
+                    console.error('❌ Missing selfId or selfNumber in ready event for session:', sessionId);
+                    console.error('❌ Full client info:', JSON.stringify(client.info, null, 2));
+                    clearTimeout(readyTimeout);
+                    return;
                 }
 
-                if (PhoneRecord) {
-                    let phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
-                    if (!phoneRecord) {
-                        phoneRecord = await PhoneRecord.create({
+                client.selfId = selfId;
+                userSessions.set(selfId, sessionId);
+
+                console.log('📱 Self ID:', selfId);
+                console.log('📞 Phone:', selfNumber);
+                console.log('🆔 Session ID (unique):', uniqueId);
+
+                // Clear timeout since we got this far
+                clearTimeout(readyTimeout);
+
+                // Update session in database first
+                try {
+                    const sessionUpdate = await Session.findOneAndUpdate(
+                        { sessionId },
+                        {
+                            status: 'connected',
                             phone: selfNumber,
-                            usedByUserId: userDoc?._id || null,
-                            trialUsed: true,
-                            trialStartedAt: new Date(),
-                            trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-                            firstCommandDone: false
-                        });
-                        console.log(`📌 PhoneRecord created for ${selfNumber}`);
+                            connectedAt: new Date(),
+                            updatedAt: new Date()
+                        },
+                        { upsert: false, new: true }
+                    );
+                    
+                    if (sessionUpdate) {
+                        console.log('✅ Session status updated to connected in database');
                     } else {
-                        if (!phoneRecord.usedByUserId && userDoc?._id) {
-                            phoneRecord.usedByUserId = userDoc._id;
-                            await phoneRecord.save();
-                            console.log(`🔧 PhoneRecord ${selfNumber} linked to user ${userDoc._id}`);
+                        console.log('⚠️ Session not found in database for update');
+                    }
+                } catch (sErr) {
+                    console.error('❌ Could not update Session record on ready:', sErr.message);
+                }
+
+                // Get user document
+                let userDoc;
+                try {
+                    userDoc = (await User.findOne({ whatsappNumber: selfNumber })) || user;
+                    console.log('✅ User document retrieved:', userDoc ? userDoc.email : 'No user found');
+                } catch (userErr) {
+                    console.error('❌ Failed to find user:', userErr);
+                    userDoc = user;
+                }
+
+                // Initialize session validation state
+                sessionValidated.set(sessionId, false);
+                console.log(`✅ Session validation state initialized for ${sessionId} (sessionValidated=false)`);
+
+                // Send welcome messages with comprehensive error handling
+                try {
+                    console.log('📤 Attempting to get self chat...');
+                    
+                    // Add retry logic for getting chat
+                    let chat;
+                    let retryCount = 0;
+                    const maxRetries = 3;
+                    
+                    while (retryCount < maxRetries) {
+                        try {
+                            chat = await client.getChatById(selfId);
+                            console.log('✅ Self chat retrieved successfully');
+                            break;
+                        } catch (chatErr) {
+                            retryCount++;
+                            console.log(`⚠️ Chat retrieval attempt ${retryCount}/${maxRetries} failed:`, chatErr.message);
+                            if (retryCount < maxRetries) {
+                                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+                            }
                         }
                     }
-                }
-            } catch (phoneErr) {
-                console.error('❌ PhoneRecord operation failed:', phoneErr.message);
-                // Continue execution - this is not critical
-            }
 
-            // Update Session DB to connected
-            try {
-                const sessionUpdate = await Session.findOneAndUpdate(
-                    { sessionId },
-                    {
-                        status: 'connected',
-                        phone: selfNumber,
-                        connectedAt: new Date(),
-                        updatedAt: new Date()
-                    },
-                    { upsert: false, new: true }
-                );
-                
-                if (sessionUpdate) {
-                    console.log('✅ Session status updated to connected');
-                } else {
-                    console.log('⚠️ Session not found in database for update');
-                }
-            } catch (sErr) {
-                console.error('❌ Could not update Session record on ready:', sErr.message);
-            }
-
-            // Send welcome messages with proper error handling
-            try {
-                console.log('📤 Attempting to get self chat...');
-                const chat = await client.getChatById(selfId);
-                console.log('✅ Self chat retrieved successfully');
-
-                // Send welcome message
-                try {
-                    await chat.sendMessage(
-                        `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
-                    );
-                    console.log('✅ Welcome message sent');
-                } catch (welcomeErr) {
-                    console.error('❌ Failed to send welcome message:', welcomeErr);
-                }
-
-                // Send subscription status message
-                if (userDoc) {
-                    try {
-                        const subStatus = await checkUserSubscriptionStatus(userDoc._id);
-                        let statusMessage = '';
-                        
-                        if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
-                        else if (subStatus.trial) statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
-                        else if (subStatus.isExempted) statusMessage = '🛡️ *Payment Exemption Active*';
-                        else if (subStatus.isValid) statusMessage = '💳 *Subscription Active*';
-                        else statusMessage = '⚠️ *Subscription Required*';
-
-                        await chat.sendMessage(statusMessage);
-                        console.log('✅ Subscription status message sent');
-                    } catch (subErr) {
-                        console.error('❌ Failed to send subscription status:', subErr);
+                    if (!chat) {
+                        throw new Error('Failed to retrieve self chat after all retries');
                     }
-                }
 
-                // Send commands message
-                try {
-                    if (typeof sendCommandsMessage === 'function') {
-                        await sendCommandsMessage(chat, !!(userDoc && (userDoc.isAdmin || userDoc.role === 'system_admin')), uniqueId);
-                        console.log('✅ Commands message sent via helper function');
-                    } else {
+                    // Send welcome message
+                    try {
+                        await chat.sendMessage(
+                            `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
+                        );
+                        console.log('✅ Welcome message sent successfully');
+                    } catch (welcomeErr) {
+                        console.error('❌ Failed to send welcome message:', welcomeErr);
+                    }
+
+                    // Send subscription status message
+                    if (userDoc) {
+                        try {
+                            const subStatus = await checkUserSubscriptionStatus(userDoc._id);
+                            let statusMessage = '';
+                            
+                            if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
+                            else if (subStatus.trial) statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
+                            else if (subStatus.isExempted) statusMessage = '🛡️ *Payment Exemption Active*';
+                            else if (subStatus.isValid) statusMessage = '💳 *Subscription Active*';
+                            else statusMessage = '⚠️ *Subscription Required*';
+
+                            await chat.sendMessage(statusMessage);
+                            console.log('✅ Subscription status message sent');
+                        } catch (subErr) {
+                            console.error('❌ Failed to send subscription status:', subErr);
+                        }
+                    }
+
+                    // Send commands message
+                    try {
                         await chat.sendMessage(
                             `🔧 *Available Commands:*\n\n• !ping\n• !help\n• !status\n• !sessionid\n💡 Type commands here.`
                         );
-                        console.log('✅ Default commands message sent');
+                        console.log('✅ Commands message sent');
+                    } catch (cmdErr) {
+                        console.error('❌ Failed to send commands message:', cmdErr);
                     }
-                } catch (helperErr) {
-                    console.error('❌ Failed to send commands message:', helperErr.message);
+
+                } catch (chatErr) {
+                    console.error('❌ Failed to get self chat or send messages:', chatErr);
                 }
 
-            } catch (chatErr) {
-                console.error('❌ Failed to get self chat or send messages:', chatErr);
-            }
-
-            // Initialize session validation state
-            sessionValidated.set(sessionId, false);
-            console.log(`✅ Session validation state initialized for ${sessionId} (sessionValidated=false)`);
-
-            // Emit ready event to frontend
-            if (io) {
-                try {
-                    const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
-                    io.to(roomName).emit('sessionReady', {
-                        sessionId,
-                        phone: selfNumber,
-                        message: 'WhatsApp connected successfully!'
-                    });
-                    console.log('✅ Ready event emitted to frontend');
-                } catch (ioErr) {
-                    console.error('❌ Failed to emit ready event:', ioErr);
+                // Emit ready event to frontend
+                if (io) {
+                    try {
+                        const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+                        io.to(roomName).emit('sessionReady', {
+                            sessionId,
+                            phone: selfNumber,
+                            message: 'WhatsApp connected successfully!'
+                        });
+                        console.log('✅ Ready event emitted to frontend');
+                    } catch (ioErr) {
+                        console.error('❌ Failed to emit ready event:', ioErr);
+                    }
                 }
+
+                console.log('🎉 ===== READY EVENT COMPLETED SUCCESSFULLY =====');
+                console.log(`✅ Session ${sessionId} is now fully operational`);
+
+            } catch (err) {
+                console.error('❌ READY handler error for session', sessionId, ':', err);
+                console.error('❌ Error stack:', err.stack);
             }
+        });
 
-            console.log(`✅ READY completed successfully for session ${sessionId}`);
+        // ======================= OTHER EVENT HANDLERS ==========================
 
-        } catch (err) {
-            console.error('❌ READY handler error for session', sessionId, ':', err);
-            console.error('❌ Error stack:', err.stack);
+        // Auth failure handler
+        client.on('auth_failure', async (message) => {
+            console.log('❌ Authentication failed for session:', sessionId, message);
             
-            // Try to update session status to error
             try {
                 await Session.findOneAndUpdate(
                     { sessionId },
-                    {
-                        status: 'error',
-                        errorMessage: err.message,
+                    { 
+                        status: 'auth_failed',
+                        errorMessage: message,
                         updatedAt: new Date()
                     }
                 );
-            } catch (updateErr) {
-                console.error('❌ Failed to update session error status:', updateErr);
+            } catch (dbErr) {
+                console.error('❌ Failed to update auth failure status:', dbErr);
             }
-        }
-    });
-
-    // ======================= AUTH FAILURE HANDLER ==========================
-    client.on('auth_failure', async (message) => {
-        console.log('❌ Authentication failed for session:', sessionId, message);
-        
-        try {
-            // Update session status in database
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { 
-                    status: 'auth_failed',
-                    errorMessage: message,
-                    updatedAt: new Date()
-                }
-            );
-            console.log('✅ Session status updated to auth_failed');
-        } catch (dbErr) {
-            console.error('❌ Failed to update auth failure status:', dbErr);
-        }
-        
-        // Remove from active clients
-        clients.delete(sessionId);
-        
-        // Clean up session data
-        if (client.selfId) {
-            userSessions.delete(client.selfId);
-        }
-        sessionValidated.delete(sessionId);
-        
-        // Notify frontend
-        if (io) {
-            try {
-                const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
-                io.to(roomName).emit('authFailure', {
-                    sessionId,
-                    message: 'WhatsApp authentication failed'
-                });
-                console.log('✅ Auth failure event emitted to frontend');
-            } catch (ioErr) {
-                console.error('❌ Failed to emit auth failure event:', ioErr);
-            }
-        }
-        
-        console.log(`🧹 Cleaned up session data for ${sessionId} after auth failure`);
-    });
-
-    // ======================= DISCONNECTION HANDLER ==========================
-    client.on('disconnected', async (reason) => {
-        console.log(`❌ Client disconnected for session ${sessionId}:`, reason);
-        
-        try {
-            // Update session status in database
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { 
-                    status: 'disconnected',
-                    errorMessage: reason,
-                    disconnectedAt: new Date()
-                }
-            );
-            console.log('✅ Session status updated to disconnected');
-        } catch (dbErr) {
-            console.error('❌ Failed to update disconnect status:', dbErr);
-        }
-        
-        // Clean up session data
-        clients.delete(sessionId);
-        if (client.selfId) {
-            userSessions.delete(client.selfId);
-        }
-        sessionValidated.delete(sessionId);
-        
-        // Clear heartbeat interval if it exists
-        if (client.heartbeatInterval) {
-            clearInterval(client.heartbeatInterval);
-            console.log(`🧹 Cleared heartbeat interval for session ${sessionId}`);
-        }
-        
-        // Notify frontend
-        if (io) {
-            try {
-                const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
-                io.to(roomName).emit('sessionDisconnected', {
-                    sessionId,
-                    reason,
-                    message: 'WhatsApp session disconnected'
-                });
-                console.log('✅ Disconnect event emitted to frontend');
-            } catch (ioErr) {
-                console.error('❌ Failed to emit disconnect event:', ioErr);
-            }
-        }
-        
-        console.log(`🧹 Cleaned up session data for ${sessionId} after disconnect`);
-    });
-
-    // ======================= HEARTBEAT MONITORING ==========================
-    const heartbeatInterval = setInterval(() => {
-        if (client && client.info && client.info.wid) {
-            console.log(`💓 Session ${sessionId} heartbeat: ${client.info.wid.user || 'unknown'}`);
-        } else {
-            console.log(`💔 Session ${sessionId} heartbeat: client not ready`);
             
-            // If client is not ready for too long, you could add cleanup logic here
-            // For now, just log the issue
-        }
-    }, 60000); // Every minute
+            clients.delete(sessionId);
+            if (client.selfId) userSessions.delete(client.selfId);
+            sessionValidated.delete(sessionId);
+        });
 
-    // Store the interval ID so we can clear it later
-    client.heartbeatInterval = heartbeatInterval;
-
-    // ======================= MESSAGE HANDLER ==========================
-    client.on('message', async (message) => {
-        try {
-            const selfId = client.selfId || client.info?.wid?._serialized;
-            const selfNumber = client.info?.wid?.user;
-            if (!selfId || !selfNumber) return;
-
-            const isSelfChat = message.fromMe && message.to === selfId;
-            if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
-
-            const raw = message.body.trim();
-            const command = raw.slice(1).split(' ')[0].toLowerCase();
-
-            console.log(`📨 Command received in session ${sessionId}: ${command}`);
-
-            await message.react('🤖');
-
-            const BASIC = new Set(['ping', 'help', 'status', 'sessionid']);
-            const TRIAL_ONLY = new Set(['tag', 'list']);
-
-            // Reload phoneRecord & user each message (keeps state fresh)
-            let phoneRecord;
-            let PhoneRecord;
+        // Disconnection handler
+        client.on('disconnected', async (reason) => {
+            console.log(`❌ Client disconnected for session ${sessionId}:`, reason);
+            
             try {
-                PhoneRecord = require('./models/PhoneRecord');
-                phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
-            } catch (modelErr) {
-                console.log('⚠️ PhoneRecord model not available');
-                phoneRecord = null;
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'disconnected',
+                        errorMessage: reason,
+                        disconnectedAt: new Date()
+                    }
+                );
+            } catch (dbErr) {
+                console.error('❌ Failed to update disconnect status:', dbErr);
             }
-
-            const userDoc = await User.findOne({ whatsappNumber: selfNumber });
-            const userObjId = userDoc?._id;
-
-            if (!userDoc) {
-                return await message.reply("⚠️ Error: User record not found.");
+            
+            clients.delete(sessionId);
+            if (client.selfId) userSessions.delete(client.selfId);
+            sessionValidated.delete(sessionId);
+            
+            if (client.heartbeatInterval) {
+                clearInterval(client.heartbeatInterval);
             }
+        });
 
-            // 1) BASIC commands always allowed
-            if (BASIC.has(command)) {
+        // Enhanced heartbeat monitoring
+        const heartbeatInterval = setInterval(() => {
+            if (client && client.info && client.info.wid) {
+                console.log(`💚 Session ${sessionId} heartbeat: ${client.info.wid.user || 'unknown'} - HEALTHY`);
+            } else {
+                console.log(`💔 Session ${sessionId} heartbeat: client not ready`);
+            }
+        }, 60000);
+
+        client.heartbeatInterval = heartbeatInterval;
+
+        // ======================= MESSAGE HANDLER ==========================
+        client.on('message', async (message) => {
+            try {
+                const selfId = client.selfId || client.info?.wid?._serialized;
+                const selfNumber = client.info?.wid?.user;
+                if (!selfId || !selfNumber) return;
+
+                const isSelfChat = message.fromMe && message.to === selfId;
+                if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
+
+                const command = message.body.slice(1).split(' ')[0].toLowerCase();
+                console.log(`📨 Command received in session ${sessionId}: ${command}`);
+
+                await message.react('🤖');
+
+                // Basic commands
                 switch (command) {
-                    case 'ping': 
+                    case 'ping':
                         return await message.reply('🏓 Pong!');
                     case 'help':
-                        return await message.reply(
-                            `🤖 *Bot Commands*\n\n` +
-                            `• !ping — check if bot is alive\n` +
-                            `• !help — show help menu\n` +
-                            `• !status — check your bot account status\n` +
-                            `• !sessionid — show your session ID\n\n` +
-                             `🔸 *Trial Commands*: !tag, !list (available only during 7-day trial)\n` +
-                                `🔸 *Paid Commands* depend on your subscription level\n`
-                            );
-                        case 'status': {
-                            const s = await checkUserSubscriptionStatus(userObjId);
-                            return await message.reply(
-                                `📊 *Bot Status*\n\n` +
-                                `📱 Number: ${selfNumber}\n` +
-                                `🆔 Session ID: ${sessionId}\n` +
-                                `📌 Status: ${s.reason || 'Unknown'}`
-                            );
-                        }
-                        case 'sessionid': 
-                            return await message.reply(`📱 *Session ID:* ${sessionId}`);
-                    }
+                        return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
+                    case 'status':
+                        return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
+                    case 'sessionid':
+                        return await message.reply(`📱 *Session ID:* ${sessionId}`);
+                    default:
+                        return await message.reply(`❌ Unknown command: *${command}*`);
                 }
-
-                // 2) Owner/exempt bypass
-                const subStatus = await checkUserSubscriptionStatus(userObjId);
-                if (subStatus.isOwner || subStatus.isExempted) {
-                    console.log(`👑 Admin/Owner access granted for command: ${command}`);
-                    return await message.reply(`👑 Admin/Owner access granted for *${command}*`);
-                }
-
-                const now = new Date();
-
-                // 3) TRIAL active handling
-                if (phoneRecord && phoneRecord.trialUsed && phoneRecord.usedByUserId?.toString() === userObjId?.toString()) {
-                    if (phoneRecord.trialExpiresAt && phoneRecord.trialExpiresAt > now) {
-                        if (TRIAL_ONLY.has(command)) {
-                            if (command === 'tag') {
-                                const today = new Date().toISOString().slice(0, 10);
-                                
-                                // Check if TagUsage model exists
-                                let TagUsage;
-                                try {
-                                    TagUsage = require('./models/TagUsage');
-                                } catch (modelErr) {
-                                    console.log('⚠️ TagUsage model not found, allowing command');
-                                    TagUsage = null;
-                                }
-
-                                if (TagUsage) {
-                                    let usage = await TagUsage.findOne({ phone: selfNumber, date: today });
-                                    if (!usage) {
-                                        usage = await TagUsage.create({ phone: selfNumber, date: today, tagsToday: 0 });
-                                    }
-                                    if (usage.tagsToday >= 3) {
-                                        return await message.reply(
-                                            `🚫 *Trial Limit Reached*\nYou can only tag **3 groups/day** during trial.\nUpgrade: ${process.env.DOMAIN}/payment`
-                                        );
-                                    }
-                                    usage.tagsToday++;
-                                    await usage.save();
-                                }
-
-                                // Mark firstCommand if not done
-                                if (!phoneRecord.firstCommandDone) {
-                                    phoneRecord.firstCommandDone = true;
-                                    await phoneRecord.save();
-                                    sessionValidated.set(sessionId, true);
-                                    console.log(`🔓 Session ${sessionId} validated by first command (trial)`);
-                                }
-                                
-                                const usageCount = TagUsage ? (await TagUsage.findOne({ phone: selfNumber, date: today }))?.tagsToday || 1 : 1;
-                                return await message.reply(`📌 *TAG executed* (${usageCount}/3 today)`);
-                            }
-                            
-                            if (command === 'list') {
-                                if (!phoneRecord.firstCommandDone) {
-                                    phoneRecord.firstCommandDone = true;
-                                    await phoneRecord.save();
-                                    sessionValidated.set(sessionId, true);
-                                    console.log(`🔓 Session ${sessionId} validated by first command (trial)`);
-                                }
-                                return await message.reply('📃 *LIST executed (trial)*');
-                            }
-                        }
-                        // Trial active but command not allowed
-                        return await message.reply(`🚫 *Command not allowed during trial:* ${command}\nAvailable: !tag, !list`);
-                    }
-                }
-
-                // 4) Fraud-prevention: phone used on other account
-                if (phoneRecord && phoneRecord.usedByUserId?.toString() !== userObjId?.toString()) {
-                    return await message.reply(
-                        `🚫 *Trial not available for this phone number*\nThis number already used a free trial on another account.\nSubscribe: ${process.env.DOMAIN}/payment`
-                    );
-                }
-
-                // 5) FIRST-COMMAND GRACE for expired users (and expired paid users)
-                if (phoneRecord && !phoneRecord.firstCommandDone) {
-                    // Mark first command done and validate session, but only allow BASIC commands as an info step
-                    phoneRecord.firstCommandDone = true;
-                    await phoneRecord.save();
-                    sessionValidated.set(sessionId, true);
-                    console.log(`🔓 Session ${sessionId} validated by first command; periodic checks enabled for this session.`);
-
-                    if (!TRIAL_ONLY.has(command)) {
-                        return await message.reply(
-                            `ℹ️ *Welcome back!* Your free trial/subscription has expired.\n` +
-                            `You can use basic commands (ping/help/status/sessionid).\n` +
-                            `To continue using features, please subscribe:\n${process.env.DOMAIN}/payment`
-                        );
-                    }
-                }
-
-                // 6) Now enforce subscription for non-trial users
-                if (!subStatus.isValid) {
-                    return await message.reply(
-                        `🚫 *Subscription Required*\nYour subscription is inactive. Renew: ${process.env.DOMAIN}/payment`
-                    );
-                }
-
-                // 7) Paid users - level based access
-                const paidPlan = userDoc.subscription?.planType || 'starter';
-                const PLAN_RULES = {
-                    starter: ['tag-basic', 'autoreply-basic'],
-                    professional: ['tag-advanced', 'list-advanced', 'autoreply', 'scheduler'],
-                    business: ['all'],
-                    enterprise: ['all']
-                };
-
-                if (!PLAN_RULES[paidPlan]) {
-                    return await message.reply('⚠️ Invalid subscription plan.');
-                }
-
-                if (PLAN_RULES[paidPlan][0] !== 'all' && !PLAN_RULES[paidPlan].includes(command)) {
-                    return await message.reply(
-                        `🚫 *Command not available in your plan (${paidPlan})*\nUpgrade: ${process.env.DOMAIN}/payment`
-                    );
-                }
-
-                // Paid command allowed
-                console.log(`💎 Paid command executed: ${command} for session: ${sessionId}`);
-                return await message.reply(`💎 *Paid command executed:* ${command}`);
                 
             } catch (err) {
                 console.error('❌ Message handler error for session', sessionId, ':', err);
-                await message.reply('❌ An error occurred while processing your command. Please try again.');
             }
         });
 
         // ======================= START THE CLIENT ==========================
         console.log('🚀 Initializing WhatsApp client for session:', sessionId);
+        
+        // Set a timeout to detect if initialization hangs
+        const initTimeout = setTimeout(() => {
+            console.error('❌ Client initialization timeout for session:', sessionId);
+        }, 120000); // 2 minutes
+
         await client.initialize();
+        clearTimeout(initTimeout);
 
         console.log('✅ Client initialized successfully for session:', sessionId);
         return client;
@@ -2294,12 +2740,10 @@ async function createBotSession(userId, sessionId, io) {
         console.error('❌ Error creating bot session:', sessionId, err);
         console.error('❌ Error stack:', err.stack);
         
-        // Clean up if client was created but failed
         if (clients.has(sessionId)) {
             clients.delete(sessionId);
         }
         
-        // Update session status to failed
         try {
             await Session.findOneAndUpdate(
                 { sessionId },
@@ -2313,7 +2757,7 @@ async function createBotSession(userId, sessionId, io) {
             console.error('❌ Failed to update session failure status:', dbErr);
         }
         
-        throw err; // REQUIRED so server.js can detect failure
+        throw err;
     }
 }
 
