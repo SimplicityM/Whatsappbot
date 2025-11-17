@@ -1203,7 +1203,7 @@ async function createBotSession(userId, sessionId, io) {
                 }
 
                 // Initialize session validation state
-                sessionValidated.set(sessionId, true);
+                sessionValidated.set(sessionId, false);
                 console.log(`✅ Session validation state initialized for ${sessionId} (sessionValidated=false)`);
 
                 // Send welcome messages with comprehensive error handling
@@ -1293,7 +1293,8 @@ async function createBotSession(userId, sessionId, io) {
 
                 console.log('🎉 ===== READY EVENT COMPLETED SUCCESSFULLY =====');
                 console.log(`✅ Session ${sessionId} is now fully operational`);
-
+                    sessionValidated.set(sessionId, true);
+                    console.log(`🔓 Session ${sessionId} validated - periodic checks and commands enabled`);
             } catch (err) {
                 console.error('❌ READY handler error for session', sessionId, ':', err);
                 console.error('❌ Error stack:', err.stack);
