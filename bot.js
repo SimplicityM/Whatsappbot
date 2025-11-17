@@ -783,34 +783,58 @@ function createClient(sessionId) {
         console.log(`❌ [createClient] Auth failure for ${sessionId}:`, err);
     });
 
-    client.on('qr', (qr) => {
-    console.log(`📱 [createClient] QR generated for ${sessionId}`);
+//     client.on('qr', (qr) => {
+//     console.log(`📱 [createClient] QR generated for ${sessionId}`);
 
-    const roomName = `user-${sessionId}`;
+//     const roomName = `user-${sessionId}`;
 
-    // === EMIT TO FRONTEND ROOM ===
-    if (global.io) {
-        global.io.to(roomName).emit("qrCode", {
-            sessionId,
-            qr,
-            message: "Scan this QR code with WhatsApp",
-            userType: "user"
-        });
-        console.log(`✅ QR emitted to room: ${roomName}`);
-    } else {
-        console.error("❌ global.io is not set. Cannot send QR.");
+//     // === EMIT TO FRONTEND ROOM ===
+//     if (global.io) {
+//         global.io.to(roomName).emit("qrCode", {
+//             sessionId,
+//             qr,
+//             message: "Scan this QR code with WhatsApp",
+//             userType: "user"
+//         });
+//         console.log(`✅ QR emitted to room: ${roomName}`);
+//     } else {
+//         console.error("❌ global.io is not set. Cannot send QR.");
+//     }
+
+//     // Also global broadcast fallback
+//     if (global.io) {
+//         global.io.emit("qrCode", {
+//             sessionId,
+//             qr,
+//             broadcast: true,
+//             message: "Scan this QR code"
+//         });
+//     }
+// });
+
+client.on("qr", (qr) => {
+    console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
+    
+    const roomName = `user-${userId.toString()}`;
+
+    if (!io) {
+        console.error("❌ io is undefined – cannot emit QR");
+        return;
     }
 
-    // Also global broadcast fallback
-    if (global.io) {
-        global.io.emit("qrCode", {
-            sessionId,
-            qr,
-            broadcast: true,
-            message: "Scan this QR code"
-        });
-    }
+    console.log(`📤 Emitting QR to room: ${roomName}`);
+
+    io.to(roomName).emit("qrCode", {
+        sessionId,
+        qr,
+        userId,
+        message: "Scan this QR code with WhatsApp",
+        source: "createBotSession"
+    });
+
+    console.log("✅ QR event emitted to frontend");
 });
+
 
     client.on('ready', async () => {
         console.log(`🎉 [createClient] READY for session ${sessionId}`);
@@ -1190,45 +1214,33 @@ async function createBotSession(userId, sessionId, io) {
                         }),
 
                                 puppeteer: {
-                                    ...clientConfig.puppeteer,
-                                    headless: true,
-
-                                    // If you want to debug locally, temporarily set:
-                                    // headless: false,
-
-                                    args: [
-                                        '--no-sandbox',
-                                        '--disable-setuid-sandbox',
-                                        '--disable-gpu',
-                                        '--disable-dev-shm-usage',
-                                        '--disable-extensions',
-                                        '--disable-infobars',
-                                        '--no-first-run',
-                                        '--no-zygote',
-                                        '--single-process',
-                                        '--disable-background-timer-throttling',
-                                        '--disable-backgrounding-occluded-windows',
-                                        '--disable-renderer-backgrounding',
-                                        '--ignore-certificate-errors',
-                                        '--window-size=1920,1080',
-                                        ...(clientConfig.puppeteer?.args || [])
-                                    ],
-
-                                    handleSIGINT: false,
-                                    handleSIGTERM: false,
-                                    handleSIGHUP: false
-                                },
-
-                                takeoverOnConflict: true,
-                                takeoverTimeoutMs: 15000,
-                                syncFullHistory: false,
-                                markOnlineOnConnect: false,
-                                chatLoadingTimeoutMs: 45000,
-                                sessionBackupSyncIntervalMs: 300000,
-                                qrMaxRetries: clientConfig.qrMaxRetries || 3,
-                                authTimeoutMs: 90000,
-                                restartOnAuthFail: true
-                            });
+    ...clientConfig.puppeteer,
+    headless: true,
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        ...(clientConfig.puppeteer?.args || [])
+    ],
+    handleSIGINT: false,
+    handleSIGTERM: false
+},
+takeoverOnConflict: true,
+takeoverTimeoutMs: 10000,
+syncFullHistory: false,
+markOnlineOnConnect: false,
+chatLoadingTimeoutMs: 30000,
+sessionBackupSyncIntervalMs: 300000,
+qrMaxRetries: clientConfig.qrMaxRetries || 3,
+authTimeoutMs: 60000,
+restartOnAuthFail: clientConfig.restartOnAuthFail
+});
 
 
         // Store client so we can access it later
@@ -1468,7 +1480,8 @@ async function createBotSession(userId, sessionId, io) {
                 // Emit ready event to frontend
                 if (io) {
                     try {
-                        const roomName = isAdmin ? `admin-${userId}` : `user-${userId}`;
+                        const roomName = `user-${userId.toString()}`;
+
                         io.to(roomName).emit('sessionReady', {
                             sessionId,
                             phone: selfNumber,
@@ -1552,40 +1565,7 @@ async function createBotSession(userId, sessionId, io) {
         client.heartbeatInterval = heartbeatInterval;
 
         // ======================= MESSAGE HANDLER ==========================
-        // client.on('message', async (message) => {
-        //     try {
-        //         const selfId = client.selfId || client.info?.wid?._serialized;
-        //         const selfNumber = client.info?.wid?.user;
-        //         if (!selfId || !selfNumber) return;
-
-        //         const isSelfChat = message.fromMe && message.to === selfId;
-        //         if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
-
-        //         const command = message.body.slice(1).split(' ')[0].toLowerCase();
-        //         console.log(`📨 Command received in session ${sessionId}: ${command}`);
-
-        //         await message.react('🤖');
-
-        //         // Basic commands
-        //         switch (command) {
-        //             case 'ping':
-        //                 return await message.reply('🏓 Pong!');
-        //             case 'help':
-        //                 return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
-        //             case 'status':
-        //                 return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
-        //             case 'sessionid':
-        //                 return await message.reply(`📱 *Session ID:* ${sessionId}`);
-        //             default:
-        //                 return await message.reply(`❌ Unknown command: *${command}*`);
-        //         }
-                
-        //     } catch (err) {
-        //         console.error('❌ Message handler error for session', sessionId, ':', err);
-        //     }
-        // });
-
-        client.on('message', async (message) => {
+                client.on('message', async (message) => {
   try {
     const selfId = client.selfId || client.info?.wid?._serialized;
     const selfNumber = client.info?.wid?.user;

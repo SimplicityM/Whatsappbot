@@ -33,8 +33,6 @@ const io = socketIo(server, {
     }
 });
 
-global.io = io;
-
 app.set('io', io); 
 
 // Middleware
