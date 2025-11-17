@@ -783,10 +783,34 @@ function createClient(sessionId) {
         console.log(`❌ [createClient] Auth failure for ${sessionId}:`, err);
     });
 
-    client.on('qr', qr => {
-        console.log(`📱 [createClient] QR generated for ${sessionId}`);
-        // Optional: If you want broadcast here, inject io.
-    });
+    client.on('qr', (qr) => {
+    console.log(`📱 [createClient] QR generated for ${sessionId}`);
+
+    const roomName = `user-${sessionId}`;
+
+    // === EMIT TO FRONTEND ROOM ===
+    if (global.io) {
+        global.io.to(roomName).emit("qrCode", {
+            sessionId,
+            qr,
+            message: "Scan this QR code with WhatsApp",
+            userType: "user"
+        });
+        console.log(`✅ QR emitted to room: ${roomName}`);
+    } else {
+        console.error("❌ global.io is not set. Cannot send QR.");
+    }
+
+    // Also global broadcast fallback
+    if (global.io) {
+        global.io.emit("qrCode", {
+            sessionId,
+            qr,
+            broadcast: true,
+            message: "Scan this QR code"
+        });
+    }
+});
 
     client.on('ready', async () => {
         console.log(`🎉 [createClient] READY for session ${sessionId}`);
