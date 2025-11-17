@@ -4,7 +4,7 @@ const { Client, MessageMedia, LocalAuth } = require('whatsapp-web.js');
 const crypto = require('crypto');
 const Contact = require('./models/Contact');
 const User = require('./models/User');
-
+const PhoneRecord = require('./models/PhoneRecord'); // Ensure imported
 
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
@@ -419,83 +419,138 @@ async function resumeUserSession(userId, sessionId, io) {
 }
 
 // Function to check for bot subscription
+// 🔍 Master subscription checker (TRIAL + SUBSCRIPTION + ANTI-FRAUD)
 async function checkUserSubscriptionStatus(userId) {
-  try {
-    const user = await User.findById(userId);
-    if (!user) return { isValid: false, reason: 'User not found', action: 'suspend' };
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return { isValid: false, reason: 'User not found', action: 'suspend' };
+        }
 
-    const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-    const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
+        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
 
-    if (userNumber === ownerNumber) {
-      return { isValid: true, reason: 'Owner privileges', isOwner: true };
+        // OWNER ALWAYS VALID
+        if (userNumber && userNumber === ownerNumber) {
+            return { isValid: true, isOwner: true, reason: 'Owner privileges' };
+        }
+
+        // EXEMPT USERS ALWAYS VALID
+        if (user.exemptFromPayment === true) {
+            return { isValid: true, isExempted: true, reason: 'Admin exemption' };
+        }
+
+        // ⚠️ STRICT ANTI-FRAUD — PHONE RECORD CONTROLS TRIAL ACCESS
+        let phoneRecord = null;
+        if (userNumber) {
+            phoneRecord = await PhoneRecord.findOne({ phone: userNumber });
+        }
+
+        // 🚫 If phone used trial before but for a DIFFERENT account → NO TRIAL
+        if (phoneRecord && phoneRecord.usedByUserId && phoneRecord.usedByUserId.toString() !== userId.toString()) {
+            return {
+                isValid: false,
+                reason: 'Trial already used by this phone',
+                action: 'block_trial'
+            };
+        }
+
+        // 🎁 If phone has trial record, check if trial still active
+        if (phoneRecord && phoneRecord.trialUsed) {
+            if (phoneRecord.trialExpiresAt && phoneRecord.trialExpiresAt > new Date()) {
+                const msLeft = phoneRecord.trialExpiresAt.getTime() - Date.now();
+                const days = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+                return {
+                    isValid: true,
+                    trial: true,
+                    trialDaysLeft: days,
+                    reason: 'Trial active'
+                };
+            } else {
+                return {
+                    isValid: false,
+                    trialExpired: true,
+                    reason: 'Trial expired',
+                    action: 'suspend'
+                };
+            }
+        }
+
+        // ⚠️ User has no phoneRecord but also no subscription → give FREE TRIAL
+        if (!user.subscription || !user.subscription.createdAt) {
+            return {
+                isValid: true,
+                trial: true,
+                trialDaysLeft: 7,
+                reason: 'Trial active (user record-based)'
+            };
+        }
+
+        // 🔑 Check paid subscription
+        const sub = user.subscription;
+        if (!sub.status || sub.status !== 'active') {
+            return { isValid: false, reason: 'Subscription inactive', action: 'suspend' };
+        }
+
+        // Paid & active
+        return { isValid: true, reason: 'Active subscription', subscription: sub };
+
+    } catch (error) {
+        console.error('❌ Error checking subscription:', error);
+        return { isValid: false, reason: 'System error', action: 'suspend' };
     }
-
-    if (user.exemptFromPayment === true) {
-      return { isValid: true, reason: 'Admin exemption', isExempted: true };
-    }
-
-    if (!user.subscription || !user.subscription.createdAt) {
-      return { isValid: true, reason: 'Free trial active', trial: true, trialDaysLeft: 7 };
-    }
-
-    const sub = user.subscription;
-    if (!sub.status || sub.status !== 'active') {
-      return { isValid: false, reason: 'Subscription inactive', action: 'suspend' };
-    }
-
-    return { isValid: true, reason: 'Active subscription', subscription: sub };
-
-  } catch (error) {
-    console.error('❌ Error checking subscription status:', error);
-    return { isValid: false, reason: 'System error', action: 'suspend' };
-  }
 }
 
 
 // Periodic subscription checking function
 async function periodicSubscriptionCheck() {
     console.log('🔍 Running periodic subscription check...');
-    
+
     try {
-        const activeClients = Array.from(clients.entries());
-        
-        for (const [sessionId, client] of activeClients) {
+        const activeClientsList = Array.from(clients.entries());
+
+        for (const [sessionId, client] of activeClientsList) {
             try {
-                // Get userId from session
                 const Session = require('./models/Session');
                 const session = await Session.findOne({ sessionId });
                 
                 if (!session) {
-                    console.log(`⚠️ Session ${sessionId} not found in database, removing...`);
+                    console.log(`⚠️ No session found for ${sessionId}, removing...`);
                     clients.delete(sessionId);
                     continue;
                 }
 
-                // 🔑 SKIP CHECK for recently created sessions (give them 5 minutes to set up)
-                const sessionAge = Date.now() - new Date(session.createdAt).getTime();
-                if (sessionAge < 5 * 60 * 1000) { // 5 minutes
-                    console.log(`⏳ Skipping subscription check for new session ${sessionId} (${Math.round(sessionAge/1000)}s old)`);
+                // Skip brand new sessions (5 minutes)
+                const age = Date.now() - new Date(session.createdAt).getTime();
+                if (age < 5 * 60 * 1000) {
+                    console.log(`⏳ Skipping check for new session ${sessionId} (Age: ${Math.round(age/1000)}s)`);
                     continue;
                 }
 
-                // Check subscription status
-                const subscriptionCheck = await checkUserSubscriptionStatus(session.userId);
-                
-                if (!subscriptionCheck.isValid) {
-                    console.log(`🚫 Periodic check: Suspending session ${sessionId} for user ${session.userId}`);
-                    await suspendUserSession(session.userId, sessionId, subscriptionCheck.reason, client, null);
+                const status = await checkUserSubscriptionStatus(session.userId);
+
+                // If the user is blocked from trial (anti-fraud), DO NOT SUSPEND
+                if (status.action === 'block_trial') {
+                    console.log(`🚫 Trial blocked for phone (anti-fraud). Not suspending session ${sessionId}`);
+                    continue;
                 }
-                
-            } catch (sessionError) {
-                console.error(`❌ Error checking session ${sessionId}:`, sessionError);
+
+                // If the subscription is invalid → suspend
+                if (!status.isValid && status.action === 'suspend') {
+                    console.log(`🚫 Subscription expired → Suspending session ${sessionId}`);
+                    await suspendUserSession(session.userId, sessionId, status.reason, client, null);
+                }
+
+            } catch (err) {
+                console.error(`❌ Error during session check (${sessionId}):`, err);
             }
         }
-        
+
     } catch (error) {
-        console.error('❌ Error in periodic subscription check:', error);
+        console.error('❌ Fatal periodic check error:', error);
     }
 }
+
 
 
 function createNewSession() {
