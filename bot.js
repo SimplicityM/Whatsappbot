@@ -504,6 +504,7 @@ async function checkUserSubscriptionStatus(userId) {
 
 
 // Periodic subscription checking function
+// SAFE periodic subscription checking function
 async function periodicSubscriptionCheck() {
     console.log('🔍 Running periodic subscription check...');
 
@@ -512,38 +513,61 @@ async function periodicSubscriptionCheck() {
 
         for (const [sessionId, client] of activeClientsList) {
             try {
+                // If client was removed elsewhere, skip
+                if (!client) {
+                    console.log(`⚠️ No client instance for ${sessionId}, skipping.`);
+                    continue;
+                }
+
                 const Session = require('./models/Session');
                 const session = await Session.findOne({ sessionId });
-                
+
+                // IMPORTANT: If there's no DB session yet, DO NOT remove the client.
+                // This often happens because createBotSession() creates the client first,
+                // then server code saves the DB record afterwards. Skip and give it time.
                 if (!session) {
-                    console.log(`⚠️ No session found for ${sessionId}, removing...`);
-                    clients.delete(sessionId);
+                    console.log(`⚠️ DB session not found for ${sessionId} — likely still being created. Skipping check.`);
                     continue;
                 }
 
-                // Skip brand new sessions (5 minutes)
+                // Skip brand new sessions (grace window)
                 const age = Date.now() - new Date(session.createdAt).getTime();
-                if (age < 5 * 60 * 1000) {
-                    console.log(`⏳ Skipping check for new session ${sessionId} (Age: ${Math.round(age/1000)}s)`);
+                if (age < 2 * 60 * 1000) { // 2 minutes grace
+                    console.log(`⏳ Skipping check for session ${sessionId} (Age: ${Math.round(age/1000)}s)`);
                     continue;
                 }
 
+                // Only check sessions that appear fully connected/authenticated
+                // client.info?.wid exists only after authentication/ready
+                const isClientReady = !!client?.info?.wid;
+                const validated = sessionValidated.get(sessionId) === true;
+
+                // If client not ready OR session not yet validated, skip — it may be initial setup or waiting for first-command validation
+                if (!isClientReady || !validated) {
+                    console.log(`🔒 Skipping session ${sessionId} — ready:${isClientReady} validated:${validated}`);
+                    continue;
+                }
+
+                // Now it's safe to check subscription status
                 const status = await checkUserSubscriptionStatus(session.userId);
 
-                // If the user is blocked from trial (anti-fraud), DO NOT SUSPEND
+                // If the user is blocked from trial (anti-fraud), do not suspend — just log
                 if (status.action === 'block_trial') {
-                    console.log(`🚫 Trial blocked for phone (anti-fraud). Not suspending session ${sessionId}`);
+                    console.log(`🚫 Session ${sessionId}: phone blocked from trial (anti-fraud). Not suspending.`);
                     continue;
                 }
 
-                // If the subscription is invalid → suspend
                 if (!status.isValid && status.action === 'suspend') {
-                    console.log(`🚫 Subscription expired → Suspending session ${sessionId}`);
+                    console.log(`🚫 Subscription invalid — suspending session ${sessionId} for user ${session.userId}`);
                     await suspendUserSession(session.userId, sessionId, status.reason, client, null);
+                } else {
+                    // healthy session
+                    // Optionally: emit heartbeat to frontend
+                    // io?.to(`user-${session.userId}`).emit('sessionHealthy', { sessionId });
                 }
 
             } catch (err) {
-                console.error(`❌ Error during session check (${sessionId}):`, err);
+                console.error(`❌ Error during subscription check for (${sessionId}):`, err);
             }
         }
 
@@ -551,6 +575,7 @@ async function periodicSubscriptionCheck() {
         console.error('❌ Fatal periodic check error:', error);
     }
 }
+
 
 
 
@@ -1540,10 +1565,6 @@ async function restoreUserSessionAfterPayment(userId, io) {
 }
 
 
-
-// Start global periodic subscription checking
-setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
-
 // Also check on startup
 setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup
 
@@ -1638,8 +1659,5 @@ module.exports = {
     userSessions
 };
 
-// Start global periodic subscription checking (add at the very end)
-setInterval(periodicSubscriptionCheck, 5 * 60 * 1000); // Check every 5 minutes
 
-// Also check on startup
-setTimeout(periodicSubscriptionCheck, 30000); // Check 30 seconds after startup
+
