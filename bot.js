@@ -420,161 +420,130 @@ async function resumeUserSession(userId, sessionId, io) {
 }
 
 // Function to check for bot subscription
-// 🔍 Master subscription checker (TRIAL + SUBSCRIPTION + ANTI-FRAUD)
 async function checkUserSubscriptionStatus(userId) {
     try {
         const user = await User.findById(userId);
-        if (!user) {
-            return { isValid: false, reason: 'User not found', action: 'suspend' };
+        if (!user) return { isValid: false, reason: "User not found", action: "suspend" };
+
+        const userNumber = user.whatsappNumber?.replace(/[^0-9]/g, "");
+        const ownerNumber = CONFIG.owner?.replace(/[^0-9]/g, "");
+
+        // Owner rule
+        if (userNumber === ownerNumber) {
+            return { isValid: true, isOwner: true, reason: "Owner access" };
         }
 
-        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-        const userNumber = user.whatsappNumber ? user.whatsappNumber.replace(/[^0-9]/g, '') : null;
-
-        // OWNER ALWAYS VALID
-        if (userNumber && userNumber === ownerNumber) {
-            return { isValid: true, isOwner: true, reason: 'Owner privileges' };
-        }
-
-        // EXEMPT USERS ALWAYS VALID
+        // Exempt user
         if (user.exemptFromPayment === true) {
-            return { isValid: true, isExempted: true, reason: 'Admin exemption' };
+            return { isValid: true, isExempted: true, reason: "Admin exempted" };
         }
 
-        // ⚠️ STRICT ANTI-FRAUD — PHONE RECORD CONTROLS TRIAL ACCESS
-        let phoneRecord = null;
-        if (userNumber) {
-            phoneRecord = await PhoneRecord.findOne({ phone: userNumber });
-        }
+        const sub = user.subscription;
 
-        // 🚫 If phone used trial before but for a DIFFERENT account → NO TRIAL
-        if (phoneRecord && phoneRecord.usedByUserId && phoneRecord.usedByUserId.toString() !== userId.toString()) {
-            return {
-                isValid: false,
-                reason: 'Trial already used by this phone',
-                action: 'block_trial'
-            };
-        }
-
-        // 🎁 If phone has trial record, check if trial still active
-        if (phoneRecord && phoneRecord.trialUsed) {
-            if (phoneRecord.trialExpiresAt && phoneRecord.trialExpiresAt > new Date()) {
-                const msLeft = phoneRecord.trialExpiresAt.getTime() - Date.now();
-                const days = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
-                return {
-                    isValid: true,
-                    trial: true,
-                    trialDaysLeft: days,
-                    reason: 'Trial active'
-                };
-            } else {
-                return {
-                    isValid: false,
-                    trialExpired: true,
-                    reason: 'Trial expired',
-                    action: 'suspend'
-                };
-            }
-        }
-
-        // ⚠️ User has no phoneRecord but also no subscription → give FREE TRIAL
-        if (!user.subscription || !user.subscription.createdAt) {
+        // No subscription yet → trial user
+        if (!sub || !sub.createdAt) {
             return {
                 isValid: true,
                 trial: true,
-                trialDaysLeft: 7,
-                reason: 'Trial active (user record-based)'
+                reason: "Trial active",
+                trialDaysLeft: 7
             };
         }
 
-        // 🔑 Check paid subscription
-        const sub = user.subscription;
-        if (!sub.status || sub.status !== 'active') {
-            return { isValid: false, reason: 'Subscription inactive', action: 'suspend' };
+        const now = new Date();
+        if (sub.expiresAt && sub.expiresAt > now) {
+            return {
+                isValid: true,
+                subscription: sub,
+                planType: sub.planType,
+                reason: "Subscription active"
+            };
         }
 
-        // Paid & active
-        return { isValid: true, reason: 'Active subscription', subscription: sub };
+        // Expired
+        return {
+            isValid: false,
+            reason: "Subscription expired",
+            expired: true
+        };
 
-    } catch (error) {
-        console.error('❌ Error checking subscription:', error);
-        return { isValid: false, reason: 'System error', action: 'suspend' };
+    } catch (err) {
+        console.error("Subscription checking error:", err);
+        return { isValid: false, reason: "System error", action: "suspend" };
     }
 }
+
 
 
 // Periodic subscription checking function
 // SAFE periodic subscription checking function
 async function periodicSubscriptionCheck() {
-    console.log('🔍 Running periodic subscription check...');
+  console.log('🔍 Running periodic subscription check.');
 
-    try {
-        const activeClientsList = Array.from(clients.entries());
+  try {
+    const activeClientsList = Array.from(clients.entries());
 
-        for (const [sessionId, client] of activeClientsList) {
-            try {
-                // If client was removed elsewhere, skip
-                if (!client) {
-                    console.log(`⚠️ No client instance for ${sessionId}, skipping.`);
-                    continue;
-                }
-
-                const Session = require('./models/Session');
-                const session = await Session.findOne({ sessionId });
-
-                // IMPORTANT: If there's no DB session yet, DO NOT remove the client.
-                // This often happens because createBotSession() creates the client first,
-                // then server code saves the DB record afterwards. Skip and give it time.
-                if (!session) {
-                    console.log(`⚠️ DB session not found for ${sessionId} — likely still being created. Skipping check.`);
-                    continue;
-                }
-
-                // Skip brand new sessions (grace window)
-                const age = Date.now() - new Date(session.createdAt).getTime();
-                if (age < 2 * 60 * 1000) { // 2 minutes grace
-                    console.log(`⏳ Skipping check for session ${sessionId} (Age: ${Math.round(age/1000)}s)`);
-                    continue;
-                }
-
-                // Only check sessions that appear fully connected/authenticated
-                // client.info?.wid exists only after authentication/ready
-                const isClientReady = !!client?.info?.wid;
-                const validated = sessionValidated.get(sessionId) === true;
-
-                // If client not ready OR session not yet validated, skip — it may be initial setup or waiting for first-command validation
-                if (!isClientReady || !validated) {
-                    console.log(`🔒 Skipping session ${sessionId} — ready:${isClientReady} validated:${validated}`);
-                    continue;
-                }
-
-                // Now it's safe to check subscription status
-                const status = await checkUserSubscriptionStatus(session.userId);
-
-                // If the user is blocked from trial (anti-fraud), do not suspend — just log
-                if (status.action === 'block_trial') {
-                    console.log(`🚫 Session ${sessionId}: phone blocked from trial (anti-fraud). Not suspending.`);
-                    continue;
-                }
-
-                if (!status.isValid && status.action === 'suspend') {
-                    console.log(`🚫 Subscription invalid — suspending session ${sessionId} for user ${session.userId}`);
-                    await suspendUserSession(session.userId, sessionId, status.reason, client, null);
-                } else {
-                    // healthy session
-                    // Optionally: emit heartbeat to frontend
-                    // io?.to(`user-${session.userId}`).emit('sessionHealthy', { sessionId });
-                }
-
-            } catch (err) {
-                console.error(`❌ Error during subscription check for (${sessionId}):`, err);
-            }
+    for (const [sessionId, client] of activeClientsList) {
+      try {
+        // skip if client was removed or invalid
+        if (!client) {
+          console.log(`⚠️ No client instance for ${sessionId}, skipping.`);
+          continue;
         }
 
-    } catch (error) {
-        console.error('❌ Fatal periodic check error:', error);
+        const Session = require('./models/Session');
+        const session = await Session.findOne({ sessionId });
+
+        // If DB session doesn't exist yet, skip — server may still be saving it
+        if (!session) {
+          console.log(`⚠️ DB session not found for ${sessionId} — likely still being created. Skipping check.`);
+          continue;
+        }
+
+        // Skip very new sessions (short grace window)
+        const ageMs = Date.now() - new Date(session.createdAt).getTime();
+        if (ageMs < (2 * 60 * 1000)) { // 2 minutes
+          console.log(`⏳ Skipping check for session ${sessionId} (Age: ${Math.round(ageMs/1000)}s)`);
+          continue;
+        }
+
+        // client.info.wid only exists after auth/ready
+        const isClientReady = !!client?.info?.wid;
+        const validated = sessionValidated.get(sessionId) === true;
+
+        // If client not ready OR not yet validated, skip — wait until welcome/first-command completes
+        if (!isClientReady || !validated) {
+          console.log(`🔒 Skipping session ${sessionId} — ready:${isClientReady} validated:${validated}`);
+          continue;
+        }
+
+        // Now it's safe to check subscription status
+        const status = await checkUserSubscriptionStatus(session.userId);
+
+        // Anti-fraud: if phone blocked from trial, don't suspend — just log
+        if (status.action === 'block_trial') {
+          console.log(`🚫 Session ${sessionId}: phone blocked from trial (anti-fraud). Not suspending.`);
+          continue;
+        }
+
+        if (!status.isValid && status.action === 'suspend') {
+          console.log(`🚫 Subscription invalid — suspending session ${sessionId} for user ${session.userId}`);
+          await suspendUserSession(session.userId, sessionId, status.reason, client, null);
+        } else {
+          // session is healthy
+          // optionally send heartbeat/emit to frontend:
+          // io?.to(`user-${session.userId}`).emit('sessionHealthy', { sessionId });
+        }
+
+      } catch (err) {
+        console.error(`❌ Error during subscription check for (${sessionId}):`, err);
+      }
     }
+  } catch (error) {
+    console.error('❌ Fatal periodic check error:', error);
+  }
 }
+
 
 
 
@@ -1207,228 +1176,275 @@ async function createBotSession(userId, sessionId, io) {
             });
         });
 
-        // READY EVENT
-        client.on('ready', async () => {
-            console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
+        // ======= ADD THIS: Proper READY handler (place BEFORE your message handler) =======
+            client.on('ready', async () => {
+                console.log('✅ BOT: WhatsApp client ready for session:', sessionId);
 
-            try {
-                const selfId = client.info?.wid?._serialized;
-                const selfNumber = client.info?.wid?.user;
-                const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
-
-                if (!selfId || !selfNumber) {
-                    console.error('❌ Missing selfId or selfNumber');
-                    return;
-                }
-
-                client.selfId = selfId;
-                userSessions.set(selfId, uniqueId);
-
-                console.log('📱 Self ID:', selfId);
-                console.log('📞 Phone:', selfNumber);
-                console.log('🆔 Session ID:', uniqueId);
-
-                const chat = await client.getChatById(selfId);
-
-                // Welcome message
-                await chat.sendMessage(
-                    `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
-                );
-
-                const user = await User.findOne({ whatsappNumber: selfNumber });
-
-                if (user) {
-                    const subStatus = await checkUserSubscriptionStatus(user._id);
-                    let statusMessage = '';
-
-                    if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
-                    else if (subStatus.trial)
-                        statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
-                    else if (subStatus.isExempted)
-                        statusMessage = '🛡️ *Payment Exemption Active*';
-                    else if (subStatus.isValid)
-                        statusMessage = '💳 *Subscription Active*';
-                    else statusMessage = '⚠️ *Subscription Required*';
-
-                    await chat.sendMessage(statusMessage);
-                }
-
-                await chat.sendMessage(
-                    `🔧 *Available Commands:*\n\n• !ping\n• !help\n• !status\n• !myinfo\n💡 Type commands here.`
-                );
-
-                // Message Handler
-                            client.on('message', async (message) => {
                 try {
-                    const selfId = client.selfId || client.info?.wid?._serialized;
+                    const selfId = client.info?.wid?._serialized;
                     const selfNumber = client.info?.wid?.user;
-                    if (!selfId || !selfNumber) return;
+                    const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
 
-                    const isSelfChat = message.fromMe && message.to === selfId;
-                    if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
+                    if (!selfId || !selfNumber) {
+                        console.error('❌ Missing selfId or selfNumber in ready event');
+                        return;
+                    }
 
-                    await message.react('🤖');
+                    // attach selfId & sessionId mapping
+                    client.selfId = selfId;
+                    userSessions.set(selfId, sessionId);
 
-                    const raw = message.body.trim();
-                    const command = raw.slice(1).split(' ')[0].toLowerCase();
-                    const phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
+                    console.log('📱 Self ID:', selfId);
+                    console.log('📞 Phone:', selfNumber);
+                    console.log('🆔 Session ID (unique):', uniqueId);
 
-                    // -------------- BASIC COMMANDS (ALWAYS ALLOWED) --------------
-                    const BASIC = new Set(['ping', 'help', 'status', 'sessionid']);
-                    const TRIAL = new Set(['tag', 'list']);   // trial-only commands
+                    // Ensure user exists in DB (the createBotSession caller already loaded "user")
+                    // But try to load again for safety
+                    const userDoc = await User.findOne({ whatsappNumber: selfNumber }) || user;
 
-                    if (BASIC.has(command)) {
-                        switch (command) {
-                            case 'ping':
-                                return await message.reply('🏓 Pong!');
-
-                            case 'help':
-                                return await message.reply(
-                                    `🤖 *Bot Commands*\n\n` +
-                                    `• !ping\n• !help\n• !status\n• !sessionid\n\n` +
-                                    `*Trial Commands*: !tag, !list (only during free trial)`
-                                );
-
-                            case 'status': {
-                                const up = process.uptime();
-                                return await message.reply(
-                                    `🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${up}s`
-                                );
-                            }
-
-                            case 'sessionid':
-                                return await message.reply(`📱 *Session ID:* ${sessionId}`);
+                    // Create or update PhoneRecord so message handler can rely on it
+                    let phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
+                    if (!phoneRecord) {
+                        // New phone -> give trial by default
+                        phoneRecord = await PhoneRecord.create({
+                            phone: selfNumber,
+                            usedByUserId: userDoc?._id || null,
+                            trialUsed: true,
+                            trialStartedAt: new Date(),
+                            trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 days
+                            firstCommandDone: false
+                        });
+                        console.log(`📌 PhoneRecord created for ${selfNumber}`);
+                    } else {
+                        // If record exists but no assigned user, assign it now (first known user)
+                        if (!phoneRecord.usedByUserId && userDoc?._id) {
+                            phoneRecord.usedByUserId = userDoc._id;
+                            await phoneRecord.save();
+                            console.log(`🔧 PhoneRecord ${selfNumber} linked to user ${userDoc._id}`);
                         }
                     }
 
-                    // -------------- TRIAL COMMANDS --------------
-                    if (TRIAL.has(command)) {
-                        // PHONE NEVER HAD TRIAL BEFORE (should not happen after Ready handler)
-                        if (!phoneRecord || !phoneRecord.trialUsed) {
-                            return await message.reply(
-                                `🚫 *This phone number has NO active trial.*\n` +
-                                `You must subscribe to use *${command}*.\n\n` +
-                                `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
-                            );
-                        }
-
-                        // PHONE USED TRIAL before but on DIFFERENT ACCOUNT (ANTI-FRAUD)
-                        if (phoneRecord.usedByUserId.toString() !== userId.toString()) {
-                            return await message.reply(
-                                `🚫 *Trial is not available for this phone number.*\n\n` +
-                                `This phone has already used its 7-day free trial on another account.\n` +
-                                `To use *${command}*, please subscribe.\n\n` +
-                                `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
-                            );
-                        }
-
-                        // TRIAL EXPIRED
-                        if (!phoneRecord.trialExpiresAt || phoneRecord.trialExpiresAt <= new Date()) {
-                            return await message.reply(
-                                `⛔ *Your free trial has expired.*\n\n` +
-                                `Subscribe to continue using trial commands like *${command}*.\n\n` +
-                                `🔗 Renew: ${process.env.DOMAIN || 'your-website.com'}/payment`
-                            );
-                        }
-
-                        // TRIAL ACTIVE – YOU CAN PLACE YOUR TAG/LIST LOGIC HERE
-                        if (command === 'tag') {
-
-                        // 1️⃣ CHECK IF USER IS TRIAL USER
-                        let isTrialUser = false;
-
-                        if (phoneRecord && phoneRecord.trialUsed) {
-                            if (phoneRecord.usedByUserId.toString() === userId.toString()) {
-                                if (phoneRecord.trialExpiresAt > new Date()) {
-                                    isTrialUser = true;
-                                }
-                            }
-                        }
-
-                        // 2️⃣ IF NOT TRIAL USER → PAID USER → NO LIMIT
-                        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
-
-                        if (subscriptionCheck.isOwner || subscriptionCheck.isExempted || subscriptionCheck.isValid) {
-                            return await message.reply(`📌 *TAG executed (premium)*`);
-                        }
-
-                        // 3️⃣ TRIAL USER → ENFORCE DAILY LIMIT OF 3
-                        if (isTrialUser) {
-                            const today = new Date().toISOString().slice(0, 10);
-
-                            let usage = await TagUsage.findOne({ phone: selfNumber, date: today });
-
-                            if (!usage) {
-                                usage = await TagUsage.create({
-                                    phone: selfNumber,
-                                    date: today,
-                                    tagsToday: 0
-                                });
-                            }
-
-                            if (usage.tagsToday >= 3) {
-                                return await message.reply(
-                                    `🚫 *Daily limit reached*\n\n` +
-                                    `You can tag a maximum of **3 groups per day** during the free trial.\n\n` +
-                                    `Upgrade your plan to remove this limit.\n` +
-                                    `🔗 ${process.env.DOMAIN || 'your-website.com'}/payment`
-                                );
-                            }
-
-                            usage.tagsToday += 1;
-                            await usage.save();
-
-                            return await message.reply(`📌 *TAG executed* (${usage.tagsToday}/3 used today)`);
-                        }
-
-                        // 4️⃣ NOT TRIAL & NOT PAID → BLOCK
-                        return await message.reply(
-                            `🚫 *Subscription Required*\n\n` +
-                            `You need an active subscription to use *!tag*.\n\n` +
-                            `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
-                        );
-                    }
-
-                        if (command === 'list') {
-                            return await message.reply('📃 *LIST command executed (trial)*');
-                        }
-                    }
-
-                    // -------------- PAID COMMANDS (everything else) --------------
-                    let subStatus;
+                    // Send welcome/status/commands using existing helper if available
                     try {
-                        subStatus = await checkUserSubscriptionStatus(userId);
-                    } catch (err) {
-                        console.error('⚠️ Subscription check failed:', err);
-                        return await message.reply('⚠️ System error while checking subscription.');
-                    }
+                        const chat = await client.getChatById(selfId);
 
-                    // OWNER & EXEMPT USERS ALWAYS VALID
-                    if (subStatus.isOwner || subStatus.isExempted) {
-                        return await message.reply(`👑 Admin/Owner access granted for *${command}*`);
-                    }
-
-                    // If subscription invalid → block
-                    if (!subStatus.isValid) {
-                        return await message.reply(
-                            `🚫 *Subscription Required*\n\n` +
-                            `Your subscription is not active, so *${command}* cannot be used.\n\n` +
-                            `🔗 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                        await chat.sendMessage(
+                            `🤖 *Bot Connected Successfully!*\n\n📱 *Your Session ID:* \`${uniqueId}\`\n📞 *Your Number:* ${selfNumber}\n\n⚡ *Status:* Ready for commands!`
                         );
+
+                        // Send subscription/status message
+                        if (userDoc) {
+                            const subStatus = await checkUserSubscriptionStatus(userDoc._id);
+                            let statusMessage = '';
+                            if (subStatus.isOwner) statusMessage = '👑 *Bot Owner Detected*';
+                            else if (subStatus.trial) statusMessage = `🎁 *Trial Active* (${subStatus.trialDaysLeft} days left)`;
+                            else if (subStatus.isExempted) statusMessage = '🛡️ *Payment Exemption Active*';
+                            else if (subStatus.isValid) statusMessage = '💳 *Subscription Active*';
+                            else statusMessage = '⚠️ *Subscription Required*';
+
+                            await chat.sendMessage(statusMessage);
+                        }
+
+                        // Use helper for commands message if present
+                        await sendCommandsMessage(chat, !!(userDoc && (userDoc.isAdmin || userDoc.role === 'system_admin')), uniqueId);
+                    } catch (msgErr) {
+                        console.error('❌ Failed to send welcome messages:', msgErr);
                     }
 
-                    // -------------- PAID COMMANDS GO HERE --------------
-                    return await message.reply(`💎 *Paid command executed:* ${command}`);
+                    // IMPORTANT: do not mark sessionValidated true here.
+                    // The business rule you requested: subscription checks (periodic) start only after user has used first command.
+                    // sessionValidated remains false until first command is processed.
+                    sessionValidated.set(sessionId, false);
 
+                    console.log(`✅ READY completed for session ${sessionId} (sessionValidated=false)`);
                 } catch (err) {
-                    console.error('❌ Message handler error:', err);
+                    console.error('❌ READY handler error for session', sessionId, err);
                 }
             });
 
+
+        // READY EVENT
+        // ======================= MESSAGE HANDLER ==========================
+        client.on('message', async (message) => {
+            try {
+                const selfId = client.selfId || client.info?.wid?._serialized;
+                const selfNumber = client.info?.wid?.user;
+                if (!selfId || !selfNumber) return;
+
+                const isSelfChat = message.fromMe && message.to === selfId;
+                if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
+
+                const raw = message.body.trim();
+                const command = raw.slice(1).split(' ')[0].toLowerCase();
+
+                await message.react('🤖');
+
+                const BASIC = new Set(['ping', 'help', 'status', 'sessionid']);
+                const TRIAL_ONLY = new Set(['tag', 'list']);
+
+                const phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
+                const user = await User.findOne({ whatsappNumber: selfNumber });
+                const userId = user?._id;
+
+                // No user found? Should never happen
+                if (!user) {
+                    return await message.reply("⚠️ Error: User record not found.");
+                }
+
+                // =============== 1️⃣ BASIC COMMANDS (ALWAYS ALLOWED) ==================
+                if (BASIC.has(command)) {
+                    switch (command) {
+                        case 'ping':
+                            return await message.reply('🏓 Pong!');
+
+                        case 'help':
+                            return await message.reply(
+                                `🤖 *Bot Commands*\n\n` +
+                                `• !ping — check if bot is alive\n` +
+                                `• !help — show help menu\n` +
+                                `• !status — check your bot account status\n` +
+                                `• !sessionid — show your session ID\n\n` +
+                                `🔸 *Trial Commands*: !tag, !list (available only during 7-day trial)\n` +
+                                `🔸 *Paid Commands* depend on your subscription level\n`
+                            );
+
+                        case 'status':
+                            const sub = await checkUserSubscriptionStatus(userId);
+                            return await message.reply(
+                                `📊 *Bot Status*\n\n` +
+                                `📱 Number: ${selfNumber}\n` +
+                                `🆔 Session ID: ${sessionId}\n` +
+                                `💬 Command: ${command}\n` +
+                                `📌 Status: ${sub.reason || 'Unknown'}`
+                            );
+
+                        case 'sessionid':
+                            return await message.reply(`📱 *Session ID:* ${sessionId}`);
+                    }
+                }
+
+                // =============== 2️⃣ OWNER & EXEMPT USERS ALWAYS ALLOWED ==================
+                const subStatus = await checkUserSubscriptionStatus(userId);
+                if (subStatus.isOwner || subStatus.isExempted) {
+                    return await message.reply(`👑 Admin/Owner access granted for *${command}*`);
+                }
+
+                // =============== 3️⃣ TRIAL USERS (FULL ACCESS TO TRIAL COMMANDS) ===========
+                const now = new Date();
+
+                if (phoneRecord && phoneRecord.trialUsed) {
+                    if (phoneRecord.usedByUserId.toString() === userId.toString()) {
+                        if (phoneRecord.trialExpiresAt > now) {
+                            // 3a. TRIAL ACTIVE
+                            if (TRIAL_ONLY.has(command)) {
+                                // TAG LIMIT (trial only)
+                                if (command === 'tag') {
+                                    const today = new Date().toISOString().slice(0, 10);
+                                    let usage = await TagUsage.findOne({ phone: selfNumber, date: today });
+
+                                    if (!usage) {
+                                        usage = await TagUsage.create({
+                                            phone: selfNumber,
+                                            date: today,
+                                            tagsToday: 0
+                                        });
+                                    }
+
+                                    if (usage.tagsToday >= 3) {
+                                        return await message.reply(
+                                            `🚫 *Trial Limit Reached*\n\n` +
+                                            `You can only tag **3 groups/day** during trial.\n` +
+                                            `Upgrade your plan: ${process.env.DOMAIN}/payment`
+                                        );
+                                    }
+
+                                    usage.tagsToday++;
+                                    await usage.save();
+
+                                    return await message.reply(`📌 *TAG executed* (${usage.tagsToday}/3 today)`);
+                                }
+
+                                if (command === 'list') {
+                                    return await message.reply(`📃 *LIST executed (trial)*`);
+                                }
+                            }
+
+                            // If trial active and command is NOT trial or basic:
+                            return await message.reply(
+                                `🚫 *Command not allowed during trial:* ${command}\n` +
+                                `Available: !tag, !list\n`
+                            );
+                        }
+                    }
+                }
+
+                // =============== 4️⃣ FRAUD PREVENTION (NUMBER USED ON ANOTHER ACCOUNT) ===========
+                if (phoneRecord && phoneRecord.usedByUserId.toString() !== userId.toString()) {
+                    return await message.reply(
+                        `🚫 *Trial not available for this phone number*\n\n` +
+                        `This number already enjoyed its 7-day trial on another account.\n` +
+                        `Please subscribe to continue: ${process.env.DOMAIN}/payment`
+                    );
+                }
+
+                // =============== 5️⃣ FIRST-COMMAND GRACE FOR EXPIRED USERS =====================
+                            if (!phoneRecord.firstCommandDone) {
+                    phoneRecord.firstCommandDone = true;
+                    await phoneRecord.save();
+
+                    // Mark this session validated so periodic checker will act on it later
+                    sessionValidated.set(sessionId, true);
+                    console.log(`🔓 Session ${sessionId} validated by first command; periodic checks enabled for this session.`);
+
+                    if (!TRIAL_ONLY.has(command)) {
+                        return await message.reply(
+                            `ℹ️ *Welcome back!* Your free trial/subscription has expired.\n\n` +
+                            `You can use basic commands (ping/help/status/sessionid)\n` +
+                            `To continue using features, please subscribe:\n` +
+                            `${process.env.DOMAIN}/payment`
+                        );
+                    }
+                }
+
+
+                // =============== 6️⃣ SUBSCRIPTION CHECK FOR ALL NON-TRIAL USERS ===============
+                if (!subStatus.isValid) {
+                    return await message.reply(
+                        `🚫 *Subscription Required*\n\n` +
+                        `Your subscription is inactive.\n` +
+                        `Renew here: ${process.env.DOMAIN}/payment`
+                    );
+                }
+
+                // =============== 7️⃣ PAID USERS: LEVEL-BASED ACCESS ===========================
+                const paidPlan = user.subscription?.planType || "starter";
+
+                const PLAN_RULES = {
+                    starter: ["tag-basic", "autoreply-basic"],
+                    professional: ["tag-advanced", "list-advanced", "autoreply", "scheduler"],
+                    business: ["all"],
+                    enterprise: ["all"],
+                };
+
+                if (!PLAN_RULES[paidPlan]) {
+                    return await message.reply("⚠️ Invalid subscription plan.");
+                }
+
+                if (PLAN_RULES[paidPlan][0] !== "all" && !PLAN_RULES[paidPlan].includes(command)) {
+                    return await message.reply(
+                        `🚫 *Command not available in your plan (${paidPlan})*\n\n` +
+                        `Upgrade to unlock this feature.\n${process.env.DOMAIN}/payment`
+                    );
+                }
+
+                // PAID command executed successfully
+                return await message.reply(`💎 *Paid command executed:* ${command}`);
+
             } catch (err) {
-                console.error('❌ READY handler error:', err);
+                console.error("❌ Message handler error:", err);
             }
         });
+
 
             // DISCONNECTED EVENT
             client.on('disconnected', (reason) => {
