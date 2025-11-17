@@ -702,9 +702,36 @@ function setupCallHandlers(client) {
 }
 
 
+// function createClient(sessionId) {
+//     const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
+//     let sessionData = null;
+//     try {
+//         if (fs.existsSync(sessionFile)) {
+//             sessionData = JSON.parse(fs.readFileSync(sessionFile));
+//             logger.info(`Loaded session data for ${sessionId}`);
+//         }
+//     } catch (error) {
+//         logger.error(`Failed to load session ${sessionId}:`, error);
+//     }
+    
+//     const client = new Client({ 
+//         session: sessionData,
+//         ...clientConfig
+//     });
+    
+//     client.removeAllListeners('message');
+//     client.removeAllListeners('message_create');
+
+//     clientGroups.set(sessionId, []);
+
+//     setupCallHandlers(client);
+//     return client;
+// }
+
 function createClient(sessionId) {
     const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.json`);
     let sessionData = null;
+
     try {
         if (fs.existsSync(sessionFile)) {
             sessionData = JSON.parse(fs.readFileSync(sessionFile));
@@ -713,21 +740,140 @@ function createClient(sessionId) {
     } catch (error) {
         logger.error(`Failed to load session ${sessionId}:`, error);
     }
-    
-    const client = new Client({ 
+
+    const client = new Client({
         session: sessionData,
-        ...clientConfig
+        ...clientConfig,
+        puppeteer: {
+            ...clientConfig.puppeteer,
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions',
+                '--disable-infobars',
+                '--ignore-certificate-errors',
+                '--window-size=1920,1080',
+                ...(clientConfig.puppeteer.args || [])
+            ]
+        }
     });
-    
+
+    // Clear previous listeners
     client.removeAllListeners('message');
     client.removeAllListeners('message_create');
 
     clientGroups.set(sessionId, []);
 
+    // ========= REQUIRED CORE HANDLERS ========= //
+
+    client.on('loading_screen', (percent, message) => {
+        console.log(`📱 Loading: ${percent}% - ${message} (session: ${sessionId})`);
+    });
+
+    client.on('authenticated', () => {
+        console.log(`🔑 [createClient] Authenticated for session ${sessionId}`);
+    });
+
+    client.on('auth_failure', err => {
+        console.log(`❌ [createClient] Auth failure for ${sessionId}:`, err);
+    });
+
+    client.on('qr', qr => {
+        console.log(`📱 [createClient] QR generated for ${sessionId}`);
+        // Optional: If you want broadcast here, inject io.
+    });
+
+    client.on('ready', async () => {
+        console.log(`🎉 [createClient] READY for session ${sessionId}`);
+
+        try {
+            const selfId = client.info?.wid?._serialized;
+            const selfNumber = client.info?.wid?.user;
+
+            if (selfId) {
+                client.selfId = selfId;
+                userSessions.set(selfId, sessionId);
+                sessionValidated.set(sessionId, true);
+
+                console.log(`🤖 [createClient] Self ID: ${selfId}`);
+                console.log(`🤖 [createClient] Self Number: ${selfNumber}`);
+
+                // Minimal self-chat welcome
+                try {
+                    const chat = await client.getChatById(selfId);
+                    await chat.sendMessage(`🤖 Bot connected (session: ${sessionId})`);
+                } catch (e) {
+                    console.warn(`[createClient] Cannot send welcome message: ${e.message}`);
+                }
+
+            } else {
+                console.warn(`[createClient] READY fired but no wid found`);
+            }
+        } catch (err) {
+            console.error(`[createClient] READY error:`, err);
+        }
+    });
+
+    client.on('disconnected', reason => {
+        console.log(`⚠️ [createClient] Disconnected (${sessionId}):`, reason);
+
+        clients.delete(sessionId);
+        sessionValidated.delete(sessionId);
+
+        if (client.selfId) userSessions.delete(client.selfId);
+    });
+
+    // ======== MESSAGE HANDLER (COMMAND FIXED) ======== //
+    client.on('message', async message => {
+        try {
+            const selfId = client.selfId || client.info?.wid?._serialized;
+            const ownerId = CONFIG.owner
+                ? `${CONFIG.owner.replace(/[^0-9]/g, '')}@c.us`
+                : null;
+
+            const fromOwner = ownerId && message.from === ownerId;
+            const fromSelf = message.fromMe;
+            const toSelf = message.to === selfId;
+            const inSelfChat = message.from === selfId;
+
+            const allowed = fromOwner || fromSelf || toSelf || inSelfChat;
+
+            if (!allowed) return;
+            if (!message.body || !message.body.startsWith('!')) return;
+
+            const command = message.body.slice(1).split(' ')[0].toLowerCase();
+
+            await message.react('🤖');
+
+            switch (command) {
+                case 'ping':
+                    return message.reply('🏓 Pong!');
+                case 'help':
+                    return message.reply(
+                        '🤖 *Commands*\n• !ping\n• !help\n• !status\n• !sessionid'
+                    );
+                case 'status':
+                    return message.reply(`🤖 Bot Active\n📱 Session: ${sessionId}`);
+                case 'sessionid':
+                    return message.reply(`🆔 *Session ID:* ${sessionId}`);
+                default:
+                    return message.reply(`❌ Unknown command: *${command}*`);
+            }
+        } catch (err) {
+            console.error(`[createClient] Message error (${sessionId}):`, err);
+        }
+    });
+
+    // Call handler setup
     setupCallHandlers(client);
+
     return client;
 }
-
 
 
 let isShuttingDown = false;
@@ -1008,39 +1154,58 @@ async function createBotSession(userId, sessionId, io) {
         console.log(`👤 User: ${user?.email || 'Unknown'} | Admin: ${isAdmin}`);
 
         // Create the WhatsApp client
-        const client = new Client({
-            authStrategy: new LocalAuth({
-                clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
-                dataPath: './.wwebjs_auth'
-            }),
-            puppeteer: {
-                ...clientConfig.puppeteer,
-                args: [
-                    ...clientConfig.puppeteer.args,
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--disable-dev-shm-usage',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-extensions',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding'
-                ],
-                handleSIGINT: false,
-                handleSIGTERM: false
-            },
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 10000, // Increased timeout
-            syncFullHistory: false,
-            markOnlineOnConnect: false,
-            chatLoadingTimeoutMs: 30000, // Increased timeout
-            sessionBackupSyncIntervalMs: 300000,
-            qrMaxRetries: clientConfig.qrMaxRetries,
-            authTimeoutMs: 60000, // Increased timeout
-            restartOnAuthFail: clientConfig.restartOnAuthFail
-        });
+       const authFolder = path.join(
+    AUTH_DIR,
+    `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`
+);
+
+                    const client = new Client({
+                        authStrategy: new LocalAuth({
+                            clientId: `${isAdmin ? 'admin' : 'user'}-${userId}-${sessionId}`,
+                            dataPath: authFolder
+                        }),
+
+                                puppeteer: {
+                                    ...clientConfig.puppeteer,
+                                    headless: true,
+
+                                    // If you want to debug locally, temporarily set:
+                                    // headless: false,
+
+                                    args: [
+                                        '--no-sandbox',
+                                        '--disable-setuid-sandbox',
+                                        '--disable-gpu',
+                                        '--disable-dev-shm-usage',
+                                        '--disable-extensions',
+                                        '--disable-infobars',
+                                        '--no-first-run',
+                                        '--no-zygote',
+                                        '--single-process',
+                                        '--disable-background-timer-throttling',
+                                        '--disable-backgrounding-occluded-windows',
+                                        '--disable-renderer-backgrounding',
+                                        '--ignore-certificate-errors',
+                                        '--window-size=1920,1080',
+                                        ...(clientConfig.puppeteer?.args || [])
+                                    ],
+
+                                    handleSIGINT: false,
+                                    handleSIGTERM: false,
+                                    handleSIGHUP: false
+                                },
+
+                                takeoverOnConflict: true,
+                                takeoverTimeoutMs: 15000,
+                                syncFullHistory: false,
+                                markOnlineOnConnect: false,
+                                chatLoadingTimeoutMs: 45000,
+                                sessionBackupSyncIntervalMs: 300000,
+                                qrMaxRetries: clientConfig.qrMaxRetries || 3,
+                                authTimeoutMs: 90000,
+                                restartOnAuthFail: true
+                            });
+
 
         // Store client so we can access it later
         clients.set(sessionId, client);
@@ -1363,38 +1528,82 @@ async function createBotSession(userId, sessionId, io) {
         client.heartbeatInterval = heartbeatInterval;
 
         // ======================= MESSAGE HANDLER ==========================
-        client.on('message', async (message) => {
-            try {
-                const selfId = client.selfId || client.info?.wid?._serialized;
-                const selfNumber = client.info?.wid?.user;
-                if (!selfId || !selfNumber) return;
+        // client.on('message', async (message) => {
+        //     try {
+        //         const selfId = client.selfId || client.info?.wid?._serialized;
+        //         const selfNumber = client.info?.wid?.user;
+        //         if (!selfId || !selfNumber) return;
 
-                const isSelfChat = message.fromMe && message.to === selfId;
-                if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
+        //         const isSelfChat = message.fromMe && message.to === selfId;
+        //         if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
 
-                const command = message.body.slice(1).split(' ')[0].toLowerCase();
-                console.log(`📨 Command received in session ${sessionId}: ${command}`);
+        //         const command = message.body.slice(1).split(' ')[0].toLowerCase();
+        //         console.log(`📨 Command received in session ${sessionId}: ${command}`);
 
-                await message.react('🤖');
+        //         await message.react('🤖');
 
-                // Basic commands
-                switch (command) {
-                    case 'ping':
-                        return await message.reply('🏓 Pong!');
-                    case 'help':
-                        return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
-                    case 'status':
-                        return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
-                    case 'sessionid':
-                        return await message.reply(`📱 *Session ID:* ${sessionId}`);
-                    default:
-                        return await message.reply(`❌ Unknown command: *${command}*`);
-                }
+        //         // Basic commands
+        //         switch (command) {
+        //             case 'ping':
+        //                 return await message.reply('🏓 Pong!');
+        //             case 'help':
+        //                 return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
+        //             case 'status':
+        //                 return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
+        //             case 'sessionid':
+        //                 return await message.reply(`📱 *Session ID:* ${sessionId}`);
+        //             default:
+        //                 return await message.reply(`❌ Unknown command: *${command}*`);
+        //         }
                 
-            } catch (err) {
-                console.error('❌ Message handler error for session', sessionId, ':', err);
-            }
-        });
+        //     } catch (err) {
+        //         console.error('❌ Message handler error for session', sessionId, ':', err);
+        //     }
+        // });
+
+        client.on('message', async (message) => {
+  try {
+    const selfId = client.selfId || client.info?.wid?._serialized;
+    const selfNumber = client.info?.wid?.user;
+    if (!selfId || !selfNumber) return;
+
+    // Resolve owner id (normalized)
+    const ownerId = CONFIG.owner ? `${CONFIG.owner.replace(/[^0-9]/g,'')}@c.us` : null;
+
+    // Chat identity
+    const chatId = message.from; // the chat where message originated
+    const isPrivateChat = !chatId.endsWith('@g.us');
+
+    // Who sent it?
+    const fromOwner = ownerId && chatId === ownerId;
+    const fromSelf = message.fromMe;           // messages sent by the bot itself
+    const toSelf = message.to === selfId;      // message.to sometimes present
+
+    // Accept commands in:
+    //  - private chat from the owner
+    //  - messages sent by the bot in its own account (fromSelf)
+    //  - messages directed to the bot's own id
+    const allowed = fromOwner || fromSelf || toSelf || (isPrivateChat && chatId === selfId);
+
+    if (!allowed) return;
+    if (!message.body || !message.body.startsWith('!')) return;
+
+    const command = message.body.slice(1).split(' ')[0].toLowerCase();
+
+    await message.react('🤖');
+
+    switch (command) {
+      case 'ping': return await message.reply('🏓 Pong!');
+      case 'help': return await message.reply('🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid');
+      case 'status': return await message.reply(`🤖 *Bot Status*\n\n📱 Number: ${selfNumber}\n🆔 Session: ${sessionId}\n⏱️ Uptime: ${Math.floor(process.uptime())}s`);
+      case 'sessionid': return await message.reply(`📱 *Session ID:* ${sessionId}`);
+      default: return await message.reply(`❌ Unknown command: *${command}*`);
+    }
+  } catch (err) {
+    console.error('❌ Message handler error for session', sessionId, ':', err);
+  }
+});
+
 
         // ======================= START THE CLIENT ==========================
         console.log('🚀 Initializing WhatsApp client for session:', sessionId);
