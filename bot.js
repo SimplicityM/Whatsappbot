@@ -8,7 +8,7 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
-const sessionValidated = new Map()
+const sessionValidated = new Map();
 
 // ----------------- CONFIG -----------------
 const getDefaultPath = (dirName) => path.join(__dirname, dirName);
@@ -125,20 +125,19 @@ function createClientOptions(sessionId) {
 
   return {
     authStrategy: new LocalAuth({ clientId: `session-${sessionId}` }),
-            puppeteer: {
-            headless: false,  // show Chrome window, more stable on Windows
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage"
-            ],
-            defaultViewport: null
-        },
-        takeoverOnConflict: true,
-        restartOnAuthFail: true
-        
-        };
-        }
+    puppeteer: {
+      headless: false,  // show Chrome window, more stable on Windows
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage"
+      ],
+      defaultViewport: null
+    },
+    takeoverOnConflict: true,
+    restartOnAuthFail: true
+  };
+}
 
 async function saveContactsToDisk() {
   try {
@@ -187,10 +186,10 @@ function createClient(sessionId) {
   return client;
 }
 
-function createNewSession() {
+// FIX: Add the missing createSession function
+function createSession(sessionId) {
   try {
-    const sessionId = Date.now().toString();
-    logger.info(`Creating new session: ${sessionId}`);
+    logger.info(`Creating session: ${sessionId}`);
     const client = createClient(sessionId);
     clients.set(sessionId, client);
     client.initialize().catch(err => {
@@ -199,6 +198,16 @@ function createNewSession() {
     });
     return sessionId;
   } catch (err) {
+    logger.error('Failed to create session', err);
+    throw err;
+  }
+}
+
+function createNewSession() {
+  try {
+    const sessionId = Date.now().toString();
+    return createSession(sessionId);
+  } catch (err) {
     logger.error('Failed to create new session', err);
   }
 }
@@ -206,11 +215,6 @@ function createNewSession() {
 // ----------------- EVENT HANDLERS -----------------
 function setupClientEvents(client, sessionId) {
   let keepAliveInterval = null;
-
-  // client.on('qr', (qr) => {
-  //   logger.info(`Session ${sessionId}: QR received`);
-  //   qrcode.generate(qr, { small: true });
-  // });
 
   client.on('qr', (qr) => {
     console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
@@ -246,11 +250,7 @@ function setupClientEvents(client, sessionId) {
     
     // Also show in terminal for debugging
     qrcode.generate(qr, { small: true });
-});
-
-// Mark session as validated
-sessionValidated.set(sessionId, true);
-console.log(`🔓 Session ${sessionId} validated - ready for commands`);
+  });
 
   client.on('authenticated', () => {
     logger.info(`Session ${sessionId}: authenticated`);
@@ -263,12 +263,11 @@ console.log(`🔓 Session ${sessionId} validated - ready for commands`);
   client.on('ready', async () => {
     logger.info(`Session ${sessionId}: ready`);
     try {
-      // Ensure page and chats are loaded
-     // Wait until client.info.wid is available (max 1.5s)
-for (let i = 0; i < 15; i++) {
-    if (client.info?.wid?._serialized) break;
-    await new Promise(r => setTimeout(r, 100));
-}
+      // Wait until client.info.wid is available (max 1.5s)
+      for (let i = 0; i < 15; i++) {
+        if (client.info?.wid?._serialized) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
       const selfId = client.info?.wid?._serialized;
       if (!selfId) {
         logger.error(`Session ${sessionId}: client.info not available after ready`);
@@ -278,6 +277,10 @@ for (let i = 0; i < 15; i++) {
       // store mapping
       const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
       userSessions.set(selfId, uniqueId);
+
+      // FIX: Move session validation here (inside ready event)
+      sessionValidated.set(sessionId, true);
+      console.log(`🔓 Session ${sessionId} validated - ready for commands`);
 
       // send welcome messages to self chat
       try {
@@ -318,8 +321,7 @@ for (let i = 0; i < 15; i++) {
     logger.info(`Session ${sessionId}: disconnected (${reason})`);
     if (keepAliveInterval) clearInterval(keepAliveInterval);
     clients.delete(sessionId);
-    // attempt restart for most reasons except logout
-    // if (reason !== 'LOGOUT') setTimeout(() => createNewSession(), 5000);
+    sessionValidated.delete(sessionId); // Clean up validation
   });
 
   // call handling
@@ -522,8 +524,8 @@ async function createBotSession(userId, sessionId, io) {
             global.io = io;
         }
 
-        // Create a new session using existing createSession logic
-        await createSession(sessionId);
+        // FIX: Use createSession instead of non-existent function
+        const createdSessionId = createSession(sessionId);
         
         console.log('✅ Bot session created successfully');
         
@@ -546,7 +548,8 @@ module.exports = {
   },
   createBotSession,  // Add this for dashboard integration
   clients,           // Export clients map
-  userSessions      // Export user sessions
+  userSessions,      // Export user sessions
+  createSession      // FIX: Export the createSession function
 };
 
 // ----------------- CLEAN SHUTDOWN -----------------
