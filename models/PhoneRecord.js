@@ -1,20 +1,13 @@
-const mongoose = require("mongoose");
+// models/PhoneRecord.js
+const mongoose = require('mongoose');
 
-const PhoneRecordSchema = new mongoose.Schema({
+const phoneRecordSchema = new mongoose.Schema({
     phone: { type: String, required: true, unique: true },
-
-    // Anti-fraud user ID lock
-    usedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-
-    // Trial fields
+    usedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     trialUsed: { type: Boolean, default: false },
-    trialStartedAt: { type: Date, default: null },
-    trialExpiresAt: { type: Date, default: null },
+    trialStartedAt: { type: Date },
+    trialExpiresAt: { type: Date },
+    firstCommandDone: { type: Boolean, default: false }
+}, { timestamps: true });
 
-    // First-command rule tracking for expired users
-    firstCommandDone: { type: Boolean, default: false },
-
-    createdAt: { type: Date, default: Date.now },
-});
-
-module.exports = mongoose.model("PhoneRecord", PhoneRecordSchema);
+module.exports = mongoose.model('PhoneRecord', phoneRecordSchema);
