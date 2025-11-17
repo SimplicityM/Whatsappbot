@@ -5,7 +5,8 @@ const crypto = require('crypto');
 const Contact = require('./models/Contact');
 const User = require('./models/User');
 const PhoneRecord = require('./models/PhoneRecord'); // Ensure imported
-
+const sessionValidated = new Map();
+const TagUsage = require('./models/TagUsage');
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
@@ -562,6 +563,10 @@ function createNewSession() {
         }
         const client = createClient(sessionId);
         clients.set(sessionId, client);
+        
+// Mark this session as NOT validated yet (we will check on first command)
+// For restored sessions we will set it to true in restoreAllSessions
+sessionValidated.set(sessionId, false);
         client.initialize().catch(err => {
             logger.error(`Failed to initialize client ${sessionId}:`, err);
             clients.delete(sessionId);
@@ -1228,21 +1233,36 @@ async function createBotSession(userId, sessionId, io) {
                 );
 
                 // Message Handler
-                client.on('message', async (message) => {
-                    try {
-                        const selfId = client.selfId || client.info.wid._serialized;
-                        const selfNumber = client.info.wid.user;
+                            client.on('message', async (message) => {
+                try {
+                    const selfId = client.selfId || client.info?.wid?._serialized;
+                    const selfNumber = client.info?.wid?.user;
+                    if (!selfId || !selfNumber) return;
 
-                        const isSelfChat = message.fromMe && message.to === selfId;
-                        if (!isSelfChat || !message.body.startsWith('!')) return;
+                    const isSelfChat = message.fromMe && message.to === selfId;
+                    if (!isSelfChat || !message.body || !message.body.startsWith('!')) return;
 
-                        await message.react('🤖');
+                    await message.react('🤖');
 
-                        const [command] = message.body.slice(1).toLowerCase().split(' ');
+                    const raw = message.body.trim();
+                    const command = raw.slice(1).split(' ')[0].toLowerCase();
+                    const phoneRecord = await PhoneRecord.findOne({ phone: selfNumber });
 
+                    // -------------- BASIC COMMANDS (ALWAYS ALLOWED) --------------
+                    const BASIC = new Set(['ping', 'help', 'status', 'sessionid']);
+                    const TRIAL = new Set(['tag', 'list']);   // trial-only commands
+
+                    if (BASIC.has(command)) {
                         switch (command) {
                             case 'ping':
                                 return await message.reply('🏓 Pong!');
+
+                            case 'help':
+                                return await message.reply(
+                                    `🤖 *Bot Commands*\n\n` +
+                                    `• !ping\n• !help\n• !status\n• !sessionid\n\n` +
+                                    `*Trial Commands*: !tag, !list (only during free trial)`
+                                );
 
                             case 'status': {
                                 const up = process.uptime();
@@ -1251,21 +1271,135 @@ async function createBotSession(userId, sessionId, io) {
                                 );
                             }
 
-                            case 'help':
-                                return await message.reply(
-                                    `🤖 *Bot Commands*\n\n• !ping\n• !help\n• !status\n• !sessionid`
-                                );
-
                             case 'sessionid':
                                 return await message.reply(`📱 *Session ID:* ${sessionId}`);
-
-                            default:
-                                return await message.reply(`❌ Unknown command: *${command}*`);
                         }
-                    } catch (err) {
-                        console.error('❌ Message handler error:', err);
                     }
-                });
+
+                    // -------------- TRIAL COMMANDS --------------
+                    if (TRIAL.has(command)) {
+                        // PHONE NEVER HAD TRIAL BEFORE (should not happen after Ready handler)
+                        if (!phoneRecord || !phoneRecord.trialUsed) {
+                            return await message.reply(
+                                `🚫 *This phone number has NO active trial.*\n` +
+                                `You must subscribe to use *${command}*.\n\n` +
+                                `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                            );
+                        }
+
+                        // PHONE USED TRIAL before but on DIFFERENT ACCOUNT (ANTI-FRAUD)
+                        if (phoneRecord.usedByUserId.toString() !== userId.toString()) {
+                            return await message.reply(
+                                `🚫 *Trial is not available for this phone number.*\n\n` +
+                                `This phone has already used its 7-day free trial on another account.\n` +
+                                `To use *${command}*, please subscribe.\n\n` +
+                                `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                            );
+                        }
+
+                        // TRIAL EXPIRED
+                        if (!phoneRecord.trialExpiresAt || phoneRecord.trialExpiresAt <= new Date()) {
+                            return await message.reply(
+                                `⛔ *Your free trial has expired.*\n\n` +
+                                `Subscribe to continue using trial commands like *${command}*.\n\n` +
+                                `🔗 Renew: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                            );
+                        }
+
+                        // TRIAL ACTIVE – YOU CAN PLACE YOUR TAG/LIST LOGIC HERE
+                        if (command === 'tag') {
+
+                        // 1️⃣ CHECK IF USER IS TRIAL USER
+                        let isTrialUser = false;
+
+                        if (phoneRecord && phoneRecord.trialUsed) {
+                            if (phoneRecord.usedByUserId.toString() === userId.toString()) {
+                                if (phoneRecord.trialExpiresAt > new Date()) {
+                                    isTrialUser = true;
+                                }
+                            }
+                        }
+
+                        // 2️⃣ IF NOT TRIAL USER → PAID USER → NO LIMIT
+                        const subscriptionCheck = await checkUserSubscriptionStatus(userId);
+
+                        if (subscriptionCheck.isOwner || subscriptionCheck.isExempted || subscriptionCheck.isValid) {
+                            return await message.reply(`📌 *TAG executed (premium)*`);
+                        }
+
+                        // 3️⃣ TRIAL USER → ENFORCE DAILY LIMIT OF 3
+                        if (isTrialUser) {
+                            const today = new Date().toISOString().slice(0, 10);
+
+                            let usage = await TagUsage.findOne({ phone: selfNumber, date: today });
+
+                            if (!usage) {
+                                usage = await TagUsage.create({
+                                    phone: selfNumber,
+                                    date: today,
+                                    tagsToday: 0
+                                });
+                            }
+
+                            if (usage.tagsToday >= 3) {
+                                return await message.reply(
+                                    `🚫 *Daily limit reached*\n\n` +
+                                    `You can tag a maximum of **3 groups per day** during the free trial.\n\n` +
+                                    `Upgrade your plan to remove this limit.\n` +
+                                    `🔗 ${process.env.DOMAIN || 'your-website.com'}/payment`
+                                );
+                            }
+
+                            usage.tagsToday += 1;
+                            await usage.save();
+
+                            return await message.reply(`📌 *TAG executed* (${usage.tagsToday}/3 used today)`);
+                        }
+
+                        // 4️⃣ NOT TRIAL & NOT PAID → BLOCK
+                        return await message.reply(
+                            `🚫 *Subscription Required*\n\n` +
+                            `You need an active subscription to use *!tag*.\n\n` +
+                            `🔗 Subscribe: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                        );
+                    }
+
+                        if (command === 'list') {
+                            return await message.reply('📃 *LIST command executed (trial)*');
+                        }
+                    }
+
+                    // -------------- PAID COMMANDS (everything else) --------------
+                    let subStatus;
+                    try {
+                        subStatus = await checkUserSubscriptionStatus(userId);
+                    } catch (err) {
+                        console.error('⚠️ Subscription check failed:', err);
+                        return await message.reply('⚠️ System error while checking subscription.');
+                    }
+
+                    // OWNER & EXEMPT USERS ALWAYS VALID
+                    if (subStatus.isOwner || subStatus.isExempted) {
+                        return await message.reply(`👑 Admin/Owner access granted for *${command}*`);
+                    }
+
+                    // If subscription invalid → block
+                    if (!subStatus.isValid) {
+                        return await message.reply(
+                            `🚫 *Subscription Required*\n\n` +
+                            `Your subscription is not active, so *${command}* cannot be used.\n\n` +
+                            `🔗 Renew at: ${process.env.DOMAIN || 'your-website.com'}/payment`
+                        );
+                    }
+
+                    // -------------- PAID COMMANDS GO HERE --------------
+                    return await message.reply(`💎 *Paid command executed:* ${command}`);
+
+                } catch (err) {
+                    console.error('❌ Message handler error:', err);
+                }
+            });
+
             } catch (err) {
                 console.error('❌ READY handler error:', err);
             }
