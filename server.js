@@ -14,6 +14,11 @@ const Session = require('./models/Session');
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
 const paymentsRoute = require('./routes/payment.js');
 
+// Add this after your imports in server.js
+console.log('🛑 Disabling periodic checks for testing');
+// Add this near the top of server.js to disable email marketing
+process.env.DISABLE_EMAIL_MARKETING = 'true';
+
 // Import bot functionality
 const { 
     createBotSession, 
@@ -768,7 +773,7 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
             console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
             
             // 🔑 KEY ADDITION: Try to resume suspended sessions
-            const { resumeUserSession } = require('./bot.jss recent');
+            const { resumeUserSession } = require('./bot.js');
             const Session = require('./models/Session');
             
             // Find suspended sessions for this user
@@ -925,16 +930,16 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
     }
 });
 
-// Email marketing and other routes (optional)
-try {
-    const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
-    const abTestRoutes = require('./routes/ab-tests');
+// // Email marketing and other routes (optional)
+// try {
+//     const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
+//     const abTestRoutes = require('./routes/ab-tests');
 
-    app.use('/api/ab-tests', abTestRoutes);
-    app.use('/api/analytics', abTestRoutes);
-} catch (error) {
-    console.log('Email marketing routes not available:', error.message);
-}
+//     app.use('/api/ab-tests', abTestRoutes);
+//     app.use('/api/analytics', abTestRoutes);
+// } catch (error) {
+//     console.log('Email marketing routes not available:', error.message);
+// }
 
 // Public stats API
 app.get('/api/public/stats', async (req, res) => {
