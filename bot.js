@@ -113,34 +113,61 @@ const isSecondaryAdmin = (userId) => {
 const isAuthorized = (userId) => isPrimaryAdmin(userId) || isSecondaryAdmin(userId);
 
 // ----------------- HELPERS -----------------
-function createClientOptions(sessionId) {
-  // Detect platform: on Windows prefer headless:false for dev; on Linux default headless true
-  const isWindows = process.platform === 'win32';
-  const headless = !isWindows; // dev convenience: show browser on Windows
+// function createClientOptions(sessionId) {
+//   // Detect platform: on Windows prefer headless:false for dev; on Linux default headless true
+//   const isWindows = process.platform === 'win32';
+//   const headless = !isWindows; // dev convenience: show browser on Windows
 
-  const puppeteerArgs = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage'
-  ];
-  if (!isWindows) {
-    // on linux we can add single-process / no-zygote if needed by environment; leave minimal for portability
-    puppeteerArgs.push('--disable-gpu');
-  }
+//   const puppeteerArgs = [
+//     '--no-sandbox',
+//     '--disable-setuid-sandbox',
+//     '--disable-dev-shm-usage'
+//   ];
+//   if (!isWindows) {
+//     // on linux we can add single-process / no-zygote if needed by environment; leave minimal for portability
+//     puppeteerArgs.push('--disable-gpu');
+//   }
+
+//   return {
+//     authStrategy: new LocalAuth({ clientId: sessionId }),
+//     puppeteer: {
+//       headless: false,  // show Chrome window, more stable on Windows
+//       args: [
+//         "--no-sandbox",
+//         "--disable-setuid-sandbox",
+//         "--disable-dev-shm-usage"
+//       ],
+//       defaultViewport: null
+//     },
+//     takeoverOnConflict: true,
+//     restartOnAuthFail: true
+//   };
+// }
+function createClientOptions(sessionId) {
+  const isWindows = process.platform === 'win32';
 
   return {
-    authStrategy: new LocalAuth({ clientId: sessionId }),
+    authStrategy: new LocalAuth({ 
+      clientId: sessionId,
+      dataPath: './.wwebjs_auth'  // Explicit path
+    }),
     puppeteer: {
-      headless: false,  // show Chrome window, more stable on Windows
+      headless: false,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
+        "--disable-dev-shm-usage",
+        "--disable-web-security",           // ADD THIS
+        "--disable-features=IsolateOrigins,site-per-process",  // ADD THIS
+        "--disable-site-isolation-trials"   // ADD THIS
       ],
       defaultViewport: null
     },
     takeoverOnConflict: true,
-    restartOnAuthFail: true
+    restartOnAuthFail: true,
+    qrMaxRetries: 5,        // ADD THIS
+    authTimeoutMs: 60000,   // ADD THIS
+    takeoverTimeoutMs: 0    // ADD THIS - Disable takeover timeout
   };
 }
 
@@ -273,62 +300,157 @@ client.on('loading_screen', (percent, message) => {
     logger.error(`Session ${sessionId}: auth failure`, err);
   });
 
-  client.on('ready', async () => {
-    logger.info(`Session ${sessionId}: ready`);
+  // client.on('ready', async () => {
+  //   logger.info(`Session ${sessionId}: ready`);
+  //   try {
+  //     // Wait until client.info.wid is available (max 1.5s)
+  //     for (let i = 0; i < 15; i++) {
+  //       if (client.info?.wid?._serialized) break;
+  //       await new Promise(r => setTimeout(r, 100));
+  //     }
+  //     const selfId = client.info?.wid?._serialized;
+  //     if (!selfId) {
+  //       logger.error(`Session ${sessionId}: client.info not available after ready`);
+  //       return;
+  //     }
+
+  //   // store mapping
+  //     const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
+  //     userSessions.set(selfId, uniqueId);
+
+  //     // FIX: Move session validation here (inside ready event)
+  //     sessionValidated.set(sessionId, true);
+  //     console.log(`🔓 Session ${sessionId} validated - ready for commands`);
+
+  //     // send welcome messages to self chat
+  //     try {
+  //       await client.sendMessage(selfId, `🤖 *BOT CONNECTED* — Session: ${sessionId}`);
+  //       await new Promise(r => setTimeout(r, 300));
+  //       await client.sendMessage(selfId,
+  //         `👋 Hello! This account is now connected.\n*Available Commands (self-chat only):*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}status\n${COMMAND_PREFIX}sessionid`
+  //       );
+  //       logger.info(`Session ${sessionId}: welcome messages sent to ${selfId}`);
+  //     } catch (err) {
+  //       logger.error(`Session ${sessionId}: failed to send welcome messages`, err);
+  //     }
+
+  //     // keep-alive
+  //     keepAliveInterval = setInterval(async () => {
+  //       try {
+  //         await client.getState();
+  //         logger.info(`Session ${sessionId}: keep-alive OK`);
+  //       } catch (err) {
+  //         logger.error(`Session ${sessionId}: keep-alive failed`, err);
+  //       }
+  //     }, 300000);
+
+  //   } catch (err) {
+  //     logger.error(`Session ${sessionId}: ready handler error`, err);
+  //     // try to recover by destroying and creating new session
+  //     setTimeout(async () => {
+  //       try {
+  //         await client.destroy();
+  //       } catch (_) {}
+  //       clients.delete(sessionId);
+  //       createNewSession();
+  //     }, 5000);
+  //   }
+  // });
+
+client.on("ready", async () => {
+    logger.info(`Session ${sessionId}: ready fired`);
+
     try {
-      // Wait until client.info.wid is available (max 1.5s)
-      for (let i = 0; i < 15; i++) {
-        if (client.info?.wid?._serialized) break;
-        await new Promise(r => setTimeout(r, 100));
-      }
-      const selfId = client.info?.wid?._serialized;
-      if (!selfId) {
-        logger.error(`Session ${sessionId}: client.info not available after ready`);
-        return;
-      }
-
-    // store mapping
-      const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
-      userSessions.set(selfId, uniqueId);
-
-      // FIX: Move session validation here (inside ready event)
-      sessionValidated.set(sessionId, true);
-      console.log(`🔓 Session ${sessionId} validated - ready for commands`);
-
-      // send welcome messages to self chat
-      try {
-        await client.sendMessage(selfId, `🤖 *BOT CONNECTED* — Session: ${sessionId}`);
-        await new Promise(r => setTimeout(r, 300));
-        await client.sendMessage(selfId,
-          `👋 Hello! This account is now connected.\n*Available Commands (self-chat only):*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}status\n${COMMAND_PREFIX}sessionid`
-        );
-        logger.info(`Session ${sessionId}: welcome messages sent to ${selfId}`);
-      } catch (err) {
-        logger.error(`Session ${sessionId}: failed to send welcome messages`, err);
-      }
-
-      // keep-alive
-      keepAliveInterval = setInterval(async () => {
-        try {
-          await client.getState();
-          logger.info(`Session ${sessionId}: keep-alive OK`);
-        } catch (err) {
-          logger.error(`Session ${sessionId}: keep-alive failed`, err);
+        /* ----------------------------------------------
+         * 1️⃣ Guarantee WhatsApp fully initializes
+         * ----------------------------------------------*/
+        let attempts = 0;
+        while ((!client.info || !client.info.wid) && attempts < 60) { 
+            // up to 6 seconds
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
         }
-      }, 300000);
+
+        if (!client.info || !client.info.wid) {
+            logger.error(`Session ${sessionId}: client.info.wid missing after init`);
+            return;
+        }
+
+        const selfId = client.info.wid._serialized;
+        logger.info(`Session ${sessionId}: selfId detected = ${selfId}`);
+
+        /* ----------------------------------------------
+         * 2️⃣ Ensure WhatsApp is ONLINE (not just “ready”)
+         * ----------------------------------------------*/
+        let state = null;
+        attempts = 0;
+        while (attempts < 50) {   // up to 5 seconds
+            try {
+                state = await client.getState();
+                if (state === "CONNECTED") break;
+            } catch {}
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+        }
+
+        if (state !== "CONNECTED") {
+            logger.error(`Session ${sessionId}: WhatsApp not fully connected`);
+            return;
+        }
+
+        logger.info(`Session ${sessionId}: WhatsApp connected & stable`);
+
+        /* ----------------------------------------------
+         * 3️⃣ Store mapping (safe now)
+         * ----------------------------------------------*/
+        const uniqueId = crypto.randomBytes(4).toString("hex").toUpperCase();
+        userSessions.set(selfId, uniqueId);
+
+        sessionValidated.set(sessionId, true);
+        console.log(`🔓 Session ${sessionId} validated`);
+
+        /* ----------------------------------------------
+         * 4️⃣ Delay to allow internal chat sync to complete
+         * ----------------------------------------------*/
+        await new Promise(r => setTimeout(r, 2500));
+
+        /* ----------------------------------------------
+         * 5️⃣ Send welcome message TO SELF (guaranteed)
+         * ----------------------------------------------*/
+        try {
+            await client.sendMessage(selfId, 
+                `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
+            );
+
+            await new Promise(r => setTimeout(r, 500));
+
+            await client.sendMessage(selfId,
+                `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}sessionid\n${COMMAND_PREFIX}status`
+            );
+
+            logger.info(`Session ${sessionId}: welcome messages successfully sent`);
+
+        } catch (err) {
+            logger.error(`Session ${sessionId}: FAILED to send welcome msg`, err);
+        }
+
+        /* ----------------------------------------------
+         * 6️⃣ Keep-Alive Ping Loop
+         * ----------------------------------------------*/
+        keepAliveInterval = setInterval(async () => {
+            try {
+                await client.getState();
+                logger.info(`Session ${sessionId}: keep-alive OK`);
+            } catch (err) {
+                logger.error(`Session ${sessionId}: keep-alive failed`, err);
+            }
+        }, 300000);
 
     } catch (err) {
-      logger.error(`Session ${sessionId}: ready handler error`, err);
-      // try to recover by destroying and creating new session
-      setTimeout(async () => {
-        try {
-          await client.destroy();
-        } catch (_) {}
-        clients.delete(sessionId);
-        createNewSession();
-      }, 5000);
+        logger.error(`Session ${sessionId}: ready handler crashed`, err);
     }
-  });
+});
+
 
   client.on('disconnected', (reason) => {
     logger.info(`Session ${sessionId}: disconnected (${reason})`);
@@ -551,6 +673,42 @@ async function createBotSession(userId, sessionId, io) {
     }
 }
 
+// Add these functions before module.exports
+async function restoreAllSessions(io) {
+    console.log('🔄 Restoring all sessions...');
+    try {
+        const sessions = await Session.find({ status: 'connected' });
+        console.log(`📱 Found ${sessions.length} sessions to restore`);
+        
+        for (const session of sessions) {
+            try {
+                await createBotSession(session.userId, session.sessionId, io);
+                console.log(`✅ Restored session: ${session.sessionId}`);
+            } catch (err) {
+                console.error(`❌ Failed to restore session ${session.sessionId}:`, err);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error restoring sessions:', error);
+    }
+}
+
+async function restoreUserSessionAfterPayment(userId, io) {
+    console.log('🔄 Restoring user session after payment for user:', userId);
+    try {
+        const sessions = await Session.find({ userId, status: 'suspended' });
+        
+        for (const session of sessions) {
+            await createBotSession(userId, session.sessionId, io);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Error restoring user session:', error);
+        return false;
+    }
+}
+
 // exported API
 module.exports = {
   start: (count = 1) => {
@@ -560,6 +718,8 @@ module.exports = {
     }
   },
   createBotSession,  // Add this for dashboard integration
+  restoreAllSessions,           // ✅ ADD THIS
+  restoreUserSessionAfterPayment, // ✅ ADD THIS
   clients,           // Export clients map
   userSessions,      // Export user sessions
   createSession      // FIX: Export the createSession function
