@@ -261,6 +261,14 @@ function setupClientEvents(client, sessionId) {
     logger.info(`Session ${sessionId}: authenticated`);
   });
 
+// ADD THIS:
+client.on('loading_screen', (percent, message) => {
+    console.log(`📱 Loading: ${percent}% - ${message} (Session: ${sessionId})`);
+    if (percent === 100) {
+        console.log(`✅ Loading completed for session: ${sessionId}`);
+    }
+});
+
   client.on('auth_failure', (err) => {
     logger.error(`Session ${sessionId}: auth failure`, err);
   });
