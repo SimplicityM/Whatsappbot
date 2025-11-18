@@ -534,7 +534,7 @@ async function activateUserSubscription(userId) {
     return user;
 }
 
-const { restoreUserSessionAfterPayment } = require('../bot.jss recent');
+const { restoreUserSessionAfterPayment } = require('../bot.js');
 
 router.post('/payment/success', async (req, res) => {
     const { userId } = req.body;
