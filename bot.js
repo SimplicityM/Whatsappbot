@@ -265,45 +265,21 @@ function setupClientEvents(client, sessionId) {
     logger.error(`Session ${sessionId}: auth failure`, err);
   });
 
-  // client.on('ready', async () => {
-  //   logger.info(`Session ${sessionId}: ready`);
-  //   try {
-  //     // Wait until client.info.wid is available (max 1.5s)
-  //     for (let i = 0; i < 15; i++) {
-  //       if (client.info?.wid?._serialized) break;
-  //       await new Promise(r => setTimeout(r, 100));
-  //     }
-  //     const selfId = client.info?.wid?._serialized;
-  //     if (!selfId) {
-  //       logger.error(`Session ${sessionId}: client.info not available after ready`);
-  //       return;
-  //     }
-
   client.on('ready', async () => {
-    console.log(`🎉 READY EVENT FIRED for session: ${sessionId}`);
     logger.info(`Session ${sessionId}: ready`);
-    
     try {
-        console.log(`🔍 Waiting for client.info.wid...`);
-        
-        // Wait until client.info.wid is available (max 1.5s)
-        for (let i = 0; i < 15; i++) {
-            if (client.info?.wid?._serialized) {
-                console.log(`✅ client.info.wid found after ${i * 100}ms`);
-                break;
-            }
-            await new Promise(r => setTimeout(r, 100));
-        }
-        
-        const selfId = client.info?.wid?._serialized;
-        if (!selfId) {
-            console.error(`❌ Session ${sessionId}: client.info not available after ready`);
-            logger.error(`Session ${sessionId}: client.info not available after ready`);
-            return;
-        }
+      // Wait until client.info.wid is available (max 1.5s)
+      for (let i = 0; i < 15; i++) {
+        if (client.info?.wid?._serialized) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      const selfId = client.info?.wid?._serialized;
+      if (!selfId) {
+        logger.error(`Session ${sessionId}: client.info not available after ready`);
+        return;
+      }
 
-        console.log(`📱 Self ID: ${selfId}`);
-      // store mapping
+    // store mapping
       const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
       userSessions.set(selfId, uniqueId);
 
