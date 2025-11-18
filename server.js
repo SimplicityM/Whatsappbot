@@ -20,7 +20,7 @@ const {
     restoreAllSessions,
     restoreUserSessionAfterPayment,
     clients 
-} = require('./bot.jss recent');
+} = require('./bot.js');
 
 
 // Initialize Express app

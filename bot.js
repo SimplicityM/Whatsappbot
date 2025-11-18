@@ -2,6 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const qrcode = require('qrcode-terminal');
+const Contact = require('./models/Contact');
+const User = require('./models/User');
+const PhoneRecord = require('./models/PhoneRecord');
+const Session = require('./models/Session');
+const TagUsage = require('./models/TagUsage');
 
 const puppeteer = require('puppeteer'); // ensure installed and up-to-date
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
