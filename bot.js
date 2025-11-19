@@ -733,13 +733,31 @@ async function getActiveGroup(sessionId) {
 
     // Only handle commands sent in self-chat (DM to the bot)
     // If someone types commands in group, ignore them.
-    if (!isSelfChat) {
-      // allow owners (if message.fromMe) or you can check allowed users here
-      // For now only allow self-chat commands, reply if someone tries in group:
-      // (If you want to allow owners to run commands from other numbers, modify this logic)
-      await safeSend(message.from, '❗ Please send commands to this bot in a private chat (your own chat with the bot).');
-      return;
+
+    // if (!isSelfChat) {
+    //   // allow owners (if message.fromMe) or you can check allowed users here
+    //   // For now only allow self-chat commands, reply if someone tries in group:
+    //   // (If you want to allow owners to run commands from other numbers, modify this logic)
+    //   await safeSend(message.from, '❗ Please send commands to this bot in a private chat (your own chat with the bot).');
+    //   return;
+    // }
+
+// Only process commands inside self-chat.
+// Ignore ALL commands coming from groups or other users.
+if (message.body.startsWith(COMMAND_PREFIX)) {
+
+    // BONUS: Ensure ONLY the owner of this bot session can run commands
+    // (sender must match mySelf)
+    if (sender !== mySelf) {
+        return; // silently ignore others
     }
+
+    // If message is not from self-chat, silently ignore
+    if (!isSelfChat) {
+        return; // do NOT reply anything in groups
+    }
+}
+
 
     if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
