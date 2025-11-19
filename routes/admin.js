@@ -242,7 +242,7 @@ router.put('/users/:userId/suspend', authenticateAdmin, async (req, res) => {
 router.put('/users/:userId/subscription', authenticateAdmin, async (req, res) => {
     try {
         const { subscription, expiryDate } = req.body;
-        const validSubscriptions = ['starter', 'professional', 'business', 'enterprise']; // Updated to match your index page
+        const validSubscriptions = ['free','starter', 'professional', 'business', 'enterprise']; // Updated to match your index page
 
         if (!validSubscriptions.includes(subscription)) {
             return res.status(400).json({
