@@ -168,6 +168,39 @@ body {
 .sidebar-nav {
   flex: 1;
   padding: var(--space-4) 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar for sidebar */
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+.sidebar-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  background: var(--white);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 .nav-list {

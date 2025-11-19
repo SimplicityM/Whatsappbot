@@ -323,6 +323,66 @@ router.get('/sessions', authenticateAdmin, async (req, res) => {
     }
 });
 
+// Delete session
+router.delete('/sessions/:sessionId', authenticateAdmin, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        const session = await Session.findOneAndDelete({ sessionId });
+        
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Session deleted successfully'
+        });
+        
+    } catch (error) {
+        console.error('Delete session error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting session'
+        });
+    }
+});
+
+// Restart session
+router.post('/sessions/:sessionId/restart', authenticateAdmin, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        const session = await Session.findOne({ sessionId });
+        
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+        
+        session.status = 'waiting_qr';
+        session.qrCode = null;
+        await session.save();
+        
+        res.json({
+            success: true,
+            message: 'Session restart initiated'
+        });
+        
+    } catch (error) {
+        console.error('Restart session error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error restarting session'
+        });
+    }
+});
+
 router.get('/contacts', async (req, res) => {
     try {
         const { userId, sessionId, type } = req.query;
@@ -506,7 +566,7 @@ router.post('/create-session', authenticateAdmin, async (req, res) => {
         await session.save();
         
         // Start bot session
-        const { createBotSession } = require('../bot.jss recent');
+        const { createBotSession } = require('../bot.js');
         await createBotSession(userId, sessionId, req.app.get('io'));
         
         res.json({
@@ -683,7 +743,7 @@ router.post('/sessions/create', authenticateAdmin, async (req, res) => {
         console.log('📱 ADMIN: Session ID:', sessionId);
         
         // Import createBotSession from bot.js
-        const { createBotSession } = require('../bot.jss recent');
+        const { createBotSession } = require('../bot.js');
         const io = req.app.get('io'); // Get Socket.IO instance
         
         if (!io) {

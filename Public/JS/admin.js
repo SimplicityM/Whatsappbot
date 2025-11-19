@@ -9,9 +9,24 @@ let isCreatingSession = false;
 let socket; // Declare socket variable
 
 // Get current admin ID
+// function getCurrentAdminId() {
+//     const userSession = JSON.parse(localStorage.getItem('userSession') || '{}');
+//     return userSession.id || userSession.userId || 'admin-user';
+// }
+
+// Get current admin ID
 function getCurrentAdminId() {
+    // Try multiple sources for admin ID
+    const adminSession = JSON.parse(localStorage.getItem('adminSession') || '{}');
     const userSession = JSON.parse(localStorage.getItem('userSession') || '{}');
-    return userSession.id || userSession.userId || 'admin-user';
+    
+    // Return the actual admin user ID, not a hardcoded string
+    return adminSession.user?.id || 
+           adminSession.userId || 
+           userSession.user?.id || 
+           userSession.id || 
+           userSession.userId || 
+           null;
 }
 
 // Admin Dashboard Configuration
@@ -39,19 +54,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Initialize admin functionality
-function initializeAdmin() {
-    console.log('Admin dashboard initialized');
+// // Initialize admin functionality
+// function initializeAdmin() {
+//     console.log('Admin dashboard initialized');
 
-    // Initialize sample data
-    initializeSampleData();
+//     // Initialize sample data
+//     initializeSampleData();
 
-    // Set initial sidebar state
-    const sidebar = document.querySelector('.admin-sidebar');
-    if (sidebar && window.innerWidth <= 768) {
-        sidebar.classList.add('collapsed');
-    }
-}
+//     // Set initial sidebar state
+//     const sidebar = document.querySelector('.admin-sidebar');
+//     if (sidebar && window.innerWidth <= 768) {
+//         sidebar.classList.add('collapsed');
+//     }
+// }
 
 // Setup Socket.IO connection for real-time updates
 function setupSocketConnection() {
@@ -68,12 +83,31 @@ function setupSocketConnection() {
         });
 
         // Socket event listeners
-      socket.on('connect', () => {
+    //   socket.on('connect', () => {
+    // console.log('✅ Connected to server');
+    // const adminId = getCurrentAdminId();
+    // socket.emit('join-admin-room', adminId); // 🔑 Use admin room
+    // updateConnectionStatus(true);
+
+    socket.on('connect', () => {
     console.log('✅ Connected to server');
     const adminId = getCurrentAdminId();
-    socket.emit('join-admin-room', adminId); // 🔑 Use admin room
+    
+    if (!adminId) {
+        console.error('❌ No admin ID found! Cannot join socket room.');
+        showNotification('Session error. Please log in again.', 'error');
+        return;
+    }
+    
+    console.log('👤 Admin ID:', adminId);
+    
+    // Join the admin room with the actual user ID
+    socket.emit('join-admin-room', adminId);
+    console.log(`📡 Joined room: admin-${adminId}`);
+    
     updateConnectionStatus(true);
 });
+
 
                // 🔑 UPDATED: Admin-specific socket events
 socket.on('qrCode', (data) => {
@@ -203,34 +237,18 @@ socket.on('adminAuthFailure', (data) => {
 // Load admin dashboard data
 async function loadDashboardData() {
     try {
-        // For now, use mock data since authentication isn't set up yet
-        console.log('Loading dashboard data...');
+        console.log('📊 Loading admin dashboard data...');
         
-        // Mock data for testing
-        updateDashboardStats({
-            sessions: { active: sessions.filter(s => s.status === 'active').length, total: sessions.length },
-            users: { total: users.length, active: users.filter(u => u.status === 'active').length },
-            usage: { totalMessages: 3456, totalCommands: 1234 }
-        });
+        // Fetch real sessions from API
+        await fetchAllSessions();
         
+        // Load other data
         loadRecentActivity();
         
-        // TODO: Uncomment when authentication is ready
-        /*
-        const response = await fetch(`${CONFIG.API_BASE}/api/admin/dashboard`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
-            }
-        });
+        console.log('✅ Dashboard data loaded');
         
-        const data = await response.json();
-        if (data.success) {
-            updateDashboardStats(data.data.stats);
-            loadRecentActivity(data.data.recentSessions);
-        }
-        */
     } catch (error) {
-        console.error('Failed to load dashboard data:', error);
+        console.error('❌ Failed to load dashboard data:', error);
         showNotification('Failed to load dashboard data', 'error');
     }
 }
@@ -636,60 +654,71 @@ function loadRecentActivity() {
 }
 
 // ==================== SESSION MANAGEMENT UI ====================
-
 function loadSessions() {
     const sessionsGrid = document.getElementById('sessionsGrid');
     if (!sessionsGrid) return;
 
     if (sessions.length === 0) {
         sessionsGrid.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #666;">
-                <i class="fas fa-robot" style="font-size: 48px; margin-bottom: 15px;"></i>
-                <h3>No Active Sessions</h3>
-                <p>Click "New Session" to create your first WhatsApp bot session.</p>
-                <button onclick="createNewSession()" class="btn-primary" style="margin-top: 15px;">
-                    <i class="fas fa-plus"></i> Create New Session
+            <div class="empty-state" style="text-align: center; padding: 60px 20px;">
+                <i class="fas fa-robot" style="font-size: 64px; color: #667eea; margin-bottom: 20px;"></i>
+                <h3 style="margin-bottom: 10px; color: #333;">No Bot Sessions Found</h3>
+                <p style="color: #666; margin-bottom: 20px;">No users have created WhatsApp bot sessions yet.</p>
+                <button onclick="fetchAllSessions()" class="btn-secondary">
+                    <i class="fas fa-sync-alt"></i> Refresh
                 </button>
             </div>
         `;
         return;
     }
 
-    sessionsGrid.innerHTML = sessions.map(session => `
-        <div class="session-card ${session.status}">
-            <div class="session-header">
-                <div class="session-status">
-                    <span class="status-indicator ${session.status}"></span>
-                    <span class="status-text">${session.status.charAt(0).toUpperCase() + session.status.slice(1)}</span>
-                </div>
-                <div class="session-actions">
-                    <button class="action-btn" onclick="viewSession('${session.id}')" title="View Details">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="action-btn" onclick="restartSession('${session.id}')" title="Restart">
-                        <i class="fas fa-redo"></i>
-                    </button>
-                    <button class="action-btn danger" onclick="deleteSession('${session.id}')" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="session-info">
-                <h4>${session.user}</h4>
-                <p class="session-phone">${session.phone}</p>
-                <div class="session-stats">
-                    <div class="stat">
-                        <span class="stat-label">Uptime</span>
-                        <span class="stat-value">${session.uptime}</span>
+    sessionsGrid.innerHTML = sessions.map(session => {
+        const statusClass = session.status === 'active' ? 'active' : 
+                          session.status === 'waiting_qr' ? 'waiting' : 'inactive';
+        
+        return `
+            <div class="session-card ${statusClass}">
+                <div class="session-header">
+                    <div class="session-status">
+                        <span class="status-indicator ${statusClass}"></span>
+                        <span class="status-text">${session.status.replace('_', ' ').toUpperCase()}</span>
                     </div>
-                    <div class="stat">
-                        <span class="stat-label">Messages</span>
-                        <span class="stat-value">${session.messages}</span>
+                    <div class="session-actions">
+                        <button class="action-btn" onclick="viewSession('${session.id}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="action-btn" onclick="restartSession('${session.sessionId}')" title="Restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="action-btn danger" onclick="deleteSession('${session.sessionId}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </div>
+                <div class="session-info">
+                    <h4>${session.user}</h4>
+                    <p class="session-email" style="font-size: 12px; color: #666;">${session.email || ''}</p>
+                    <p class="session-phone" style="margin: 8px 0;">
+                        <i class="fas fa-phone" style="margin-right: 5px;"></i>${session.phone}
+                    </p>
+                    <div class="session-stats">
+                        <div class="stat">
+                            <span class="stat-label">Uptime</span>
+                            <span class="stat-value">${session.uptime}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Messages</span>
+                            <span class="stat-value">${session.messages}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Plan</span>
+                            <span class="stat-value" style="text-transform: capitalize;">${session.subscription}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     // Update session count badge
     const sessionCount = document.getElementById('sessionCount');
@@ -698,6 +727,162 @@ function loadSessions() {
         sessionCount.textContent = activeSessions;
         sessionCount.style.display = activeSessions > 0 ? 'flex' : 'none';
     }
+}
+
+// ==================== FETCH REAL SESSIONS FROM API ====================
+
+async function fetchAllSessions() {
+    try {
+        console.log('📡 Fetching all sessions from API...');
+        
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/sessions`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${getAuthToken()}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: Failed to fetch sessions`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Transform API data to match UI format
+            sessions = result.data.sessions.map(session => ({
+                id: session._id,
+                sessionId: session.sessionId,
+                user: session.userId?.fullName || session.userId?.email || 'Unknown User',
+                userId: session.userId?._id,
+                email: session.userId?.email,
+                phone: session.phone || 'Not connected',
+                status: session.status || 'inactive',
+                uptime: calculateUptime(session.createdAt),
+                messages: session.messageCount || 0,
+                createdAt: session.createdAt,
+                subscription: session.userId?.subscription || 'free'
+            }));
+            
+            console.log('✅ Loaded', sessions.length, 'sessions from API');
+            
+            // Render the sessions
+            loadSessions();
+            
+            // Update stats
+            updateStats();
+        } else {
+            throw new Error(result.message || 'Failed to load sessions');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error fetching sessions:', error);
+        showNotification(`Error loading sessions: ${error.message}`, 'error');
+        
+        // Fall back to empty array
+        sessions = [];
+        loadSessions();
+    }
+}
+
+// Helper function to calculate uptime
+function calculateUptime(createdAt) {
+    if (!createdAt) return 'N/A';
+    
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffMs = now - created;
+    
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}
+
+// ==================== SESSION ACTIONS ====================
+
+// Delete a session
+async function deleteSession(sessionId) {
+    if (!confirm('⚠️ Delete this session?\n\nThis will:\n- Disconnect the WhatsApp bot\n- Remove all session data\n- Cannot be undone!')) {
+        return;
+    }
+    
+    try {
+        showNotification('Deleting session...', 'info');
+        
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/sessions/${sessionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${getAuthToken()}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Session deleted successfully', 'success');
+            
+            // Refresh sessions
+            await fetchAllSessions();
+        } else {
+            throw new Error(result.message || 'Failed to delete session');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error deleting session:', error);
+        showNotification(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Restart a session
+async function restartSession(sessionId) {
+    if (!confirm('Restart this session?\n\nThe user will need to scan the QR code again.')) {
+        return;
+    }
+    
+    try {
+        showNotification('Restarting session...', 'info');
+        
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/sessions/${sessionId}/restart`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${getAuthToken()}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Session restarted', 'success');
+            await fetchAllSessions();
+        } else {
+            throw new Error(result.message || 'Failed to restart session');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error restarting session:', error);
+        showNotification(`Error: ${error.message}`, 'error');
+    }
+}
+
+// View session details
+function viewSession(sessionId) {
+    const session = sessions.find(s => s.id === sessionId || s.sessionId === sessionId);
+    
+    if (!session) {
+        showNotification('Session not found', 'error');
+        return;
+    }
+    
+    showNotification(`Viewing session: ${session.user}`, 'info');
+    // TODO: Show a detailed modal with session info
+    console.log('Session details:', session);
 }
 
 // ==================== USER MANAGEMENT ====================

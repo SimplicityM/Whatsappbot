@@ -2,1084 +2,792 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const mongoose = require('mongoose');
 const Contact = require('./models/Contact');
 const User = require('./models/User');
 const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
 
-// ------------------------------------
-// SAFE SESSION REGISTRY
-// ------------------------------------
-const activeSessions = new Map();     // sessionId → { client, status }
-const sessionLocks = new Set();       // prevents double-creation
+// bot.js (multi-session, isolated per-client implementation)
+// - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
+// - Requires separate Mongoose models (listed after this file)
+// - Uses LocalAuth with clientId=sessionId so sessions persist and DO NOT log out on server restart
 
 
-const puppeteer = require('puppeteer'); // ensure installed and up-to-date
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+// ---------------- CONFIG (adjust as needed) ----------------
+const SESSION_DIR = path.join(__dirname, 'sessions');
+const MEDIA_DIR = path.join(__dirname, 'media');
+const COMMAND_PREFIX = '!';
+const CHAT_SYNC_THRESHOLD = 20; // number of chats to consider "synced"
+const CHAT_SYNC_WAIT_ITER = 40; // iterations (500ms each) to wait for chat sync (~20s)
+const SCHEDULER_POLL_MS = 30 * 1000; // 30s
 
-require('events').EventEmitter.defaultMaxListeners = 1000;
+// ensure directories
+fs.mkdirSync(SESSION_DIR, { recursive: true });
+fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
-const sessionValidated = new Map();
+// ---------------- Models (expected to be defined separately) ----------------
+// You should create these model files under ./models:
+// - ./models/GroupPermission.js   (per-group allow/deny lists)
+// - ./models/WelcomeMeta.js       (stores welcomeSent per group per session)
+// - ./models/Schedule.js          (scheduling)
+const GroupPermission = require('./models/GroupPermission'); // { botUserId, groupId, allowed:[], blocked:[] }
+const WelcomeMeta = require('./models/WelcomeMeta');         // { sessionId, groupId, welcomeSent: Boolean }
+const Schedule = require('./models/Schedule');               // scheduling model per earlier spec
 
-// ----------------- CONFIG -----------------
-const getDefaultPath = (dirName) => path.join(__dirname, dirName);
-
-const CONFIG = {
-  sessionDataPath: getDefaultPath('sessions'),
-  mediaPath: getDefaultPath('media'),
-  authPath: getDefaultPath('auth'),   // kept for backward compatibility though LocalAuth is used
-  adminSettings: {
-    selfChatOnly: false,
-    secondaryAdmins: {}
-  },
-  prefix: '!',
-  maxSessions: 1000,
-  owner: undefined, // fill with owner number in config.json if you want
-  allowedUsers: []
-};
-
-// load config.json if present (non-destructive)
-try {
-  const cfgPath = path.join(__dirname, 'config.json');
-  if (fs.existsSync(cfgPath)) {
-    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    // shallow merge, keep defaults if missing
-    Object.assign(CONFIG, raw);
-    CONFIG.adminSettings = { ...CONFIG.adminSettings, ...(raw.adminSettings || {}) };
-    console.log('Loaded configuration from config.json');
-  } else {
-    console.warn('config.json not found — using defaults');
-  }
-} catch (err) {
-  console.warn('Failed to load config.json, using defaults:', err.message);
-}
-
-// ensure directories exist
-const requiredDirs = [
-  CONFIG.sessionDataPath,
-  CONFIG.mediaPath,
-  CONFIG.authPath
-];
-
-for (const d of requiredDirs) {
-  try {
-    if (!d || typeof d !== 'string') throw new Error('Invalid path');
-    fs.mkdirSync(d, { recursive: true });
-  } catch (err) {
-    console.error('FATAL: Could not create directory', d, err.message);
-    process.exit(1);
-  }
-}
-
-// ----------------- CONSTANTS & STATE -----------------
-const SESSION_DIR = CONFIG.sessionDataPath;
-const MEDIA_DIR = CONFIG.mediaPath;
-const COMMAND_PREFIX = CONFIG.prefix || '!';
-const MAX_SESSIONS_DEFAULT = CONFIG.maxSessions || 1000;
-
-const mediaPath = {
-  audio: path.join(MEDIA_DIR, 'audio.mp3'),
-  document: path.join(MEDIA_DIR, 'document.pdf'),
-  image: path.join(MEDIA_DIR, 'image.jpg')
-};
-
-const clients = new Map();            // sessionId => client
-const userSessions = new Map();       // selfId => sessionUniqueId (for quick lookup)
-const savedContactsFile = path.join(SESSION_DIR, 'saved_contacts.json');
-const savedContacts = new Set(fs.existsSync(savedContactsFile) ? JSON.parse(fs.readFileSync(savedContactsFile, 'utf8')) : []);
-
+// ---------------- State containers ----------------
+const clients = new Map();        // sessionId -> client instance
+const sessionWorkers = new Map(); // sessionId -> { schedulerInterval, ... }
 const logger = {
   info: (m) => console.log(`[${new Date().toISOString()}] INFO: ${m}`),
   error: (m, e) => console.error(`[${new Date().toISOString()}] ERROR: ${m}`, e || '')
 };
 
-// authorized numbers
-const authorizedNumbers = new Set();
-if (CONFIG.owner) {
-  let ownerNumber = CONFIG.owner;
-  if (!ownerNumber.includes('@')) ownerNumber = `${ownerNumber.replace(/[^0-9]/g, '')}@c.us`;
-  authorizedNumbers.add(ownerNumber);
-  logger.info(`Added owner to authorizedNumbers: ${ownerNumber}`);
-}
-if (Array.isArray(CONFIG.allowedUsers)) {
-  for (const u of CONFIG.allowedUsers) {
-    let num = u;
-    if (!num.includes('@')) num = `${num.replace(/[^0-9]/g,'')}@c.us`;
-    authorizedNumbers.add(num);
-  }
-  logger.info(`Loaded ${CONFIG.allowedUsers.length || 0} allowed users`);
-}
-
-const isPrimaryAdmin = (userId) => authorizedNumbers.has(userId);
-const isSecondaryAdmin = (userId) => {
-  if (!CONFIG.adminSettings?.secondaryAdmins) return false;
-  const clean = userId.replace('@c.us','');
-  return CONFIG.adminSettings.secondaryAdmins[clean]?.enabled === true;
-};
-const isAuthorized = (userId) => isPrimaryAdmin(userId) || isSecondaryAdmin(userId);
-
-// ----------------- HELPERS -----------------
-// function createClientOptions(sessionId) {
-//   // Detect platform: on Windows prefer headless:false for dev; on Linux default headless true
-//   const isWindows = process.platform === 'win32';
-//   const headless = !isWindows; // dev convenience: show browser on Windows
-
-//   const puppeteerArgs = [
-//     '--no-sandbox',
-//     '--disable-setuid-sandbox',
-//     '--disable-dev-shm-usage'
-//   ];
-//   if (!isWindows) {
-//     // on linux we can add single-process / no-zygote if needed by environment; leave minimal for portability
-//     puppeteerArgs.push('--disable-gpu');
-//   }
-
-//   return {
-//     authStrategy: new LocalAuth({ clientId: sessionId }),
-//     puppeteer: {
-//       headless: false,  // show Chrome window, more stable on Windows
-//       args: [
-//         "--no-sandbox",
-//         "--disable-setuid-sandbox",
-//         "--disable-dev-shm-usage"
-//       ],
-//       defaultViewport: null
-//     },
-//     takeoverOnConflict: true,
-//     restartOnAuthFail: true
-//   };
-// }
+// ---------------- Helper: client options ----------------
 function createClientOptions(sessionId) {
-  const isWindows = process.platform === 'win32';
-
   return {
-    authStrategy: new LocalAuth({ 
-      clientId: sessionId,
-      dataPath: './.wwebjs_auth'  // Explicit path
-    }),
+    authStrategy: new LocalAuth({ clientId: sessionId }),
     puppeteer: {
-      headless: false,
+      headless: true,
       args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-web-security",           // ADD THIS
-        "--disable-features=IsolateOrigins,site-per-process",  // ADD THIS
-        "--disable-site-isolation-trials"   // ADD THIS
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
       ],
       defaultViewport: null
     },
     takeoverOnConflict: true,
     restartOnAuthFail: true,
-    qrMaxRetries: 5,        // ADD THIS
-    authTimeoutMs: 60000,   // ADD THIS
-    takeoverTimeoutMs: 0    // ADD THIS - Disable takeover timeout
   };
 }
 
-async function saveContactsToDisk() {
-  try {
-    fs.writeFileSync(savedContactsFile, JSON.stringify([...savedContacts], null, 2));
-    logger.info('Saved contacts file updated');
-  } catch (err) {
-    logger.error('Failed to write saved contacts file', err);
-  }
+// ---------------- Utility ----------------
+function formatJid(n) {
+  // Accepts phone or jid -> returns normalized jid
+  if (!n) return null;
+  if (n.includes('@')) return n;
+  const digits = n.replace(/[^0-9]/g, '');
+  return digits ? `${digits}@c.us` : null;
 }
 
-async function saveNewContact(client, phoneNumber, name = null) {
-  try {
-    if (savedContacts.has(phoneNumber)) {
-      logger.info(`Contact ${phoneNumber} already saved`);
-      return false;
-    }
-    // Use page evaluate via client to call WWebJS contactAdd if available
-    if (client.pupPage && client.pupPage.evaluate) {
-      await client.pupPage.evaluate((contact, displayName) => {
-        // This uses the internal WWebJS function if present
-        // eslint-disable-next-line no-undef
-        return window.WWebJS?.contactAdd ? window.WWebJS.contactAdd(contact, displayName) : null;
-      }, phoneNumber, name || `Contact ${phoneNumber}`);
-      savedContacts.add(phoneNumber);
-      await saveContactsToDisk();
-      logger.info(`Saved new contact: ${phoneNumber}`);
-      return true;
-    } else {
-      logger.error('client.pupPage is not available to add contact');
-      return false;
-    }
-  } catch (err) {
-    logger.error(`Failed to save contact ${phoneNumber}`, err);
-    return false;
-  }
+function hhmmToNextDate(hhmm) {
+  const [hh, mm] = hhmm.split(':').map(x => parseInt(x, 10));
+  const now = new Date();
+  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+  if (candidate <= now) candidate.setDate(candidate.getDate() + 1);
+  return candidate;
 }
 
-// ----------------- SESSION / CLIENT CREATION -----------------
-function createClient(sessionId) {
-  const opts = createClientOptions(sessionId);
-  const client = new Client(opts);
-
-  // remove any previous listeners (defensive)
-  client.removeAllListeners();
-  setupClientEvents(client, sessionId);
-  return client;
-}
-
-// FIX: Add the missing createSession function
-function createSession(sessionId) {
-  try {
-    logger.info(`Creating session: ${sessionId}`);
-    const client = createClient(sessionId);
-    clients.set(sessionId, client);
-    client.initialize().catch(err => {
-      logger.error(`Failed to initialize client ${sessionId}:`, err);
-      clients.delete(sessionId);
-    });
-    return sessionId;
-  } catch (err) {
-    logger.error('Failed to create session', err);
-    throw err;
-  }
-}
-
-function createNewSession() {
-  try {
-    const sessionId = Date.now().toString();
-    return createSession(sessionId);
-  } catch (err) {
-    logger.error('Failed to create new session', err);
-  }
-}
-
-// ----------------- EVENT HANDLERS -----------------
-function setupClientEvents(client, sessionId) {
+// ---------------- Core: setup per-client event handlers ----------------
+function setupClientEvents(client, sessionId, io) {
+  // local variables captured per client
+  let selfId = null;
   let keepAliveInterval = null;
+  let schedulerInterval = null;
+  const sessionName = sessionId;
 
-  client.on('qr', (qr) => {
-    console.log(`📱 QR CODE GENERATED for session: ${sessionId}`);
-    
-    // Emit to frontend dashboard
-    if (global.io) {
-        // Extract userId from sessionId (format: session-userId-timestamp)
-        const userIdMatch = sessionId.match(/session-([^-]+)-/);
-        const userId = userIdMatch ? userIdMatch[1] : 'unknown';
-        const roomName = `user-${userId}`;
-        
-        global.io.to(roomName).emit('qrCode', {
-            sessionId,
-            qr,
-            message: 'Scan this QR code with WhatsApp',
-            userId,
-            userType: 'user',
-            broadcast: true
-        });
-        
-        // Also global broadcast
-        global.io.emit('qrCode', {
-            sessionId,
-            qr,
-            broadcast: true,
-            message: 'Scan this QR code'
-        });
-        
-        console.log(`✅ QR emitted to dashboard for user: ${userId}`);
-    } else {
-        console.error('❌ global.io not available - cannot emit QR to dashboard');
+  // small helper to safe send
+  async function safeSend(jid, content, options = {}) {
+    try {
+      if (!jid) throw new Error('No jid provided to safeSend');
+      return await client.sendMessage(jid, content, options);
+    } catch (e) {
+      logger.error(`safeSend failed to ${jid}`, e.message || e);
+      return null;
     }
-    
-    // Also show in terminal for debugging
+  }
+
+  // QR
+  client.on('qr', (qr) => {
+    logger.info(`[${sessionName}] QR generated`);
     qrcode.generate(qr, { small: true });
+
+    if (io) {
+      // attempt to find userId portion from sessionId if following format session-<userId>-<ts>
+      const userMatch = sessionId.match(/^session-([^-]+)-/);
+      const userId = userMatch ? userMatch[1] : null;
+      if (userId) {
+        io.to(`user-${userId}`).emit('qrCode', { sessionId, qr });
+      }
+      // global broadcast
+      io.emit('qrCode', { sessionId, qr });
+    }
   });
 
   client.on('authenticated', () => {
-    logger.info(`Session ${sessionId}: authenticated`);
+    logger.info(`[${sessionName}] authenticated`);
   });
-
-// ADD THIS:
-client.on('loading_screen', (percent, message) => {
-    console.log(`📱 Loading: ${percent}% - ${message} (Session: ${sessionId})`);
-    if (percent === 100) {
-        console.log(`✅ Loading completed for session: ${sessionId}`);
-    }
-});
 
   client.on('auth_failure', (err) => {
-    logger.error(`Session ${sessionId}: auth failure`, err);
+    logger.error(`[${sessionName}] auth failure`, err && err.message ? err.message : err);
   });
 
-  // client.on('ready', async () => {
-  //   logger.info(`Session ${sessionId}: ready`);
-  //   try {
-  //     // Wait until client.info.wid is available (max 1.5s)
-  //     for (let i = 0; i < 15; i++) {
-  //       if (client.info?.wid?._serialized) break;
-  //       await new Promise(r => setTimeout(r, 100));
-  //     }
-  //     const selfId = client.info?.wid?._serialized;
-  //     if (!selfId) {
-  //       logger.error(`Session ${sessionId}: client.info not available after ready`);
-  //       return;
-  //     }
+  client.on('loading_screen', (percent, message) => {
+    logger.info(`[${sessionName}] loading ${percent}% ${message}`);
+  });
 
-  //   // store mapping
-  //     const uniqueId = crypto.randomBytes(4).toString('hex').toUpperCase();
-  //     userSessions.set(selfId, uniqueId);
-
-  //     // FIX: Move session validation here (inside ready event)
-  //     sessionValidated.set(sessionId, true);
-  //     console.log(`🔓 Session ${sessionId} validated - ready for commands`);
-
-  //     // send welcome messages to self chat
-  //     try {
-  //       await client.sendMessage(selfId, `🤖 *BOT CONNECTED* — Session: ${sessionId}`);
-  //       await new Promise(r => setTimeout(r, 300));
-  //       await client.sendMessage(selfId,
-  //         `👋 Hello! This account is now connected.\n*Available Commands (self-chat only):*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}status\n${COMMAND_PREFIX}sessionid`
-  //       );
-  //       logger.info(`Session ${sessionId}: welcome messages sent to ${selfId}`);
-  //     } catch (err) {
-  //       logger.error(`Session ${sessionId}: failed to send welcome messages`, err);
-  //     }
-
-  //     // keep-alive
-  //     keepAliveInterval = setInterval(async () => {
-  //       try {
-  //         await client.getState();
-  //         logger.info(`Session ${sessionId}: keep-alive OK`);
-  //       } catch (err) {
-  //         logger.error(`Session ${sessionId}: keep-alive failed`, err);
-  //       }
-  //     }, 300000);
-
-  //   } catch (err) {
-  //     logger.error(`Session ${sessionId}: ready handler error`, err);
-  //     // try to recover by destroying and creating new session
-  //     setTimeout(async () => {
-  //       try {
-  //         await client.destroy();
-  //       } catch (_) {}
-  //       clients.delete(sessionId);
-  //       createNewSession();
-  //     }, 5000);
-  //   }
-  // });
-
-// client.on("ready", async () => {
-//     logger.info(`Session ${sessionId}: ready fired`);
-
-//     try {
-//         /* ----------------------------------------------
-//          * 1️⃣ Guarantee WhatsApp fully initializes
-//          * ----------------------------------------------*/
-//         let attempts = 0;
-//         while ((!client.info || !client.info.wid) && attempts < 60) { 
-//             // up to 6 seconds
-//             await new Promise(r => setTimeout(r, 100));
-//             attempts++;
-//         }
-
-//         if (!client.info || !client.info.wid) {
-//             logger.error(`Session ${sessionId}: client.info.wid missing after init`);
-//             return;
-//         }
-
-//         const selfId = client.info.wid._serialized;
-//         logger.info(`Session ${sessionId}: selfId detected = ${selfId}`);
-
-//         /* ----------------------------------------------
-//          * 2️⃣ Ensure WhatsApp is ONLINE (not just “ready”)
-//          * ----------------------------------------------*/
-//         let state = null;
-//         attempts = 0;
-//         while (attempts < 50) {   // up to 5 seconds
-//             try {
-//                 state = await client.getState();
-//                 if (state === "CONNECTED") break;
-//             } catch {}
-//             await new Promise(r => setTimeout(r, 100));
-//             attempts++;
-//         }
-
-//         if (state !== "CONNECTED") {
-//             logger.error(`Session ${sessionId}: WhatsApp not fully connected`);
-//             return;
-//         }
-
-//         logger.info(`Session ${sessionId}: WhatsApp connected & stable`);
-
-//         /* ----------------------------------------------
-//          * 3️⃣ Store mapping (safe now)
-//          * ----------------------------------------------*/
-//         const uniqueId = crypto.randomBytes(4).toString("hex").toUpperCase();
-//         userSessions.set(selfId, uniqueId);
-
-//         sessionValidated.set(sessionId, true);
-//         console.log(`🔓 Session ${sessionId} validated`);
-
-//         /* ----------------------------------------------
-//          * 4️⃣ Delay to allow internal chat sync to complete
-//          * ----------------------------------------------*/
-//         await new Promise(r => setTimeout(r, 2500));
-
-//         /* ----------------------------------------------
-//          * 5️⃣ Send welcome message TO SELF (guaranteed)
-//          * ----------------------------------------------*/
-//         try {
-//             await client.sendMessage(selfId, 
-//                 `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
-//             );
-
-//             await new Promise(r => setTimeout(r, 500));
-
-//             await client.sendMessage(selfId,
-//                 `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}sessionid\n${COMMAND_PREFIX}status`
-//             );
-
-//             logger.info(`Session ${sessionId}: welcome messages successfully sent`);
-
-//         } catch (err) {
-//             logger.error(`Session ${sessionId}: FAILED to send welcome msg`, err);
-//         }
-
-//         /* ----------------------------------------------
-//          * 6️⃣ Keep-Alive Ping Loop
-//          * ----------------------------------------------*/
-//         keepAliveInterval = setInterval(async () => {
-//             try {
-//                 await client.getState();
-//                 logger.info(`Session ${sessionId}: keep-alive OK`);
-//             } catch (err) {
-//                 logger.error(`Session ${sessionId}: keep-alive failed`, err);
-//             }
-//         }, 300000);
-
-//     } catch (err) {
-//         logger.error(`Session ${sessionId}: ready handler crashed`, err);
-//     }
-// });
-
-client.on("ready", async () => {
-    logger.info(`Session ${sessionId}: 🔥 READY event fired`);
-
+  client.on('ready', async () => {
     try {
+      logger.info(`[${sessionName}] READY fired`);
+      // wait until client.info available
+      let attempts = 0;
+      while ((!client.info || !client.info.wid) && attempts < 60) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+      if (!client.info || !client.info.wid) {
+        logger.error(`[${sessionName}] client.info.wid missing after READY`);
+        return;
+      }
+      selfId = client.info.wid._serialized;
+      logger.info(`[${sessionName}] selfId set to ${selfId}`);
 
-        /* ================================================
-         🔍 DIAGNOSTIC BLOCK 1 — RAW client.info
-        ================================================= */
-        console.log("📌 RAW client.info at READY:", {
-            infoExists: !!client.info,
-            wid: client.info?.wid?._serialized || null,
-            pushname: client.info?.pushname || null,
-            fullInfo: client.info || null
-        });
+      // wait until connected state
+      attempts = 0;
+      let state = null;
+      while (attempts < 50) {
+        try { state = await client.getState(); } catch {}
+        if (state === 'CONNECTED' || state === 'OPEN') break;
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+      logger.info(`[${sessionName}] final state=${state}`);
 
+      // small wait to let chats sync begin
+      await new Promise(r => setTimeout(r, 2500));
 
-        /* ----------------------------------------------
-         * 1️⃣ Guarantee WhatsApp fully initializes
-         * ----------------------------------------------*/
-        let attempts = 0;
+      // deliver welcome-to-self
+      await safeSend(selfId, `🤖 *BOT CONNECTED*\nSession: ${sessionId}`);
+      await new Promise(r => setTimeout(r, 400));
+      await safeSend(selfId, `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}help`);
 
-        while ((!client.info || !client.info.wid) && attempts < 60) {
-            console.log(`⏳ Waiting for client.info.wid... attempt ${attempts}`);
-            await new Promise(r => setTimeout(r, 100));
-            attempts++;
-        }
+      // start keepalive and scheduler
+      keepAliveInterval = setInterval(async () => {
+        try { await client.getState(); logger.info(`[${sessionName}] keepalive OK`); } catch (e) { logger.error(`[${sessionName}] keepalive failed`, e.message || e); }
+      }, 300000);
 
-        if (!client.info || !client.info.wid) {
-            logger.error(`❌ Session ${sessionId}: client.info.wid STILL missing after init`);
-            console.log("❌ FULL client.info dump:", client.info);
-            return;
-        }
+      // start scheduler runner for this session
+      schedulerInterval = setInterval(() => runSchedulerForSession(sessionId, client), SCHEDULER_POLL_MS);
+      // immediate run once
+      setTimeout(() => runSchedulerForSession(sessionId, client), 3000);
 
-        const selfId = client.info.wid._serialized;
-        logger.info(`Session ${sessionId}: ✅ selfId detected = ${selfId}`);
-
-        console.log("🆔 FINAL SELF ID:", selfId);
-
-
-        /* ----------------------------------------------
-         * 2️⃣ Ensure WhatsApp is ONLINE (add diagnostics)
-         * ----------------------------------------------*/
-        let state = null;
-        attempts = 0;
-
-        while (attempts < 50) {
-            try {
-                state = await client.getState();
-                console.log(`📡 getState() attempt ${attempts}:`, state);
-
-                // Accept CONNECTED or OPEN (some wwebjs versions use OPEN)
-                if (state === "CONNECTED" || state === "OPEN") break;
-
-            } catch (e) {
-                console.log(`⚠️ getState() error attempt ${attempts}:`, e.message);
-            }
-
-            await new Promise(r => setTimeout(r, 100));
-            attempts++;
-        }
-
-        if (!state) {
-            console.log("❌ getState() returned NULL/UNDEFINED");
-        }
-
-        if (state !== "CONNECTED" && state !== "OPEN") {
-            logger.error(`❌ Session ${sessionId}: WhatsApp not fully connected. Final state = ${state}`);
-            console.log("📌 Possible states include: CONNECTED, OPEN, PAIRING, TIMEOUT, CONFLICT, UNLAUNCHED");
-            return;
-        }
-
-        logger.info(`Session ${sessionId}: 🟢 WhatsApp connected & stable (STATE=${state})`);
-
-
-        /* ----------------------------------------------
-         * 3️⃣ Store mapping (safe now)
-         * ----------------------------------------------*/
-        const uniqueId = crypto.randomBytes(4).toString("hex").toUpperCase();
-        userSessions.set(selfId, uniqueId);
-
-        sessionValidated.set(sessionId, true);
-        console.log(`🔓 Session ${sessionId} validated (unique: ${uniqueId})`);
-
-
-        /* ----------------------------------------------
-         * 4️⃣ Allow internal chat sync to finish
-         * ----------------------------------------------*/
-        console.log("⏳ Waiting final 2.5s for WhatsApp chat sync before sending welcome...");
-        await new Promise(r => setTimeout(r, 2500));
-
-
-        /* ----------------------------------------------
-         * 5️⃣ Send welcome message TO SELF (diagnostic added)
-         * ----------------------------------------------*/
-        console.log("📨 Attempting to send welcome messages to:", selfId);
-
-        try {
-
-            const msg1 = await client.sendMessage(selfId,
-                `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
-            );
-            console.log("✅ Welcome message #1 sent:", msg1?.id?._serialized);
-
-            await new Promise(r => setTimeout(r, 500));
-
-            const msg2 = await client.sendMessage(selfId,
-                `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}sessionid\n${COMMAND_PREFIX}status`
-            );
-            console.log("✅ Welcome message #2 sent:", msg2?.id?._serialized);
-
-            logger.info(`Session ${sessionId}: 🎉 Welcome messages successfully delivered`);
-
-        } catch (err) {
-            logger.error(`Session ${sessionId}: ❌ FAILED to send welcome message`, err);
-            console.log("🔥 Full Welcome Error Dump:", err);
-        }
-
-
-        /* ----------------------------------------------
-         * 6️⃣ Keep-Alive Ping Loop
-         * ----------------------------------------------*/
-        console.log("🔁 Starting keep-alive monitor (every 5 mins)");
-
-        keepAliveInterval = setInterval(async () => {
-            try {
-                const st = await client.getState();
-                logger.info(`Session ${sessionId}: keep-alive OK (state=${st})`);
-            } catch (err) {
-                logger.error(`Session ${sessionId}: keep-alive FAILED`, err);
-            }
-        }, 300000);
-
-    } catch (err) {
-        logger.error(`Session ${sessionId}: ❌ READY handler crashed`, err);
-        console.log("🔥 FULL CRASH DUMP:", err);
+      sessionWorkers.set(sessionId, { keepAliveInterval, schedulerInterval });
+      logger.info(`[${sessionName}] setup complete`);
+    } catch (e) {
+      logger.error(`[${sessionName}] ready handler error`, e);
     }
-});
-
+  });
 
   client.on('disconnected', (reason) => {
-    logger.info(`Session ${sessionId}: disconnected (${reason})`);
-    if (keepAliveInterval) clearInterval(keepAliveInterval);
+    logger.info(`[${sessionName}] disconnected: ${reason}`);
+    // cleanup
+    const w = sessionWorkers.get(sessionId);
+    if (w) {
+      if (w.keepAliveInterval) clearInterval(w.keepAliveInterval);
+      if (w.schedulerInterval) clearInterval(w.schedulerInterval);
+      sessionWorkers.delete(sessionId);
+    }
     clients.delete(sessionId);
-    sessionValidated.delete(sessionId); // Clean up validation
   });
 
-  // call handling
-  client.on('call', async (call) => {
+  // group participants change handler (for welcome + block enforcement)
+  client.on('group_participants_changed', async (notification) => {
     try {
-      const caller = call.from;
-      logger.info(`Session ${sessionId}: incoming ${call.isVideo ? 'video' : 'voice'} call from ${caller}`);
+      const chatId = notification.id?._serialized || notification.chatId || notification.from;
+      if (!chatId) return;
+      // normalize action & participants
+      const action = notification.action || notification.type || null; // depends on wwebjs version
+      const participants = notification.participants || notification.who || notification.participantsChanged || [];
 
-      // auto save contact if unknown
-      const contact = await client.getContactById(caller);
-      if (!contact.name || contact.name === contact.pushname || contact.name === caller.split('@')[0]) {
-        const saved = await saveNewContact(client, caller, contact.pushname || null);
-        if (saved) {
-          for (const adminNumber of authorizedNumbers) {
-            try {
-              const adminChat = await client.getChatById(adminNumber);
-              await adminChat.sendMessage(`📞 New contact saved: ${caller} (${contact.pushname || 'Unknown'})`);
-            } catch (err) {
-              logger.error('Failed to notify admin about saved contact', err);
+      // if participants is string array of jids, use as-is
+      const added = participants; // elements might be jids or objects
+
+      // send welcome when bot is added or when member added
+      for (const p of added) {
+        const pid = (typeof p === 'string') ? p : (p?._serialized || p.id?._serialized || p);
+        if (!pid) continue;
+        // if bot added
+        if (pid === client.info?.wid?._serialized) {
+          // one-time group welcome
+          const meta = await WelcomeMeta.findOne({ sessionId, groupId: chatId }).lean().catch(()=>null);
+          if (!meta || !meta.welcomeSent) {
+            await safeSend(chatId, `Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`);
+            await WelcomeMeta.updateOne({ sessionId, groupId: chatId }, { $set: { welcomeSent: true } }, { upsert: true }).catch(()=>null);
+          }
+        } else {
+          // for real new members: mention & welcome (one-time welcome per member not needed; group welcome is per-group)
+          // but also enforce blocklist if bot is admin
+          try {
+            // fetch participants list to determine bot admin status
+            const chat = await client.getChatById(chatId).catch(()=>null);
+            if (!chat) continue;
+            const participantsList = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+            const botAdmin = participantsList.some(pobj => pobj.id._serialized === client.info?.wid?._serialized && (pobj.isAdmin || pobj.isSuperAdmin));
+            // check group permission document
+            const perm = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
+            const whitelist = (perm && Array.isArray(perm.allowed)) ? perm.allowed : [];
+            const blocklist = (perm && Array.isArray(perm.blocked)) ? perm.blocked : [];
+
+            // if blocked and bot is admin, remove
+            if (blocklist.includes(pid) && botAdmin) {
+              // remove participant
+              await safeSend(chatId, `⛔ ${pid} is on the blocklist and has been removed.`);
+              try { await chat.removeParticipants([pid]); } catch (e) { logger.error(`[${sessionName}] failed to remove ${pid}`, e.message || e); }
+            } else {
+              // send a welcome mention to the added participant (best-effort)
+              try {
+                const num = pid.split('@')[0];
+                const contact = await client.getContactById(pid).catch(()=>null);
+                const mentionOpts = contact ? { mentions: [contact] } : {};
+                const welcome = contact ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com` :
+                  `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`;
+                await safeSend(chatId, welcome, mentionOpts);
+              } catch (e) { /* ignore */ }
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) { logger.error(`[${sessionName}] group_participants_changed error`, e); }
+  });
+
+  // generic message handler (per-client)
+  client.on('message_create', async (message) => {
+    try {
+      // only process commands (ignore status & empty)
+      if (!message.body || message.from === 'status@broadcast') return;
+
+      // ensure selfId is set
+      if (!client.info || !client.info.wid) {
+        // fallback attempt
+        if (message.fromMe) client.info = client.info || {}; client.info.wid = client.info.wid || { _serialized: message.from };
+      }
+      const mySelf = client.info?.wid?._serialized;
+
+      // determine sender: message.fromMe -> bot itself
+      const sender = message.fromMe ? mySelf : message.from;
+      const isSelfChat = sender === mySelf;
+
+      // react to group messages optionally (non-blocking)
+      if (!message.fromMe) {
+        try {
+          const chat = await message.getChat();
+          if (chat && chat.isGroup) {
+            // only react if bot is participant
+            if ((chat.participants || []).some(p => p.id._serialized === mySelf)) {
+              try { await message.react('🚗'); } catch {}
             }
           }
-        }
-      }
-    } catch (err) {
-      logger.error('Call handler error', err);
-    }
-  });
-
-  // message handlers: split message_create and message (incoming)
-// client.on('message_create', async (message) => {
-//   try {
-//     if (!message.body || message.from === 'status@broadcast') return;
-
-//     const selfId = client.info?.wid?._serialized;
-//     if (!selfId) return;
-
-//     // true sender detection (self-chat compatible)
-//     const sender = message.fromMe ? selfId : message.from;
-//     const isSelfChat = sender === selfId;
-
-//     // react to group messages (optional)
-//     if (!message.fromMe) {
-//       const chat = await message.getChat();
-//       if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
-//         try { await message.react("🚗"); } catch {}
-//       }
-//     }
-
-//     // only commands should continue
-//     if (!message.body.startsWith(COMMAND_PREFIX)) return;
-
-//     // allow ONLY:
-//     // - self chat
-//     // - authorized users
-//     if (!isSelfChat && !isAuthorized(sender)) {
-//       await message.reply("🔒 Admin-only command");
-//       return;
-//     }
-
-//     // parse command
-//     const [cmd, ...args] = message.body
-//       .slice(COMMAND_PREFIX.length)
-//       .trim()
-//       .split(/\s+/);
-
-//    switch (cmd.toLowerCase()) {
-
-//   case "ping":
-//     await message.reply("🏓 Pong!");
-//     break;
-
-//   case "help":
-//     await message.reply(
-//       `*Available Commands:*\n` +
-//       `!ping\n` +
-//       `!help\n` +
-//       `!status\n` +
-//       `!sessionid\n` +
-//       `!tag\n` +
-//       `!tagexcept`
-//     );
-//     break;
-
-//   case "status":
-//     await message.reply(
-//       `*Bot Status:*\n` +
-//       `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
-//       `Sessions: ${clients.size}`
-//     );
-//     break;
-
-//   case "sessionid":
-//     await message.reply(
-//       `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
-//     );
-//     break;
-
-
-//   /* ====================================================
-//      TAG EVERYONE  (Self-chat safe)
-//      ==================================================== */
-//   case "tag": {
-//     const chat = await message.getChat();
-
-//     if (!chat.isGroup) {
-//       await message.reply("❌ This command only works in groups.\nSend it inside a group.");
-//       return;
-//     }
-
-//     let text = "*Group Mentions:*\n\n";
-//     let mentions = [];
-
-//     for (let participant of chat.participants) {
-//       const jid = participant.id._serialized;
-//       mentions.push(await client.getContactById(jid));
-//       text += `mention (${jid.split("@")[0]})\n`;
-//     }
-
-//     await chat.sendMessage(text, { mentions });
-//     break;
-//   }
-
-
-//   /* ====================================================
-//      TAG EXCEPT  (Self-chat safe)
-//      Format: !tagexcept 1,2,3 @2345,@554433
-//      ==================================================== */
-//   case "tagexcept": {
-//     const chat = await message.getChat();
-
-//     if (!chat.isGroup) {
-//       await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
-//       return;
-//     }
-
-//     if (args.length < 1) {
-//       await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
-//       return;
-//     }
-
-//     // group number list
-//     let groupsToTag = args[0]
-//       .split(",")
-//       .map(x => parseInt(x.trim()))
-//       .filter(n => !isNaN(n));
-
-//     // excluded numbers
-//     let excludedRaw = args.slice(1).join(" ");
-//     let excluded = excludedRaw
-//       .split("@")
-//       .filter(x => x.trim() !== "")
-//       .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
-
-//     const allMembers = chat.participants.map(p => p.id._serialized);
-
-//     let text = "*Filtered Mentions:*\n\n";
-//     let mentions = [];
-
-//     for (let num of groupsToTag) {
-//       let memberJid = allMembers[num - 1]; // 1-indexed
-//       if (!memberJid) continue;
-//       if (excluded.includes(memberJid)) continue;
-
-//       mentions.push(await client.getContactById(memberJid));
-//       text += `mention (${memberJid.split("@")[0]})\n`;
-//     }
-
-//     await chat.sendMessage(text, { mentions });
-//     break;
-//   }
-
-
-//   default:
-//     await message.reply("Unknown command. Try !help");
-// }
-
-
-//   } catch (err) {
-//     logger.error("message_create command error", err);
-//   }
-// });
-
-client.on('message_create', async (message) => {
-  try {
-
-    /* ============================================
-       🔍 DIAGNOSTIC LOGS (NEWLY ADDED)
-       ============================================ */
-    console.log("🔔 message_create fired:", {
-      msg_id: message.id?._serialized,
-      from: message.from,
-      fromMe: message.fromMe,
-      body: (message.body || "").slice(0, 40),
-    });
-
-    console.log("🤖 client.info snapshot:", {
-      wid: client.info?.wid?._serialized || null,
-      pushname: client.info?.pushname || null,
-    });
-
-    /* Fallback: sometimes client.info is not ready yet */
-    let selfId = client.info?.wid?._serialized;
-    if (!selfId && message.fromMe) {
-      console.warn("⚠️ selfId missing — using fallback from message.from");
-      selfId = message.from;
-    }
-
-    console.log("🆔 final selfId used:", selfId);
-
-    /* ============================================ */
-
-    if (!message.body || message.from === 'status@broadcast') return;
-
-    if (!selfId) {
-      console.warn("⛔ Ignoring message — no selfId available yet");
-      return;
-    }
-
-    // true sender detection (self-chat compatible)
-    const sender = message.fromMe ? selfId : message.from;
-    const isSelfChat = sender === selfId;
-
-    /* ====================================================
-       OPTIONAL GROUP REACTION
-       ==================================================== */
-    if (!message.fromMe) {
-      try {
-        const chat = await message.getChat();
-        if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
-          await message.react("🚗");
-        }
-      } catch {}
-    }
-
-    // only commands continue
-    if (!message.body.startsWith(COMMAND_PREFIX)) return;
-
-    /* ====================================================
-       AUTH CHECK
-       ==================================================== */
-    if (!isSelfChat && !isAuthorized(sender)) {
-      console.log("🔒 Blocked command from:", sender);
-      await message.reply("🔒 Admin-only command");
-      return;
-    }
-
-    /* ====================================================
-       PARSE COMMAND
-       ==================================================== */
-    const [cmd, ...args] = message.body
-      .slice(COMMAND_PREFIX.length)
-      .trim()
-      .split(/\s+/);
-
-    console.log("📌 Command detected:", cmd, "Args:", args);
-
-    switch (cmd.toLowerCase()) {
-
-      case "ping":
-        await message.reply("🏓 Pong!");
-        break;
-
-      case "help":
-        await message.reply(
-          `*Available Commands:*\n` +
-          `!ping\n` +
-          `!help\n` +
-          `!status\n` +
-          `!sessionid\n` +
-          `!tag\n` +
-          `!tagexcept`
-        );
-        break;
-
-      case "status":
-        await message.reply(
-          `*Bot Status:*\n` +
-          `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
-          `Sessions: ${clients.size}`
-        );
-        break;
-
-      case "sessionid":
-        await message.reply(
-          `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
-        );
-        break;
-
-      /* ====================================================
-         TAG EVERYONE  (Self-chat safe)
-         ==================================================== */
-      case "tag": {
-        const chat = await message.getChat();
-
-        if (!chat.isGroup) {
-          await message.reply("❌ This command only works in groups.\nSend it inside a group.");
-          return;
-        }
-
-        let text = "*Group Mentions:*\n\n";
-        let mentions = [];
-
-        for (let participant of chat.participants) {
-          const jid = participant.id._serialized;
-          mentions.push(await client.getContactById(jid));
-          text += `mention (${jid.split("@")[0]})\n`;
-        }
-
-        await chat.sendMessage(text, { mentions });
-        break;
+        } catch {}
       }
 
-      /* ====================================================
-         TAG EXCEPT  (Self-chat safe)
-         Format: !tagexcept 1,2,3 @2345,@554433
-         ==================================================== */
-      case "tagexcept": {
-        const chat = await message.getChat();
+      if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
-        if (!chat.isGroup) {
-          await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
-          return;
-        }
+      // admin check (owner + optional secondary admins - you may implement per-session admin storage later)
+      // For now, allow self-chat and owner running via owner number stored in an env or CONFIG if you have it.
+      // We'll assume that the QR-scan user controls their own bot; commands from other numbers require them to be in a configured authorized list (not implemented global here).
+      // Determine command
+      const full = message.body.slice(COMMAND_PREFIX.length).trim();
+      const [cmdRaw, ...args] = full.split(/\s+/);
+      const cmd = (cmdRaw || '').toLowerCase();
 
-        if (args.length < 1) {
-          await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
-          return;
-        }
+      // important: call handlers with try/catch
+      switch (cmd) {
+        case 'help':
+          await safeSend(message.from, `*Available Commands*\n!ping\n!help\n!list\n!listall\n!tag\n!tagexcept\n!members\n!admins\n!mygroups\n!forwardall (reply)\n!forward (reply + targets)\n!allow\n!deny\n!whitelist\n!blocklist\n!schedule\n!listschedules\n!cancelschedule`);
+          break;
 
-        // group number list
-        let groupsToTag = args[0]
-          .split(",")
-          .map(x => parseInt(x.trim()))
-          .filter(n => !isNaN(n));
+        case 'ping':
+          await safeSend(message.from, '🏓 Pong!');
+          break;
 
-        // excluded numbers
-        let excludedRaw = args.slice(1).join(" ");
-        let excluded = excludedRaw
-          .split("@")
-          .filter(x => x.trim() !== "")
-          .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
+        /* ---------- GROUP / ADMIN UTILITIES ---------- */
 
-        const allMembers = chat.participants.map(p => p.id._serialized);
-
-        let text = "*Filtered Mentions:*\n\n";
-        let mentions = [];
-
-        for (let num of groupsToTag) {
-          let memberJid = allMembers[num - 1]; // 1-indexed
-          if (!memberJid) continue;
-          if (excluded.includes(memberJid)) continue;
-
-          mentions.push(await client.getContactById(memberJid));
-          text += `mention (${memberJid.split("@")[0]})\n`;
-        }
-
-        await chat.sendMessage(text, { mentions });
-        break;
-      }
-
-      default:
-        await message.reply("Unknown command. Try !help");
-    }
-
-  } catch (err) {
-    logger.error("message_create command error", err);
-    console.error("🔥 Diagnostic error details:", err);
-  }
-});
-
-
-  // handle other client events (optional)
-  client.on('error', (err) => {
-    logger.error(`Session ${sessionId} client error:`, err);
-  });
-}
-
-// Multi-session function for dashboard integration
-async function createBotSession(userId, sessionId, io) {
-    try {
-        console.log('🤖 BOT: Creating bot session');
-        console.log('👤 User ID:', userId);
-        console.log('📱 Session ID:', sessionId);
-        console.log('🔍 BOT: io object exists?', !!io);
-
-        // Set global.io if not already set
-        if (io && !global.io) {
-            global.io = io;
-        }
-
-        // FIX: Use createSession instead of non-existent function
-        const createdSessionId = createSession(sessionId);
-        
-        console.log('✅ Bot session created successfully');
-        
-        // Return the client for compatibility
-        return clients.get(sessionId);
-        
-    } catch (error) {
-        console.error('❌ Error creating bot session:', error);
-        throw error;
-    }
-}
-
-// Add these functions before module.exports
-async function restoreAllSessions(io) {
-    console.log('🔄 Restoring all sessions...');
-    try {
-        const sessions = await Session.find({ status: 'connected' });
-        console.log(`📱 Found ${sessions.length} sessions to restore`);
-        
-        for (const session of sessions) {
-            try {
-                await createBotSession(session.userId, session.sessionId, io);
-                console.log(`✅ Restored session: ${session.sessionId}`);
-            } catch (err) {
-                console.error(`❌ Failed to restore session ${session.sessionId}:`, err);
+        case 'listall': {
+          // list all groups the account is in
+          let chats = await client.getChats();
+          if (chats.length < CHAT_SYNC_THRESHOLD) {
+            // wait for chat sync
+            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+              if (chats.length > CHAT_SYNC_THRESHOLD) break;
+              await new Promise(r => setTimeout(r, 500));
+              chats = await client.getChats();
             }
+          }
+          const groups = chats.filter(c => c.isGroup);
+          if (groups.length === 0) { await safeSend(message.from, '❌ You are not in any group.'); break; }
+          let out = '*📋 All Groups You Belong To:*\n\n';
+          groups.forEach((g,i) => out += `${i+1}. *${g.name || 'Unnamed group'}*\n   ID: ${g.id?._serialized || g.id}\n\n`);
+          await safeSend(message.from, out);
+          break;
         }
-    } catch (error) {
-        console.error('❌ Error restoring sessions:', error);
+
+        case 'list': {
+          // groups where this account is admin/superadmin
+          let chats = await client.getChats();
+          if (chats.length < CHAT_SYNC_THRESHOLD) {
+            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+              if (chats.length > CHAT_SYNC_THRESHOLD) break;
+              await new Promise(r => setTimeout(r, 500));
+              chats = await client.getChats();
+            }
+          }
+          const adminGroups = [];
+          for (const chat of chats) {
+            if (!chat.isGroup) continue;
+            // ensure participants loaded
+            const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+            const amIAdmin = participants.some(p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
+            if (amIAdmin) adminGroups.push({ name: chat.name, id: chat.id._serialized });
+          }
+          if (adminGroups.length === 0) {
+            await safeSend(message.from, '❌ No admin groups detected yet. Try again after a few seconds.');
+            break;
+          }
+          let out = '*📋 Groups Where You Are Admin:*\n\n';
+          adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.id}\n\n`);
+          await safeSend(message.from, out);
+          break;
+        }
+
+        case 'members': {
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+          const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+          let out = `*👥 Members of ${chat.name || 'Group'}:*\n\n`;
+          let n = 1;
+          for (const p of parts) {
+            const jid = p.id._serialized;
+            const contact = await client.getContactById(jid).catch(()=>null);
+            const name = contact?.pushname || contact?.name || jid.split('@')[0];
+            out += `${n}. *${name}*\n   ${jid}\n\n`;
+            n++;
+          }
+          await safeSend(message.from, out);
+          break;
+        }
+
+        case 'admins': {
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+          const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+          const admins = parts.filter(p => p.isAdmin || p.isSuperAdmin);
+          if (admins.length === 0) { await safeSend(message.from, '❌ No admins detected.'); break; }
+          let out = `*🛡 Admins of ${chat.name || 'Group'}:*\n\n`;
+          let n = 1;
+          for (const a of admins) {
+            const jid = a.id._serialized;
+            const contact = await client.getContactById(jid).catch(()=>null);
+            const name = contact?.pushname || contact?.name || jid.split('@')[0];
+            out += `${n}. *${name}*\n   ${jid}\n\n`;
+            n++;
+          }
+          await safeSend(message.from, out);
+          break;
+        }
+
+        case 'mygroups': {
+          // groups where account is super admin (creator)
+          let chats = await client.getChats();
+          if (chats.length < CHAT_SYNC_THRESHOLD) {
+            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+              if (chats.length > CHAT_SYNC_THRESHOLD) break;
+              await new Promise(r => setTimeout(r, 500));
+              chats = await client.getChats();
+            }
+          }
+          const owned = [];
+          for (const chat of chats) {
+            if (!chat.isGroup) continue;
+            const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+            const isOwner = participants.some(p => p.id._serialized === mySelf && p.isSuperAdmin);
+            if (isOwner) owned.push({ name: chat.name, id: chat.id._serialized });
+          }
+          if (owned.length === 0) { await safeSend(message.from, '❌ You did not create any groups.'); break; }
+          let out = '*👑 Groups Created By You:*\n\n';
+          owned.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ${g.id}\n\n`);
+          await safeSend(message.from, out);
+          break;
+        }
+
+        case 'tag': {
+          // tag everyone in the current group (safe in self-chat or group)
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+          const mentions = [];
+          let text = '*Group Mentions:*\n\n';
+          for (const p of participants) {
+            mentions.push(await client.getContactById(p.id._serialized).catch(()=>null));
+            text += `mention (${p.id._serialized.split('@')[0]})\n`;
+          }
+          await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
+          break;
+        }
+
+        case 'tagexcept': {
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+          if (args.length < 1) { await safeSend(message.from, 'Usage: !tagexcept 1,2,3 @234...'); break; }
+          const idxList = args[0].split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
+          const excludedRaw = args.slice(1).join(' ');
+          const excluded = excludedRaw.split('@').filter(x=>x.trim()).map(x => (x.replace(/[^0-9]/g,'')+'@c.us'));
+          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+          const allMembers = participants.map(p=>p.id._serialized);
+          const mentions = [];
+          let text = '*Filtered Mentions:*\n\n';
+          for (const idx of idxList) {
+            const memberJid = allMembers[idx-1];
+            if (!memberJid) continue;
+            if (excluded.includes(memberJid)) continue;
+            mentions.push(await client.getContactById(memberJid).catch(()=>null));
+            text += `mention (${memberJid.split('@')[0]})\n`;
+          }
+          await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
+          break;
+        }
+
+        /* ---------- PER-GROUP ALLOW / BLOCK (Option A) ---------- */
+        case 'allow':
+        case 'whitelistadd': {
+          // args[0] is number
+          if (!args[0]) { await safeSend(message.from, 'Usage: !allow 234801234567'); break; }
+          const jid = formatJid(args[0]);
+          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+          // upsert permission doc for this group
+          const chatId = message.from;
+          await GroupPermission.updateOne(
+            { botUserId: sessionId, groupId: chatId },
+            { $addToSet: { allowed: jid }, $pull: { blocked: jid } },
+            { upsert: true }
+          );
+          await safeSend(message.from, `✅ ${jid} added to whitelist for this group.`);
+          break;
+        }
+
+        case 'unallow': {
+          if (!args[0]) { await safeSend(message.from, 'Usage: !unallow 234801234567'); break; }
+          const jid = formatJid(args[0]);
+          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+          const chatId = message.from;
+          await GroupPermission.updateOne(
+            { botUserId: sessionId, groupId: chatId },
+            { $pull: { allowed: jid } },
+            { upsert: true }
+          );
+          await safeSend(message.from, `✅ ${jid} removed from whitelist.`);
+          break;
+        }
+
+        case 'deny':
+        case 'block': {
+          if (!args[0]) { await safeSend(message.from, 'Usage: !deny 234801234567'); break; }
+          const jid = formatJid(args[0]);
+          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+          const chatId = message.from;
+          await GroupPermission.updateOne(
+            { botUserId: sessionId, groupId: chatId },
+            { $addToSet: { blocked: jid }, $pull: { allowed: jid } },
+            { upsert: true }
+          );
+          await safeSend(message.from, `⛔ ${jid} added to blocklist for this group.`);
+          break;
+        }
+
+        case 'unblock': {
+          if (!args[0]) { await safeSend(message.from, 'Usage: !unblock 234801234567'); break; }
+          const jid = formatJid(args[0]);
+          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+          const chatId = message.from;
+          await GroupPermission.updateOne(
+            { botUserId: sessionId, groupId: chatId },
+            { $pull: { blocked: jid } },
+            { upsert: true }
+          );
+          await safeSend(message.from, `✅ ${jid} removed from blocklist.`);
+          break;
+        }
+
+        case 'whitelist': {
+          const chatId = message.from;
+          const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
+          const list = (doc && Array.isArray(doc.allowed)) ? doc.allowed : [];
+          await safeSend(message.from, `📜 Whitelist:\n\n${list.join('\n') || 'No entries'}`);
+          break;
+        }
+
+        case 'blocklist': {
+          const chatId = message.from;
+          const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
+          const list = (doc && Array.isArray(doc.blocked)) ? doc.blocked : [];
+          await safeSend(message.from, `📵 Blocklist:\n\n${list.join('\n') || 'No entries'}`);
+          break;
+        }
+
+        /* ---------- FORWARDING ---------- */
+
+        case 'forwardall': {
+          // must be reply to a message
+          if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message you want to forward and run `!forwardall`.'); break; }
+          const quoted = await message.getQuotedMessage();
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
+          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+          const targets = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
+          await safeSend(message.from, `🔁 Forwarding to ${targets.length} members. This may take some time.`);
+          for (const t of targets) {
+            try {
+              if (quoted.hasMedia) {
+                const media = await quoted.downloadMedia();
+                await client.sendMessage(t, media, { caption: quoted.body || '' });
+              } else {
+                await client.sendMessage(t, quoted.body || '');
+              }
+              // small throttle
+              await new Promise(r => setTimeout(r, 200));
+            } catch (e) {
+              logger.error(`[${sessionName}] forwardall -> ${t}`, e.message || e);
+            }
+          }
+          await safeSend(message.from, '✅ Forwarding complete.');
+          break;
+        }
+
+        case 'forward': {
+          if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message to forward and provide targets.'); break; }
+          const quoted = await message.getQuotedMessage();
+          const chat = await client.getChatById(message.from);
+          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
+
+          // parse args as targets: @numbers, indexes 1,3,5 or raw numbers
+          const raw = args.join(' ');
+          let targets = [];
+          const atMatches = raw.match(/@?(\d{6,20})/g);
+          if (atMatches && atMatches.length) {
+            targets = atMatches.map(m => `${m.replace(/[^0-9]/g,'')}@c.us`);
+          } else if (/^[0-9,\s]+$/.test(raw) && raw.trim().length) {
+            const idxs = raw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+            targets = idxs.map(i => parts[i-1] && parts[i-1].id._serialized).filter(Boolean);
+          } else {
+            const nums = raw.split(',').map(s => s.replace(/[^0-9]/g,'')).filter(s => s.length>5);
+            if (nums.length) targets = nums.map(n => `${n}@c.us`);
+          }
+
+          if (!targets.length) { await safeSend(message.from, '❗ Could not parse targets.'); break; }
+          await safeSend(message.from, `🔁 Forwarding to ${targets.length} recipients...`);
+          for (const t of targets) {
+            try {
+              if (quoted.hasMedia) {
+                const media = await quoted.downloadMedia();
+                await client.sendMessage(t, media, { caption: quoted.body || '' });
+              } else {
+                await client.sendMessage(t, quoted.body || '');
+              }
+              await new Promise(r => setTimeout(r, 200));
+            } catch (e) {
+              logger.error(`[${sessionName}] forward -> ${t}`, e.message || e);
+            }
+          }
+          await safeSend(message.from, '✅ Forwarding complete.');
+          break;
+        }
+
+        /* ---------- SCHEDULER (MongoDB-based) ---------- */
+
+        case 'schedule': {
+          // syntax: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>
+          // example: !schedule 10:00 group daily | Good morning!
+          const rest = full.slice(cmd.length).trim();
+          const pipeIndex = rest.indexOf('|');
+          if (pipeIndex === -1) {
+            await safeSend(message.from, 'Usage: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>');
+            break;
+          }
+          const left = rest.slice(0, pipeIndex).trim();
+          const msgText = rest.slice(pipeIndex+1).trim();
+          const leftParts = left.split(/\s+/);
+          const time = leftParts[0];
+          const mode = leftParts[1] || 'group';
+          const repeat = leftParts[2] || 'once';
+          if (!/^\d{1,2}:\d{2}$/.test(time)) { await safeSend(message.from, 'Invalid time. Use HH:MM'); break; }
+          const nextRun = hhmmToNextDate(time);
+          const doc = new Schedule({
+            userId: sessionId,
+            chatId: message.from,
+            creator: message.author || message.from, // may be different shapes
+            mode,
+            targets: [],
+            message: msgText,
+            timeHHMM: time,
+            nextRun,
+            repeat,
+            active: true
+          });
+          await doc.save();
+          await safeSend(message.from, `✅ Schedule created. Next run: ${doc.nextRun.toLocaleString()}. ID: ${doc._id}`);
+          break;
+        }
+
+        case 'listschedules': {
+          const docs = await Schedule.find({ userId: sessionId, active: true }).sort({ nextRun: 1 }).limit(100).lean();
+          if (!docs.length) { await safeSend(message.from, 'No active schedules found.'); break; }
+          let out = '*📅 Schedules:*\n\n';
+          docs.forEach(d => out += `ID: ${d._id}\nNext: ${new Date(d.nextRun).toLocaleString()}\nMode: ${d.mode}\nRepeat: ${d.repeat}\nMessage: ${d.message}\n\n`);
+          await safeSend(message.from, out);
+          break;
+        }
+
+        case 'cancelschedule': {
+          if (!args[0]) { await safeSend(message.from, 'Usage: !cancelschedule <id>'); break; }
+          const id = args[0];
+          const doc = await Schedule.findOne({ _id: id, userId: sessionId });
+          if (!doc) { await safeSend(message.from, 'Schedule not found'); break; }
+          doc.active = false;
+          await doc.save();
+          await safeSend(message.from, `✅ Schedule ${id} cancelled`);
+          break;
+        }
+
+        default:
+          await safeSend(message.from, 'Unknown command. Try !help');
+      }
+
+    } catch (e) {
+      logger.error(`[${sessionName}] message handler error`, e);
     }
+  });
+
+  // error handler
+  client.on('error', (err) => {
+    logger.error(`[${sessionName}] client error`, err);
+  });
 }
 
-async function restoreUserSessionAfterPayment(userId, io) {
-    console.log('🔄 Restoring user session after payment for user:', userId);
-    try {
-        const sessions = await Session.find({ userId, status: 'suspended' });
-        
-        for (const session of sessions) {
-            await createBotSession(userId, session.sessionId, io);
+// ---------------- Scheduler runner (per-session) ----------------
+async function runSchedulerForSession(sessionId, client) {
+  try {
+    const now = new Date();
+    const due = await Schedule.find({ userId: sessionId, active: true, nextRun: { $lte: now } }).limit(50);
+    for (const job of due) {
+      try {
+        if (job.mode === 'group') {
+          await client.sendMessage(job.chatId, job.message);
+        } else if (job.mode === 'dm') {
+          let targets = job.targets || [];
+          if (!targets.length && job.chatId) {
+            const chat = await client.getChatById(job.chatId).catch(()=>null);
+            if (chat) {
+              const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+              targets = parts.map(p => p.id._serialized).filter(x => x !== client.info?.wid?._serialized);
+            }
+          }
+          for (const t of targets) {
+            try { await client.sendMessage(t, job.message); await new Promise(r=>setTimeout(r,200)); } catch(e){ logger.error('scheduler DM send error', e); }
+          }
         }
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Error restoring user session:', error);
-        return false;
+        // update nextRun
+        if (job.repeat === 'once') {
+          job.active = false;
+        } else if (job.repeat === 'daily') {
+          const next = new Date(job.nextRun); next.setDate(next.getDate() + 1); job.nextRun = next;
+        } else if (job.repeat === 'weekly') {
+          const next = new Date(job.nextRun); next.setDate(next.getDate() + 7); job.nextRun = next;
+        } else {
+          job.active = false;
+        }
+        await job.save();
+      } catch (e) {
+        logger.error('Error executing scheduled job', e);
+      }
     }
+  } catch (e) {
+    logger.error('Scheduler runner error', e);
+  }
 }
 
-// exported API
-module.exports = {
-  start: (count = 1) => {
-    // existing start code
-    for (let i = 0; i < count; i++) {
-      createSession(`session-${Date.now()}-${i}`);
-    }
-  },
-  createBotSession,  // Add this for dashboard integration
-  restoreAllSessions,           // ✅ ADD THIS
-  restoreUserSessionAfterPayment, // ✅ ADD THIS
-  clients,           // Export clients map
-  userSessions,      // Export user sessions
-  createSession      // FIX: Export the createSession function
-};
+// ---------------- Session creation / management API ----------------
+function createClient(sessionId) {
+  const opts = createClientOptions(sessionId);
+  const client = new Client(opts);
+  // ensure event handlers are unique per client
+  setupClientEvents(client, sessionId, global.io || null);
+  return client;
+}
 
-// ----------------- CLEAN SHUTDOWN -----------------
-let isShuttingDown = false;
+function createSession(sessionId) {
+  if (clients.has(sessionId)) {
+    logger.info(`Session ${sessionId} already exists`);
+    return clients.get(sessionId);
+  }
+  const client = createClient(sessionId);
+  clients.set(sessionId, client);
+  client.initialize().catch(err => {
+    logger.error(`Failed to initialize client ${sessionId}`, err);
+    clients.delete(sessionId);
+  });
+  return client;
+}
+
+// createBotSession exposed for dashboard integration
+async function createBotSession(userId, sessionId, io) {
+  try {
+    // allow passing io (socket server) so we can emit QR updates to dashboard
+    if (io && !global.io) global.io = io;
+
+    // ensure sessionId unique
+    const created = createSession(sessionId);
+    logger.info(`createBotSession: created session ${sessionId} for user ${userId}`);
+    return created;
+  } catch (e) {
+    logger.error('createBotSession error', e);
+    throw e;
+  }
+}
+
+// restore sessions from DB - if you store them in Session collection
+async function restoreAllSessions(io) {
+  // expects you to have a Session model saved elsewhere (not included here)
+  // We'll attempt to read sessions from a Sessions collection if present
+  try {
+    if (!mongoose.connection.readyState) logger.info('Mongoose not connected - restoreAllSessions skipped');
+    // If you maintain a Session model, load and call createBotSession for each connected session
+    // Example: const sessions = await Session.find({ status: 'connected' });
+    logger.info('restoreAllSessions: implement caller to pass sessions or call createBotSession manually');
+  } catch (e) {
+    logger.error('restoreAllSessions error', e);
+  }
+}
+
+// tiny start helper for local dev
+function start(count = 1) {
+  for (let i = 0; i < count; i++) {
+    const sid = `session-${Date.now()}-${i}`;
+    createSession(sid);
+  }
+}
+
+// graceful shutdown
 async function gracefulShutdown() {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-  logger.info('Shutting down all clients...');
-  for (const client of clients.values()) {
-    try {
-      await client.destroy();
-    } catch (err) {
-      logger.error('Error destroying client', err);
-    }
+  logger.info('Graceful shutdown: destroying clients');
+  for (const [sid, client] of clients.entries()) {
+    try { await client.destroy(); } catch (e) { logger.error(`destroy ${sid} failed`, e); }
   }
   process.exit(0);
 }
-
 process.once('SIGINT', gracefulShutdown);
 process.once('SIGTERM', gracefulShutdown);
-process.once('SIGHUP', gracefulShutdown);
 
-// ADD THIS AUTO-START CODE HERE:
+// exports
+module.exports = {
+  createBotSession,
+  restoreAllSessions,
+  start,
+  clients
+};
+
+// if run directly, start one session (dev)
 if (require.main === module) {
-    console.log('🚀 Starting WhatsApp Bot...');
-    module.exports.start(1); // Start with 1 session for testing
+  start(1);
 }

@@ -14,6 +14,8 @@ const Session = require('./models/Session');
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
 const paymentsRoute = require('./routes/payment.js');
 
+
+
 // Add this after your imports in server.js
 console.log('🛑 Disabling periodic checks for testing');
 // Add this near the top of server.js to disable email marketing
@@ -68,7 +70,8 @@ app.use((req, res, next) => {
 });
 
 // Database connection
-const connectDB = async () => {
+// Database connection
+const connectDB = async (io) => {
     try {
         const mongoURI = process.env.MONGODB_URI;
 
@@ -83,14 +86,18 @@ const connectDB = async () => {
         
         console.log('✅ Connected to MongoDB');
         console.log(`📊 Database: ${mongoose.connection.name}`);
-        
+
+        // 🔥 Restore WhatsApp sessions ONLY after DB connection is ready
+        console.log("♻ Restoring previous WhatsApp sessions...");
+        restoreAllSessions(io);
+
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
         process.exit(1);
     }
 };
 
-connectDB();
+connectDB(io);
 
 // Global variables
 const activeClients = new Map();
@@ -98,33 +105,127 @@ const activeClients = new Map();
 // Subscription tiers and their features
 const subscriptionPlans = {
     free: {
+        name: 'Free Plan',
         maxSessions: 1,
+        amount: 0, // Free
         allowedCommands: ['ping', 'help', 'status'],
-        features: ['basic_messaging']
-    },
-    basic: {
-        maxSessions: 3,
-        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply'],
-        features: ['basic_messaging', 'broadcast', 'auto_reply']
-    },
-    premium: {
-        maxSessions: 10,
-        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands'],
-        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands']
+        features: ['basic_messaging'],
+        description: 'Perfect for trying out the bot',
+        limits: {
+            dailyMessages: 50,
+            monthlyMessages: 1000,
+            groupsPerSession: 5
+        }
     },
     starter: {
-        maxSessions: 5
+        name: 'Starter Plan',
+        maxSessions: 5,
+        amount: 2900, // ₦29/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'tag', 'tagexcept'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'group_tagging'],
+        description: 'Essential features for small businesses',
+        limits: {
+            dailyMessages: 500,
+            monthlyMessages: 10000,
+            groupsPerSession: 20
+        }
     },
     professional: {
-        maxSessions: 25
+        name: 'Professional Plan',
+        maxSessions: 25,
+        amount: 7900, // ₦79/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'tag', 'tagexcept', 'list'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'group_tagging', 'advanced_commands'],
+        description: 'Advanced features for growing businesses',
+        limits: {
+            dailyMessages: 2000,
+            monthlyMessages: 50000,
+            groupsPerSession: 50
+        }
     },
     business: {
-        maxSessions: 100
+        name: 'Business Plan',
+        maxSessions: 100,
+        amount: 14900, // ₦149/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands', 'group_tagging', 'advanced_commands', 'priority_support', 'data_export'],
+        description: 'Comprehensive solution for established businesses',
+        limits: {
+            dailyMessages: 10000,
+            monthlyMessages: 250000,
+            groupsPerSession: 200
+        }
     },
     enterprise: {
-        maxSessions: -1
+        name: 'Enterprise Plan',
+        maxSessions: -1, // Unlimited
+        amount: 27900, // ₦279/month (in kobo)
+        allowedCommands: 'all', // All commands available
+        features: ['all_features', 'unlimited_messaging', 'dedicated_support', 'custom_integrations', 'white_label', 'api_access', 'advanced_analytics', 'multi_user_access'],
+        description: 'Full-featured solution for large organizations',
+        limits: {
+            dailyMessages: -1, // Unlimited
+            monthlyMessages: -1, // Unlimited
+            groupsPerSession: -1 // Unlimited
+        }
     }
 };
+
+// Helper function to check if a command is allowed for a subscription plan
+function isCommandAllowed(subscription, command) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    
+    // Enterprise has all commands
+    if (plan.allowedCommands === 'all') {
+        return true;
+    }
+    
+    // Check if command is in the allowed list
+    return plan.allowedCommands.includes(command);
+}
+
+// Helper function to check if a feature is available for a subscription plan
+function hasFeature(subscription, feature) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    
+    // Enterprise has all features
+    if (plan.features.includes('all_features')) {
+        return true;
+    }
+    
+    return plan.features.includes(feature);
+}
+
+// Helper function to get subscription plan details
+function getPlanDetails(subscription) {
+    return subscriptionPlans[subscription] || subscriptionPlans.free;
+}
+
+// Helper function to check usage limits
+function checkUsageLimit(subscription, limitType, currentUsage) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    const limit = plan.limits[limitType];
+    
+    // -1 means unlimited
+    if (limit === -1) {
+        return { allowed: true, remaining: -1, limit: -1 };
+    }
+    
+    const allowed = currentUsage < limit;
+    const remaining = limit - currentUsage;
+    
+    return { allowed, remaining, limit };
+}
+
+// Export for use in other modules
+module.exports = {
+    subscriptionPlans,
+    isCommandAllowed,
+    hasFeature,
+    getPlanDetails,
+    checkUsageLimit
+};
+
 
 // WhatsApp session creation using bot.js
 async function createWhatsAppSession(userId, sessionId) {
@@ -991,15 +1092,16 @@ app.get('/api/user/usage', authenticate, async (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
     console.log(`🚀 WhatsApp Bot Server running on port ${PORT}`);
     console.log(`📱 Home Page: http://localhost:${PORT}`);
     console.log(`👤 User Dashboard: http://localhost:${PORT}/dashboard`);
     console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
     console.log(`💳 Payment Page: http://localhost:${PORT}/payment`);
-
-    
 });
+
+
 
 
 // Export functions for use in routes
