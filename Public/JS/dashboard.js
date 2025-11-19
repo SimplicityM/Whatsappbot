@@ -1534,13 +1534,30 @@ async function loadUpgradePlans() {
 function getStaticPlans() {
     return [
         {
+            id: 'free',
+            name: 'Free Plan',
+            amount: 0,
+            allowedCommands: ['ping', 'status', 'tag', 'list', 'help'],
+            features: [
+                'Basic tagging (!tagall limited use)',
+                'Access to !list',
+                'Basic bot status',
+                'Help menu',
+                '1 active session'
+            ]
+        },
+        {
             id: 'starter',
             name: 'Starter Plan',
             amount: 2900,
+            allowedCommands: [
+                'ping', 'status', 'tag', 'list', 'help',
+                'tagall', 'tagallexcept'
+            ],
             features: [
-                'Basic group tagging (tagall)',
-                'Contact auto-save',
-                'Basic media sharing',
+                'All Free features',
+                'Tag all members',
+                'Tag all except selected users',
                 '5 active sessions',
                 'Standard support'
             ]
@@ -1549,9 +1566,13 @@ function getStaticPlans() {
             id: 'professional',
             name: 'Professional Plan',
             amount: 7900,
+            allowedCommands: [
+                'ping', 'status', 'tag', 'list', 'help',
+                'tagall', 'tagallexcept',
+                'scheduler', 'events', 'reminders'
+            ],
             features: [
                 'All Starter features',
-                'Advanced tagging (tagallexcept)',
                 'Event & meeting scheduling',
                 'Reminder management',
                 '25 active sessions',
@@ -1562,30 +1583,39 @@ function getStaticPlans() {
             id: 'business',
             name: 'Business Plan',
             amount: 14900,
+            allowedCommands: [
+                'ping', 'status', 'tag', 'list', 'help',
+                'tagall', 'tagallexcept',
+                'scheduler', 'events', 'reminders',
+                'sudo', 'broadcast'
+            ],
             features: [
                 'All Professional features',
                 'Advanced admin controls',
-                'Sudo user management',
+                'Sudo commands',
                 'System monitoring',
-                '100 active sessions',
-                'Broadcast messaging'
+                'Broadcast messaging',
+                '100 active sessions'
             ]
         },
         {
             id: 'enterprise',
             name: 'Enterprise Plan',
             amount: 27900,
+            allowedCommands: ['*'], // all commands unlocked
             features: [
                 'All Business features',
-                'Unlimited active sessions',
-                'Advanced automation workflows',
+                'Unlimited sessions',
+                'Advanced automation',
                 'Custom bot commands',
                 'API access',
-                'White-label solution'
+                'White-label solution',
+                'Dedicated support'
             ]
         }
     ];
 }
+
 
 function renderUpgradePlans(plans) {
     const container = document.getElementById('upgradePlansContainer');
