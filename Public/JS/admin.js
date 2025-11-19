@@ -993,13 +993,22 @@ function startRealTimeUpdates() {
     setInterval(updateUptime, 60000);
 }
 
+// function logout() {
+//     if (confirm('Are you sure you want to logout?')) {
+//         showNotification('Logging out...', 'info');
+//         setTimeout(() => {
+//             window.location.href = 'index.html';
+//         }, 1000);
+//     }
+// }
+
 function logout() {
-    if (confirm('Are you sure you want to logout?')) {
-        showNotification('Logging out...', 'info');
-        setTimeout(() => {
-            window.location.href = 'index.html';
-        }, 1000);
+    if (socket) {
+        socket.disconnect();
     }
+    
+    localStorage.removeItem('userSession');
+    window.location.href = '/index.html';
 }
 
 // ==================== QUICK ACTION FUNCTIONS ====================

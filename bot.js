@@ -569,6 +569,7 @@ client.on('message_create', async (message) => {
           `!status\n` +
           `!sessionid\n` +
           `!list\n` +
+          `!listall\n` +
           `!tag\n` +
           `!tagexcept`
         );
@@ -659,6 +660,25 @@ client.on('message_create', async (message) => {
         await chat.sendMessage(text, { mentions });
         break;
       }
+
+      case "listall": {
+    const chats = await client.getChats();
+    const groups = chats.filter(c => c.isGroup);
+
+    if (groups.length === 0) {
+        await message.reply("❌ You are not in any group.");
+        break;
+    }
+
+    let reply = "*📋 All Groups You Belong To:*\n\n";
+    groups.forEach((g, i) => {
+        reply += `${i + 1}. *${g.name}*\n   ID: \`${g.id._serialized}\`\n\n`;
+    });
+
+    await message.reply(reply);
+    break;
+}
+
 
 //       case "list": {
 //     const chats = await client.getChats();
