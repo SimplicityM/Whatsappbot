@@ -8,6 +8,13 @@ const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
 
+// ------------------------------------
+// SAFE SESSION REGISTRY
+// ------------------------------------
+const activeSessions = new Map();     // sessionId → { client, status }
+const sessionLocks = new Set();       // prevents double-creation
+
+
 const puppeteer = require('puppeteer'); // ensure installed and up-to-date
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
@@ -357,48 +364,173 @@ client.on('loading_screen', (percent, message) => {
   //   }
   // });
 
+// client.on("ready", async () => {
+//     logger.info(`Session ${sessionId}: ready fired`);
+
+//     try {
+//         /* ----------------------------------------------
+//          * 1️⃣ Guarantee WhatsApp fully initializes
+//          * ----------------------------------------------*/
+//         let attempts = 0;
+//         while ((!client.info || !client.info.wid) && attempts < 60) { 
+//             // up to 6 seconds
+//             await new Promise(r => setTimeout(r, 100));
+//             attempts++;
+//         }
+
+//         if (!client.info || !client.info.wid) {
+//             logger.error(`Session ${sessionId}: client.info.wid missing after init`);
+//             return;
+//         }
+
+//         const selfId = client.info.wid._serialized;
+//         logger.info(`Session ${sessionId}: selfId detected = ${selfId}`);
+
+//         /* ----------------------------------------------
+//          * 2️⃣ Ensure WhatsApp is ONLINE (not just “ready”)
+//          * ----------------------------------------------*/
+//         let state = null;
+//         attempts = 0;
+//         while (attempts < 50) {   // up to 5 seconds
+//             try {
+//                 state = await client.getState();
+//                 if (state === "CONNECTED") break;
+//             } catch {}
+//             await new Promise(r => setTimeout(r, 100));
+//             attempts++;
+//         }
+
+//         if (state !== "CONNECTED") {
+//             logger.error(`Session ${sessionId}: WhatsApp not fully connected`);
+//             return;
+//         }
+
+//         logger.info(`Session ${sessionId}: WhatsApp connected & stable`);
+
+//         /* ----------------------------------------------
+//          * 3️⃣ Store mapping (safe now)
+//          * ----------------------------------------------*/
+//         const uniqueId = crypto.randomBytes(4).toString("hex").toUpperCase();
+//         userSessions.set(selfId, uniqueId);
+
+//         sessionValidated.set(sessionId, true);
+//         console.log(`🔓 Session ${sessionId} validated`);
+
+//         /* ----------------------------------------------
+//          * 4️⃣ Delay to allow internal chat sync to complete
+//          * ----------------------------------------------*/
+//         await new Promise(r => setTimeout(r, 2500));
+
+//         /* ----------------------------------------------
+//          * 5️⃣ Send welcome message TO SELF (guaranteed)
+//          * ----------------------------------------------*/
+//         try {
+//             await client.sendMessage(selfId, 
+//                 `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
+//             );
+
+//             await new Promise(r => setTimeout(r, 500));
+
+//             await client.sendMessage(selfId,
+//                 `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}sessionid\n${COMMAND_PREFIX}status`
+//             );
+
+//             logger.info(`Session ${sessionId}: welcome messages successfully sent`);
+
+//         } catch (err) {
+//             logger.error(`Session ${sessionId}: FAILED to send welcome msg`, err);
+//         }
+
+//         /* ----------------------------------------------
+//          * 6️⃣ Keep-Alive Ping Loop
+//          * ----------------------------------------------*/
+//         keepAliveInterval = setInterval(async () => {
+//             try {
+//                 await client.getState();
+//                 logger.info(`Session ${sessionId}: keep-alive OK`);
+//             } catch (err) {
+//                 logger.error(`Session ${sessionId}: keep-alive failed`, err);
+//             }
+//         }, 300000);
+
+//     } catch (err) {
+//         logger.error(`Session ${sessionId}: ready handler crashed`, err);
+//     }
+// });
+
 client.on("ready", async () => {
-    logger.info(`Session ${sessionId}: ready fired`);
+    logger.info(`Session ${sessionId}: 🔥 READY event fired`);
 
     try {
+
+        /* ================================================
+         🔍 DIAGNOSTIC BLOCK 1 — RAW client.info
+        ================================================= */
+        console.log("📌 RAW client.info at READY:", {
+            infoExists: !!client.info,
+            wid: client.info?.wid?._serialized || null,
+            pushname: client.info?.pushname || null,
+            fullInfo: client.info || null
+        });
+
+
         /* ----------------------------------------------
          * 1️⃣ Guarantee WhatsApp fully initializes
          * ----------------------------------------------*/
         let attempts = 0;
-        while ((!client.info || !client.info.wid) && attempts < 60) { 
-            // up to 6 seconds
+
+        while ((!client.info || !client.info.wid) && attempts < 60) {
+            console.log(`⏳ Waiting for client.info.wid... attempt ${attempts}`);
             await new Promise(r => setTimeout(r, 100));
             attempts++;
         }
 
         if (!client.info || !client.info.wid) {
-            logger.error(`Session ${sessionId}: client.info.wid missing after init`);
+            logger.error(`❌ Session ${sessionId}: client.info.wid STILL missing after init`);
+            console.log("❌ FULL client.info dump:", client.info);
             return;
         }
 
         const selfId = client.info.wid._serialized;
-        logger.info(`Session ${sessionId}: selfId detected = ${selfId}`);
+        logger.info(`Session ${sessionId}: ✅ selfId detected = ${selfId}`);
+
+        console.log("🆔 FINAL SELF ID:", selfId);
+
 
         /* ----------------------------------------------
-         * 2️⃣ Ensure WhatsApp is ONLINE (not just “ready”)
+         * 2️⃣ Ensure WhatsApp is ONLINE (add diagnostics)
          * ----------------------------------------------*/
         let state = null;
         attempts = 0;
-        while (attempts < 50) {   // up to 5 seconds
+
+        while (attempts < 50) {
             try {
                 state = await client.getState();
-                if (state === "CONNECTED") break;
-            } catch {}
+                console.log(`📡 getState() attempt ${attempts}:`, state);
+
+                // Accept CONNECTED or OPEN (some wwebjs versions use OPEN)
+                if (state === "CONNECTED" || state === "OPEN") break;
+
+            } catch (e) {
+                console.log(`⚠️ getState() error attempt ${attempts}:`, e.message);
+            }
+
             await new Promise(r => setTimeout(r, 100));
             attempts++;
         }
 
-        if (state !== "CONNECTED") {
-            logger.error(`Session ${sessionId}: WhatsApp not fully connected`);
+        if (!state) {
+            console.log("❌ getState() returned NULL/UNDEFINED");
+        }
+
+        if (state !== "CONNECTED" && state !== "OPEN") {
+            logger.error(`❌ Session ${sessionId}: WhatsApp not fully connected. Final state = ${state}`);
+            console.log("📌 Possible states include: CONNECTED, OPEN, PAIRING, TIMEOUT, CONFLICT, UNLAUNCHED");
             return;
         }
 
-        logger.info(`Session ${sessionId}: WhatsApp connected & stable`);
+        logger.info(`Session ${sessionId}: 🟢 WhatsApp connected & stable (STATE=${state})`);
+
 
         /* ----------------------------------------------
          * 3️⃣ Store mapping (safe now)
@@ -407,47 +539,60 @@ client.on("ready", async () => {
         userSessions.set(selfId, uniqueId);
 
         sessionValidated.set(sessionId, true);
-        console.log(`🔓 Session ${sessionId} validated`);
+        console.log(`🔓 Session ${sessionId} validated (unique: ${uniqueId})`);
+
 
         /* ----------------------------------------------
-         * 4️⃣ Delay to allow internal chat sync to complete
+         * 4️⃣ Allow internal chat sync to finish
          * ----------------------------------------------*/
+        console.log("⏳ Waiting final 2.5s for WhatsApp chat sync before sending welcome...");
         await new Promise(r => setTimeout(r, 2500));
 
+
         /* ----------------------------------------------
-         * 5️⃣ Send welcome message TO SELF (guaranteed)
+         * 5️⃣ Send welcome message TO SELF (diagnostic added)
          * ----------------------------------------------*/
+        console.log("📨 Attempting to send welcome messages to:", selfId);
+
         try {
-            await client.sendMessage(selfId, 
+
+            const msg1 = await client.sendMessage(selfId,
                 `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
             );
+            console.log("✅ Welcome message #1 sent:", msg1?.id?._serialized);
 
             await new Promise(r => setTimeout(r, 500));
 
-            await client.sendMessage(selfId,
+            const msg2 = await client.sendMessage(selfId,
                 `👋 Your bot is now active!\n\n*Commands:*\n${COMMAND_PREFIX}ping\n${COMMAND_PREFIX}help\n${COMMAND_PREFIX}sessionid\n${COMMAND_PREFIX}status`
             );
+            console.log("✅ Welcome message #2 sent:", msg2?.id?._serialized);
 
-            logger.info(`Session ${sessionId}: welcome messages successfully sent`);
+            logger.info(`Session ${sessionId}: 🎉 Welcome messages successfully delivered`);
 
         } catch (err) {
-            logger.error(`Session ${sessionId}: FAILED to send welcome msg`, err);
+            logger.error(`Session ${sessionId}: ❌ FAILED to send welcome message`, err);
+            console.log("🔥 Full Welcome Error Dump:", err);
         }
+
 
         /* ----------------------------------------------
          * 6️⃣ Keep-Alive Ping Loop
          * ----------------------------------------------*/
+        console.log("🔁 Starting keep-alive monitor (every 5 mins)");
+
         keepAliveInterval = setInterval(async () => {
             try {
-                await client.getState();
-                logger.info(`Session ${sessionId}: keep-alive OK`);
+                const st = await client.getState();
+                logger.info(`Session ${sessionId}: keep-alive OK (state=${st})`);
             } catch (err) {
-                logger.error(`Session ${sessionId}: keep-alive failed`, err);
+                logger.error(`Session ${sessionId}: keep-alive FAILED`, err);
             }
         }, 300000);
 
     } catch (err) {
-        logger.error(`Session ${sessionId}: ready handler crashed`, err);
+        logger.error(`Session ${sessionId}: ❌ READY handler crashed`, err);
+        console.log("🔥 FULL CRASH DUMP:", err);
     }
 });
 
@@ -486,156 +631,344 @@ client.on("ready", async () => {
   });
 
   // message handlers: split message_create and message (incoming)
+// client.on('message_create', async (message) => {
+//   try {
+//     if (!message.body || message.from === 'status@broadcast') return;
+
+//     const selfId = client.info?.wid?._serialized;
+//     if (!selfId) return;
+
+//     // true sender detection (self-chat compatible)
+//     const sender = message.fromMe ? selfId : message.from;
+//     const isSelfChat = sender === selfId;
+
+//     // react to group messages (optional)
+//     if (!message.fromMe) {
+//       const chat = await message.getChat();
+//       if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
+//         try { await message.react("🚗"); } catch {}
+//       }
+//     }
+
+//     // only commands should continue
+//     if (!message.body.startsWith(COMMAND_PREFIX)) return;
+
+//     // allow ONLY:
+//     // - self chat
+//     // - authorized users
+//     if (!isSelfChat && !isAuthorized(sender)) {
+//       await message.reply("🔒 Admin-only command");
+//       return;
+//     }
+
+//     // parse command
+//     const [cmd, ...args] = message.body
+//       .slice(COMMAND_PREFIX.length)
+//       .trim()
+//       .split(/\s+/);
+
+//    switch (cmd.toLowerCase()) {
+
+//   case "ping":
+//     await message.reply("🏓 Pong!");
+//     break;
+
+//   case "help":
+//     await message.reply(
+//       `*Available Commands:*\n` +
+//       `!ping\n` +
+//       `!help\n` +
+//       `!status\n` +
+//       `!sessionid\n` +
+//       `!tag\n` +
+//       `!tagexcept`
+//     );
+//     break;
+
+//   case "status":
+//     await message.reply(
+//       `*Bot Status:*\n` +
+//       `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
+//       `Sessions: ${clients.size}`
+//     );
+//     break;
+
+//   case "sessionid":
+//     await message.reply(
+//       `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
+//     );
+//     break;
+
+
+//   /* ====================================================
+//      TAG EVERYONE  (Self-chat safe)
+//      ==================================================== */
+//   case "tag": {
+//     const chat = await message.getChat();
+
+//     if (!chat.isGroup) {
+//       await message.reply("❌ This command only works in groups.\nSend it inside a group.");
+//       return;
+//     }
+
+//     let text = "*Group Mentions:*\n\n";
+//     let mentions = [];
+
+//     for (let participant of chat.participants) {
+//       const jid = participant.id._serialized;
+//       mentions.push(await client.getContactById(jid));
+//       text += `mention (${jid.split("@")[0]})\n`;
+//     }
+
+//     await chat.sendMessage(text, { mentions });
+//     break;
+//   }
+
+
+//   /* ====================================================
+//      TAG EXCEPT  (Self-chat safe)
+//      Format: !tagexcept 1,2,3 @2345,@554433
+//      ==================================================== */
+//   case "tagexcept": {
+//     const chat = await message.getChat();
+
+//     if (!chat.isGroup) {
+//       await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
+//       return;
+//     }
+
+//     if (args.length < 1) {
+//       await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
+//       return;
+//     }
+
+//     // group number list
+//     let groupsToTag = args[0]
+//       .split(",")
+//       .map(x => parseInt(x.trim()))
+//       .filter(n => !isNaN(n));
+
+//     // excluded numbers
+//     let excludedRaw = args.slice(1).join(" ");
+//     let excluded = excludedRaw
+//       .split("@")
+//       .filter(x => x.trim() !== "")
+//       .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
+
+//     const allMembers = chat.participants.map(p => p.id._serialized);
+
+//     let text = "*Filtered Mentions:*\n\n";
+//     let mentions = [];
+
+//     for (let num of groupsToTag) {
+//       let memberJid = allMembers[num - 1]; // 1-indexed
+//       if (!memberJid) continue;
+//       if (excluded.includes(memberJid)) continue;
+
+//       mentions.push(await client.getContactById(memberJid));
+//       text += `mention (${memberJid.split("@")[0]})\n`;
+//     }
+
+//     await chat.sendMessage(text, { mentions });
+//     break;
+//   }
+
+
+//   default:
+//     await message.reply("Unknown command. Try !help");
+// }
+
+
+//   } catch (err) {
+//     logger.error("message_create command error", err);
+//   }
+// });
+
 client.on('message_create', async (message) => {
   try {
+
+    /* ============================================
+       🔍 DIAGNOSTIC LOGS (NEWLY ADDED)
+       ============================================ */
+    console.log("🔔 message_create fired:", {
+      msg_id: message.id?._serialized,
+      from: message.from,
+      fromMe: message.fromMe,
+      body: (message.body || "").slice(0, 40),
+    });
+
+    console.log("🤖 client.info snapshot:", {
+      wid: client.info?.wid?._serialized || null,
+      pushname: client.info?.pushname || null,
+    });
+
+    /* Fallback: sometimes client.info is not ready yet */
+    let selfId = client.info?.wid?._serialized;
+    if (!selfId && message.fromMe) {
+      console.warn("⚠️ selfId missing — using fallback from message.from");
+      selfId = message.from;
+    }
+
+    console.log("🆔 final selfId used:", selfId);
+
+    /* ============================================ */
+
     if (!message.body || message.from === 'status@broadcast') return;
 
-    const selfId = client.info?.wid?._serialized;
-    if (!selfId) return;
+    if (!selfId) {
+      console.warn("⛔ Ignoring message — no selfId available yet");
+      return;
+    }
 
     // true sender detection (self-chat compatible)
     const sender = message.fromMe ? selfId : message.from;
     const isSelfChat = sender === selfId;
 
-    // react to group messages (optional)
+    /* ====================================================
+       OPTIONAL GROUP REACTION
+       ==================================================== */
     if (!message.fromMe) {
-      const chat = await message.getChat();
-      if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
-        try { await message.react("🚗"); } catch {}
-      }
+      try {
+        const chat = await message.getChat();
+        if (chat.isGroup && chat.participants.some(p => p.id._serialized === selfId)) {
+          await message.react("🚗");
+        }
+      } catch {}
     }
 
-    // only commands should continue
+    // only commands continue
     if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
-    // allow ONLY:
-    // - self chat
-    // - authorized users
+    /* ====================================================
+       AUTH CHECK
+       ==================================================== */
     if (!isSelfChat && !isAuthorized(sender)) {
+      console.log("🔒 Blocked command from:", sender);
       await message.reply("🔒 Admin-only command");
       return;
     }
 
-    // parse command
+    /* ====================================================
+       PARSE COMMAND
+       ==================================================== */
     const [cmd, ...args] = message.body
       .slice(COMMAND_PREFIX.length)
       .trim()
       .split(/\s+/);
 
-   switch (cmd.toLowerCase()) {
+    console.log("📌 Command detected:", cmd, "Args:", args);
 
-  case "ping":
-    await message.reply("🏓 Pong!");
-    break;
+    switch (cmd.toLowerCase()) {
 
-  case "help":
-    await message.reply(
-      `*Available Commands:*\n` +
-      `!ping\n` +
-      `!help\n` +
-      `!status\n` +
-      `!sessionid\n` +
-      `!tag\n` +
-      `!tagexcept`
-    );
-    break;
+      case "ping":
+        await message.reply("🏓 Pong!");
+        break;
 
-  case "status":
-    await message.reply(
-      `*Bot Status:*\n` +
-      `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
-      `Sessions: ${clients.size}`
-    );
-    break;
+      case "help":
+        await message.reply(
+          `*Available Commands:*\n` +
+          `!ping\n` +
+          `!help\n` +
+          `!status\n` +
+          `!sessionid\n` +
+          `!tag\n` +
+          `!tagexcept`
+        );
+        break;
 
-  case "sessionid":
-    await message.reply(
-      `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
-    );
-    break;
+      case "status":
+        await message.reply(
+          `*Bot Status:*\n` +
+          `Uptime: ${Math.floor(process.uptime() / 60)} minutes\n` +
+          `Sessions: ${clients.size}`
+        );
+        break;
 
+      case "sessionid":
+        await message.reply(
+          `Your Session ID: ${userSessions.get(selfId) || "N/A"}`
+        );
+        break;
 
-  /* ====================================================
-     TAG EVERYONE  (Self-chat safe)
-     ==================================================== */
-  case "tag": {
-    const chat = await message.getChat();
+      /* ====================================================
+         TAG EVERYONE  (Self-chat safe)
+         ==================================================== */
+      case "tag": {
+        const chat = await message.getChat();
 
-    if (!chat.isGroup) {
-      await message.reply("❌ This command only works in groups.\nSend it inside a group.");
-      return;
+        if (!chat.isGroup) {
+          await message.reply("❌ This command only works in groups.\nSend it inside a group.");
+          return;
+        }
+
+        let text = "*Group Mentions:*\n\n";
+        let mentions = [];
+
+        for (let participant of chat.participants) {
+          const jid = participant.id._serialized;
+          mentions.push(await client.getContactById(jid));
+          text += `mention (${jid.split("@")[0]})\n`;
+        }
+
+        await chat.sendMessage(text, { mentions });
+        break;
+      }
+
+      /* ====================================================
+         TAG EXCEPT  (Self-chat safe)
+         Format: !tagexcept 1,2,3 @2345,@554433
+         ==================================================== */
+      case "tagexcept": {
+        const chat = await message.getChat();
+
+        if (!chat.isGroup) {
+          await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
+          return;
+        }
+
+        if (args.length < 1) {
+          await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
+          return;
+        }
+
+        // group number list
+        let groupsToTag = args[0]
+          .split(",")
+          .map(x => parseInt(x.trim()))
+          .filter(n => !isNaN(n));
+
+        // excluded numbers
+        let excludedRaw = args.slice(1).join(" ");
+        let excluded = excludedRaw
+          .split("@")
+          .filter(x => x.trim() !== "")
+          .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
+
+        const allMembers = chat.participants.map(p => p.id._serialized);
+
+        let text = "*Filtered Mentions:*\n\n";
+        let mentions = [];
+
+        for (let num of groupsToTag) {
+          let memberJid = allMembers[num - 1]; // 1-indexed
+          if (!memberJid) continue;
+          if (excluded.includes(memberJid)) continue;
+
+          mentions.push(await client.getContactById(memberJid));
+          text += `mention (${memberJid.split("@")[0]})\n`;
+        }
+
+        await chat.sendMessage(text, { mentions });
+        break;
+      }
+
+      default:
+        await message.reply("Unknown command. Try !help");
     }
-
-    let text = "*Group Mentions:*\n\n";
-    let mentions = [];
-
-    for (let participant of chat.participants) {
-      const jid = participant.id._serialized;
-      mentions.push(await client.getContactById(jid));
-      text += `mention (${jid.split("@")[0]})\n`;
-    }
-
-    await chat.sendMessage(text, { mentions });
-    break;
-  }
-
-
-  /* ====================================================
-     TAG EXCEPT  (Self-chat safe)
-     Format: !tagexcept 1,2,3 @2345,@554433
-     ==================================================== */
-  case "tagexcept": {
-    const chat = await message.getChat();
-
-    if (!chat.isGroup) {
-      await message.reply("❌ This command only works in groups.\nMove to a group to use it.");
-      return;
-    }
-
-    if (args.length < 1) {
-      await message.reply("Usage:\n!tagexcept 1,2,3 @23455,@889922");
-      return;
-    }
-
-    // group number list
-    let groupsToTag = args[0]
-      .split(",")
-      .map(x => parseInt(x.trim()))
-      .filter(n => !isNaN(n));
-
-    // excluded numbers
-    let excludedRaw = args.slice(1).join(" ");
-    let excluded = excludedRaw
-      .split("@")
-      .filter(x => x.trim() !== "")
-      .map(x => x.replace(/[^0-9]/g, "") + "@c.us");
-
-    const allMembers = chat.participants.map(p => p.id._serialized);
-
-    let text = "*Filtered Mentions:*\n\n";
-    let mentions = [];
-
-    for (let num of groupsToTag) {
-      let memberJid = allMembers[num - 1]; // 1-indexed
-      if (!memberJid) continue;
-      if (excluded.includes(memberJid)) continue;
-
-      mentions.push(await client.getContactById(memberJid));
-      text += `mention (${memberJid.split("@")[0]})\n`;
-    }
-
-    await chat.sendMessage(text, { mentions });
-    break;
-  }
-
-
-  default:
-    await message.reply("Unknown command. Try !help");
-}
-
 
   } catch (err) {
     logger.error("message_create command error", err);
+    console.error("🔥 Diagnostic error details:", err);
   }
 });
 
