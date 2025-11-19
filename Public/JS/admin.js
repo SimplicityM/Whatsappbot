@@ -54,19 +54,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// // Initialize admin functionality
-// function initializeAdmin() {
-//     console.log('Admin dashboard initialized');
+// Initialize admin functionality
+function initializeAdmin() {
+    console.log('Admin dashboard initialized');
 
-//     // Initialize sample data
-//     initializeSampleData();
+    // Initialize sample data
+    initializeSampleData();
 
-//     // Set initial sidebar state
-//     const sidebar = document.querySelector('.admin-sidebar');
-//     if (sidebar && window.innerWidth <= 768) {
-//         sidebar.classList.add('collapsed');
-//     }
-// }
+    // Set initial sidebar state
+    const sidebar = document.querySelector('.admin-sidebar');
+    if (sidebar && window.innerWidth <= 768) {
+        sidebar.classList.add('collapsed');
+    }
+}
 
 // Setup Socket.IO connection for real-time updates
 function setupSocketConnection() {
@@ -805,9 +805,11 @@ function calculateUptime(createdAt) {
 
 // ==================== SESSION ACTIONS ====================
 
+// ==================== SESSION ACTIONS ====================
+
 // Delete a session
 async function deleteSession(sessionId) {
-    if (!confirm('⚠️ Delete this session?\n\nThis will:\n- Disconnect the WhatsApp bot\n- Remove all session data\n- Cannot be undone!')) {
+    if (!confirm('⚠️ Delete this session?\n\nThis will disconnect the WhatsApp bot and remove all session data.')) {
         return;
     }
     
@@ -826,8 +828,6 @@ async function deleteSession(sessionId) {
         
         if (result.success) {
             showNotification('✅ Session deleted successfully', 'success');
-            
-            // Refresh sessions
             await fetchAllSessions();
         } else {
             throw new Error(result.message || 'Failed to delete session');
@@ -841,7 +841,7 @@ async function deleteSession(sessionId) {
 
 // Restart a session
 async function restartSession(sessionId) {
-    if (!confirm('Restart this session?\n\nThe user will need to scan the QR code again.')) {
+    if (!confirm('Restart this session? The user will need to scan the QR code again.')) {
         return;
     }
     
@@ -881,7 +881,6 @@ function viewSession(sessionId) {
     }
     
     showNotification(`Viewing session: ${session.user}`, 'info');
-    // TODO: Show a detailed modal with session info
     console.log('Session details:', session);
 }
 
