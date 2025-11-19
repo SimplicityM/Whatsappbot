@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment - WhatsApp Bot</title>
+    <link rel="stylesheet" href="/CSS/styles.css">
+    <script src="https://checkout.flutterwave.com/v3.js"></script>
+    <style>
+        .payment-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .payment-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .plan-details {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .plan-details h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .price-display {
+            font-size: 32px;
+            font-weight: bold;
+            color: #25D366;
+            margin: 15px 0;
+        }
+        .duration-selector {
+            margin: 20px 0;
+        }
+        .duration-selector label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .duration-selector select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .payment-button {
+            width: 100%;
+            padding: 15px;
+            background: #25D366;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .payment-button:hover {
+            background: #1da851;
+        }
+        .payment-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #25D366;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="payment-container">
+        <div class="payment-header">
+            <h1>Complete Your Payment</h1>
+            <p>Secure payment powered by Flutterwave</p>
+        </div>
+
+        <div id="errorContainer"></div>
+        
+        <div id="loadingContainer" class="loading" style="display:none;">
+            <p>Loading payment details...</p>
+        </div>
+
+        <div id="paymentContent" style="display:none;">
+            <div class="plan-details">
+                <h3 id="planName">Loading...</h3>
+                <div class="price-display">
+                    ₦<span id="planPrice">0</span>
+                </div>
+                <div id="planFeatures"></div>
+            </div>
+
+            <div class="duration-selector">
+                <label for="duration">Select Duration:</label>
+                <select id="duration" onchange="updatePrice()">
+                    <option value="1">1 Month</option>
+                    <option value="3">3 Months (Save 10%)</option>
+                    <option value="6">6 Months (Save 15%)</option>
+                    <option value="12">12 Months (Save 20%)</option>
+                </select>
+            </div>
+
+            <button class="payment-button" id="payButton" onclick="initiatePayment()">
+                Pay Now
+            </button>
+
+            <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            API_BASE: window.location.origin,
+            FLUTTERWAVE_PUBLIC_KEY: 'FLWPUBK-YOUR-PUBLIC-KEY-HERE' // Replace with your Flutterwave public key
+        };
+
+        let currentPlan = null;
+        let planData = null;
+        let userData = null;
+
+        // Get plan ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const planId = urlParams.get('plan');
+
+        // Load payment details on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!planId) {
+                showError('No plan selected. Please select a plan from the dashboard.');
+                return;
+            }
+
+            await loadPaymentDetails();
+        });
+
+        async function loadPaymentDetails() {
+            const loadingContainer = document.getElementById('loadingContainer');
+            const paymentContent = document.getElementById('paymentContent');
+            
+            loadingContainer.style.display = 'block';
+
+            try {
+                // Get user data
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    window.location.href = '/signin.html';
+                    return;
+                }
+
+                // Fetch user profile
+                const userResponse = await fetch(`${CONFIG.API_BASE}/api/users/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!userResponse.ok) {
+                    throw new Error('Failed to fetch user data');
+                }
+
+                userData = await userResponse.json();
+
+                // Fetch plan details
+                const plansResponse = await fetch(`${CONFIG.API_BASE}/api/payments/plans`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!plansResponse.ok) {
+                    throw new Error('Failed to fetch plan details');
+                }
+
+                const plansData = await plansResponse.json();
+                planData = plansData.data.plans.find(p => p.id === planId);
+
+                if (!planData) {
+                    throw new Error('Invalid plan selected');
+                }
+
+                currentPlan = planData;
+                displayPlanDetails();
+                
+                loadingContainer.style.display = 'none';
+                paymentContent.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error loading payment details:', error);
+                loadingContainer.style.display = 'none';
+                showError('Failed to load payment details. Please try again.');
+            }
+        }
+
+        function displayPlanDetails() {
+            document.getElementById('planName').textContent = currentPlan.name;
+            document.getElementById('planPrice').textContent = currentPlan.amount.toFixed(2);
+
+            const featuresHtml = currentPlan.features.map(feature => 
+                `<li>✓ ${feature}</li>`
+            ).join('');
+            document.getElementById('planFeatures').innerHTML = `<ul>${featuresHtml}</ul>`;
+        }
+
+        function updatePrice() {
+            const duration = parseInt(document.getElementById('duration').value);
+            const basePrice = currentPlan.amount;
+            let discount = 0;
+
+            switch(duration) {
+                case 3: discount = 0.10; break;
+                case 6: discount = 0.15; break;
+                case 12: discount = 0.20; break;
+            }
+
+            const totalPrice = basePrice * duration * (1 - discount);
+            document.getElementById('planPrice').textContent = totalPrice.toFixed(2);
+        }
+
+        async function initiatePayment() {
+            const payButton = document.getElementById('payButton');
+            payButton.disabled = true;
+            payButton.textContent = 'Processing...';
+
+            try {
+                const duration = parseInt(document.getElementById('duration').value);
+                const amount = parseFloat(document.getElementById('planPrice').textContent);
+
+                // Make Flutterwave payment
+                FlutterwaveCheckout({
+                    public_key: CONFIG.FLUTTERWAVE_PUBLIC_KEY,
+                    tx_ref: 'WA-BOT-' + Date.now(),
+                    amount: amount,
+                    currency: "NGN",
+                    payment_options: "card, banktransfer, ussd",
+                    customer: {
+                        email: userData.data.email,
+                        name: userData.data.fullName,
+                        phone_number: userData.data.phoneNumber || ''
+                    },
+                    customizations: {
+                        title: "WhatsApp Bot Subscription",
+                        description: `${currentPlan.name} - ${duration} month(s)`,
+                        logo: window.location.origin + "/images/logo.png"
+                    },
+                    meta: {
+                        userId: userData.data._id,
+                        subscription: planId,
+                        duration: duration
+                    },
+                    callback: function(data) {
+                        console.log("Payment callback:", data);
+                        verifyPayment(data.transaction_id, data.tx_ref);
+                    },
+                    onclose: function() {
+                        payButton.disabled = false;
+                        payButton.textContent = 'Pay Now';
+                        console.log("Payment cancelled");
+                    }
+                });
+
+            } catch (error) {
+                console.error('Payment initiation error:', error);
+                showError('Failed to initiate payment. Please try again.');
+                payButton.disabled = false;
+                payButton.textContent = 'Pay Now';
+            }
+        }
+
+        async function verifyPayment(transactionId, reference) {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`${CONFIG.API_BASE}/api/payments/verify-flutterwave`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        transaction_id: transactionId,
+                        tx_ref: reference
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Payment successful! Your subscription has been activated.');
+                    window.location.href = '/dashboard.html';
+                } else {
+                    showError('Payment verification failed. Please contact support.');
+                }
+
+            } catch (error) {
+                console.error('Payment verification error:', error);
+                showError('Failed to verify payment. Please contact support with your transaction reference.');
+            }
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+    </script>
+</body>
+</html>

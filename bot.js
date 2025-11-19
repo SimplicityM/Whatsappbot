@@ -9,6 +9,8 @@ const User = require('./models/User');
 const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
+const SavedGroupList = require('./models/SavedGroupList');
+const ActiveGroup = require('./models/ActiveGroup');
 
 // bot.js (multi-session, isolated per-client implementation)
 // - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
@@ -252,412 +254,959 @@ function setupClientEvents(client, sessionId, io) {
     } catch (e) { logger.error(`[${sessionName}] group_participants_changed error`, e); }
   });
 
+  // Get saved group entry by sessionId and 1-based index
+async function getGroupFromIndex(sessionId, index) {
+  if (!index || isNaN(index)) return null;
+  const doc = await SavedGroupList.findOne({ sessionId }).lean();
+  if (!doc || !Array.isArray(doc.groups) || doc.groups.length === 0) return null;
+  return doc.groups[index - 1] || null; // 1-based index
+}
+
+// Set default active group for this session (per session)
+async function setActiveGroup(sessionId, index) {
+  const group = await getGroupFromIndex(sessionId, index);
+  if (!group) return null;
+  const res = await ActiveGroup.findOneAndUpdate(
+    { sessionId },
+    {
+      sessionId,
+      activeIndex: index,
+      groupId: group.groupId,
+      groupName: group.name,
+      updatedAt: new Date()
+    },
+    { upsert: true, new: true }
+  );
+  return res;
+}
+
+// Get active group (if set) for the session
+async function getActiveGroup(sessionId) {
+  const doc = await ActiveGroup.findOne({ sessionId }).lean();
+  if (!doc || !doc.groupId) return null;
+  return {
+    index: doc.activeIndex,
+    groupId: doc.groupId,
+    name: doc.groupName
+  };
+}
+
+
   // generic message handler (per-client)
-  client.on('message_create', async (message) => {
-    try {
-      // only process commands (ignore status & empty)
-      if (!message.body || message.from === 'status@broadcast') return;
+  // client.on('message_create', async (message) => {
+  //   try {
+  //     // only process commands (ignore status & empty)
+  //     if (!message.body || message.from === 'status@broadcast') return;
 
-      // ensure selfId is set
-      if (!client.info || !client.info.wid) {
-        // fallback attempt
-        if (message.fromMe) client.info = client.info || {}; client.info.wid = client.info.wid || { _serialized: message.from };
+  //     // ensure selfId is set
+  //     if (!client.info || !client.info.wid) {
+  //       // fallback attempt
+  //       if (message.fromMe) client.info = client.info || {}; client.info.wid = client.info.wid || { _serialized: message.from };
+  //     }
+  //     const mySelf = client.info?.wid?._serialized;
+
+  //     // determine sender: message.fromMe -> bot itself
+  //     const sender = message.fromMe ? mySelf : message.from;
+  //     const isSelfChat = sender === mySelf;
+
+  //     // react to group messages optionally (non-blocking)
+  //     if (!message.fromMe) {
+  //       try {
+  //         const chat = await message.getChat();
+  //         if (chat && chat.isGroup) {
+  //           // only react if bot is participant
+  //           if ((chat.participants || []).some(p => p.id._serialized === mySelf)) {
+  //             try { await message.react('🚗'); } catch {}
+  //           }
+  //         }
+  //       } catch {}
+  //     }
+
+  //     if (!message.body.startsWith(COMMAND_PREFIX)) return;
+
+  //     // admin check (owner + optional secondary admins - you may implement per-session admin storage later)
+  //     // For now, allow self-chat and owner running via owner number stored in an env or CONFIG if you have it.
+  //     // We'll assume that the QR-scan user controls their own bot; commands from other numbers require them to be in a configured authorized list (not implemented global here).
+  //     // Determine command
+  //     const full = message.body.slice(COMMAND_PREFIX.length).trim();
+  //     const [cmdRaw, ...args] = full.split(/\s+/);
+  //     const cmd = (cmdRaw || '').toLowerCase();
+
+      
+
+  //     // important: call handlers with try/catch
+  //     switch (cmd) {
+  //       case 'help':
+  //         await safeSend(message.from, `*Available Commands*\n!ping\n!help\n!list\n!listall\n!tag\n!tagexcept\n!members\n!admins\n!mygroups\n!forwardall (reply)\n!forward (reply + targets)\n!allow\n!deny\n!whitelist\n!blocklist\n!schedule\n!listschedules\n!cancelschedule`);
+  //         break;
+
+  //       case 'ping':
+  //         await safeSend(message.from, '🏓 Pong!');
+  //         break;
+
+  //       /* ---------- GROUP / ADMIN UTILITIES ---------- */
+
+  //       case 'listall': {
+  //         // list all groups the account is in
+  //         let chats = await client.getChats();
+  //         if (chats.length < CHAT_SYNC_THRESHOLD) {
+  //           // wait for chat sync
+  //           for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+  //             if (chats.length > CHAT_SYNC_THRESHOLD) break;
+  //             await new Promise(r => setTimeout(r, 500));
+  //             chats = await client.getChats();
+  //           }
+  //         }
+  //         const groups = chats.filter(c => c.isGroup);
+  //         if (groups.length === 0) { await safeSend(message.from, '❌ You are not in any group.'); break; }
+  //         let out = '*📋 All Groups You Belong To:*\n\n';
+  //         groups.forEach((g,i) => out += `${i+1}. *${g.name || 'Unnamed group'}*\n   ID: ${g.id?._serialized || g.id}\n\n`);
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'list': {
+  //         // groups where this account is admin/superadmin
+  //         let chats = await client.getChats();
+  //         if (chats.length < CHAT_SYNC_THRESHOLD) {
+  //           for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+  //             if (chats.length > CHAT_SYNC_THRESHOLD) break;
+  //             await new Promise(r => setTimeout(r, 500));
+  //             chats = await client.getChats();
+  //           }
+  //         }
+  //         const adminGroups = [];
+  //         for (const chat of chats) {
+  //           if (!chat.isGroup) continue;
+  //           // ensure participants loaded
+  //           const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //           const amIAdmin = participants.some(p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
+  //           if (amIAdmin) adminGroups.push({ name: chat.name, id: chat.id._serialized });
+  //         }
+  //         if (adminGroups.length === 0) {
+  //           await safeSend(message.from, '❌ No admin groups detected yet. Try again after a few seconds.');
+  //           break;
+  //         }
+  //         let out = '*📋 Groups Where You Are Admin:*\n\n';
+  //         adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.id}\n\n`);
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'members': {
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+  //         const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //         let out = `*👥 Members of ${chat.name || 'Group'}:*\n\n`;
+  //         let n = 1;
+  //         for (const p of parts) {
+  //           const jid = p.id._serialized;
+  //           const contact = await client.getContactById(jid).catch(()=>null);
+  //           const name = contact?.pushname || contact?.name || jid.split('@')[0];
+  //           out += `${n}. *${name}*\n   ${jid}\n\n`;
+  //           n++;
+  //         }
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'admins': {
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+  //         const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //         const admins = parts.filter(p => p.isAdmin || p.isSuperAdmin);
+  //         if (admins.length === 0) { await safeSend(message.from, '❌ No admins detected.'); break; }
+  //         let out = `*🛡 Admins of ${chat.name || 'Group'}:*\n\n`;
+  //         let n = 1;
+  //         for (const a of admins) {
+  //           const jid = a.id._serialized;
+  //           const contact = await client.getContactById(jid).catch(()=>null);
+  //           const name = contact?.pushname || contact?.name || jid.split('@')[0];
+  //           out += `${n}. *${name}*\n   ${jid}\n\n`;
+  //           n++;
+  //         }
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'mygroups': {
+  //         // groups where account is super admin (creator)
+  //         let chats = await client.getChats();
+  //         if (chats.length < CHAT_SYNC_THRESHOLD) {
+  //           for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
+  //             if (chats.length > CHAT_SYNC_THRESHOLD) break;
+  //             await new Promise(r => setTimeout(r, 500));
+  //             chats = await client.getChats();
+  //           }
+  //         }
+  //         const owned = [];
+  //         for (const chat of chats) {
+  //           if (!chat.isGroup) continue;
+  //           const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //           const isOwner = participants.some(p => p.id._serialized === mySelf && p.isSuperAdmin);
+  //           if (isOwner) owned.push({ name: chat.name, id: chat.id._serialized });
+  //         }
+  //         if (owned.length === 0) { await safeSend(message.from, '❌ You did not create any groups.'); break; }
+  //         let out = '*👑 Groups Created By You:*\n\n';
+  //         owned.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ${g.id}\n\n`);
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'tag': {
+  //         // tag everyone in the current group (safe in self-chat or group)
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+  //         const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //         const mentions = [];
+  //         let text = '*Group Mentions:*\n\n';
+  //         for (const p of participants) {
+  //           mentions.push(await client.getContactById(p.id._serialized).catch(()=>null));
+  //           text += `mention (${p.id._serialized.split('@')[0]})\n`;
+  //         }
+  //         await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
+  //         break;
+  //       }
+
+  //       case 'tagexcept': {
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
+  //         if (args.length < 1) { await safeSend(message.from, 'Usage: !tagexcept 1,2,3 @234...'); break; }
+  //         const idxList = args[0].split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
+  //         const excludedRaw = args.slice(1).join(' ');
+  //         const excluded = excludedRaw.split('@').filter(x=>x.trim()).map(x => (x.replace(/[^0-9]/g,'')+'@c.us'));
+  //         const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //         const allMembers = participants.map(p=>p.id._serialized);
+  //         const mentions = [];
+  //         let text = '*Filtered Mentions:*\n\n';
+  //         for (const idx of idxList) {
+  //           const memberJid = allMembers[idx-1];
+  //           if (!memberJid) continue;
+  //           if (excluded.includes(memberJid)) continue;
+  //           mentions.push(await client.getContactById(memberJid).catch(()=>null));
+  //           text += `mention (${memberJid.split('@')[0]})\n`;
+  //         }
+  //         await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
+  //         break;
+  //       }
+
+  //       /* ---------- PER-GROUP ALLOW / BLOCK (Option A) ---------- */
+  //       case 'allow':
+  //       case 'whitelistadd': {
+  //         // args[0] is number
+  //         if (!args[0]) { await safeSend(message.from, 'Usage: !allow 234801234567'); break; }
+  //         const jid = formatJid(args[0]);
+  //         if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+  //         // upsert permission doc for this group
+  //         const chatId = message.from;
+  //         await GroupPermission.updateOne(
+  //           { botUserId: sessionId, groupId: chatId },
+  //           { $addToSet: { allowed: jid }, $pull: { blocked: jid } },
+  //           { upsert: true }
+  //         );
+  //         await safeSend(message.from, `✅ ${jid} added to whitelist for this group.`);
+  //         break;
+  //       }
+
+  //       case 'unallow': {
+  //         if (!args[0]) { await safeSend(message.from, 'Usage: !unallow 234801234567'); break; }
+  //         const jid = formatJid(args[0]);
+  //         if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+  //         const chatId = message.from;
+  //         await GroupPermission.updateOne(
+  //           { botUserId: sessionId, groupId: chatId },
+  //           { $pull: { allowed: jid } },
+  //           { upsert: true }
+  //         );
+  //         await safeSend(message.from, `✅ ${jid} removed from whitelist.`);
+  //         break;
+  //       }
+
+  //       case 'deny':
+  //       case 'block': {
+  //         if (!args[0]) { await safeSend(message.from, 'Usage: !deny 234801234567'); break; }
+  //         const jid = formatJid(args[0]);
+  //         if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+  //         const chatId = message.from;
+  //         await GroupPermission.updateOne(
+  //           { botUserId: sessionId, groupId: chatId },
+  //           { $addToSet: { blocked: jid }, $pull: { allowed: jid } },
+  //           { upsert: true }
+  //         );
+  //         await safeSend(message.from, `⛔ ${jid} added to blocklist for this group.`);
+  //         break;
+  //       }
+
+  //       case 'unblock': {
+  //         if (!args[0]) { await safeSend(message.from, 'Usage: !unblock 234801234567'); break; }
+  //         const jid = formatJid(args[0]);
+  //         if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+  //         const chatId = message.from;
+  //         await GroupPermission.updateOne(
+  //           { botUserId: sessionId, groupId: chatId },
+  //           { $pull: { blocked: jid } },
+  //           { upsert: true }
+  //         );
+  //         await safeSend(message.from, `✅ ${jid} removed from blocklist.`);
+  //         break;
+  //       }
+
+  //       case 'whitelist': {
+  //         const chatId = message.from;
+  //         const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
+  //         const list = (doc && Array.isArray(doc.allowed)) ? doc.allowed : [];
+  //         await safeSend(message.from, `📜 Whitelist:\n\n${list.join('\n') || 'No entries'}`);
+  //         break;
+  //       }
+
+  //       case 'blocklist': {
+  //         const chatId = message.from;
+  //         const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
+  //         const list = (doc && Array.isArray(doc.blocked)) ? doc.blocked : [];
+  //         await safeSend(message.from, `📵 Blocklist:\n\n${list.join('\n') || 'No entries'}`);
+  //         break;
+  //       }
+
+  //       /* ---------- FORWARDING ---------- */
+
+  //       case 'forwardall': {
+  //         // must be reply to a message
+  //         if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message you want to forward and run `!forwardall`.'); break; }
+  //         const quoted = await message.getQuotedMessage();
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
+  //         const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //         const targets = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
+  //         await safeSend(message.from, `🔁 Forwarding to ${targets.length} members. This may take some time.`);
+  //         for (const t of targets) {
+  //           try {
+  //             if (quoted.hasMedia) {
+  //               const media = await quoted.downloadMedia();
+  //               await client.sendMessage(t, media, { caption: quoted.body || '' });
+  //             } else {
+  //               await client.sendMessage(t, quoted.body || '');
+  //             }
+  //             // small throttle
+  //             await new Promise(r => setTimeout(r, 200));
+  //           } catch (e) {
+  //             logger.error(`[${sessionName}] forwardall -> ${t}`, e.message || e);
+  //           }
+  //         }
+  //         await safeSend(message.from, '✅ Forwarding complete.');
+  //         break;
+  //       }
+
+  //       case 'forward': {
+  //         if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message to forward and provide targets.'); break; }
+  //         const quoted = await message.getQuotedMessage();
+  //         const chat = await client.getChatById(message.from);
+  //         if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
+
+  //         // parse args as targets: @numbers, indexes 1,3,5 or raw numbers
+  //         const raw = args.join(' ');
+  //         let targets = [];
+  //         const atMatches = raw.match(/@?(\d{6,20})/g);
+  //         if (atMatches && atMatches.length) {
+  //           targets = atMatches.map(m => `${m.replace(/[^0-9]/g,'')}@c.us`);
+  //         } else if (/^[0-9,\s]+$/.test(raw) && raw.trim().length) {
+  //           const idxs = raw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  //           const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+  //           targets = idxs.map(i => parts[i-1] && parts[i-1].id._serialized).filter(Boolean);
+  //         } else {
+  //           const nums = raw.split(',').map(s => s.replace(/[^0-9]/g,'')).filter(s => s.length>5);
+  //           if (nums.length) targets = nums.map(n => `${n}@c.us`);
+  //         }
+
+  //         if (!targets.length) { await safeSend(message.from, '❗ Could not parse targets.'); break; }
+  //         await safeSend(message.from, `🔁 Forwarding to ${targets.length} recipients...`);
+  //         for (const t of targets) {
+  //           try {
+  //             if (quoted.hasMedia) {
+  //               const media = await quoted.downloadMedia();
+  //               await client.sendMessage(t, media, { caption: quoted.body || '' });
+  //             } else {
+  //               await client.sendMessage(t, quoted.body || '');
+  //             }
+  //             await new Promise(r => setTimeout(r, 200));
+  //           } catch (e) {
+  //             logger.error(`[${sessionName}] forward -> ${t}`, e.message || e);
+  //           }
+  //         }
+  //         await safeSend(message.from, '✅ Forwarding complete.');
+  //         break;
+  //       }
+
+  //       /* ---------- SCHEDULER (MongoDB-based) ---------- */
+
+  //       case 'schedule': {
+  //         // syntax: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>
+  //         // example: !schedule 10:00 group daily | Good morning!
+  //         const rest = full.slice(cmd.length).trim();
+  //         const pipeIndex = rest.indexOf('|');
+  //         if (pipeIndex === -1) {
+  //           await safeSend(message.from, 'Usage: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>');
+  //           break;
+  //         }
+  //         const left = rest.slice(0, pipeIndex).trim();
+  //         const msgText = rest.slice(pipeIndex+1).trim();
+  //         const leftParts = left.split(/\s+/);
+  //         const time = leftParts[0];
+  //         const mode = leftParts[1] || 'group';
+  //         const repeat = leftParts[2] || 'once';
+  //         if (!/^\d{1,2}:\d{2}$/.test(time)) { await safeSend(message.from, 'Invalid time. Use HH:MM'); break; }
+  //         const nextRun = hhmmToNextDate(time);
+  //         const doc = new Schedule({
+  //           userId: sessionId,
+  //           chatId: message.from,
+  //           creator: message.author || message.from, // may be different shapes
+  //           mode,
+  //           targets: [],
+  //           message: msgText,
+  //           timeHHMM: time,
+  //           nextRun,
+  //           repeat,
+  //           active: true
+  //         });
+  //         await doc.save();
+  //         await safeSend(message.from, `✅ Schedule created. Next run: ${doc.nextRun.toLocaleString()}. ID: ${doc._id}`);
+  //         break;
+  //       }
+
+  //       case 'listschedules': {
+  //         const docs = await Schedule.find({ userId: sessionId, active: true }).sort({ nextRun: 1 }).limit(100).lean();
+  //         if (!docs.length) { await safeSend(message.from, 'No active schedules found.'); break; }
+  //         let out = '*📅 Schedules:*\n\n';
+  //         docs.forEach(d => out += `ID: ${d._id}\nNext: ${new Date(d.nextRun).toLocaleString()}\nMode: ${d.mode}\nRepeat: ${d.repeat}\nMessage: ${d.message}\n\n`);
+  //         await safeSend(message.from, out);
+  //         break;
+  //       }
+
+  //       case 'cancelschedule': {
+  //         if (!args[0]) { await safeSend(message.from, 'Usage: !cancelschedule <id>'); break; }
+  //         const id = args[0];
+  //         const doc = await Schedule.findOne({ _id: id, userId: sessionId });
+  //         if (!doc) { await safeSend(message.from, 'Schedule not found'); break; }
+  //         doc.active = false;
+  //         await doc.save();
+  //         await safeSend(message.from, `✅ Schedule ${id} cancelled`);
+  //         break;
+  //       }
+
+  //       default:
+  //         await safeSend(message.from, 'Unknown command. Try !help');
+  //     }
+
+  //   } catch (e) {
+  //     logger.error(`[${sessionName}] message handler error`, e);
+  //   }
+  // });
+
+ client.on('message_create', async (message) => {
+  try {
+    // only process commands (ignore status & empty)
+    if (!message.body || message.from === 'status@broadcast') return;
+
+    // ensure selfId is set
+    if (!client.info || !client.info.wid) {
+      if (message.fromMe) {
+        client.info = client.info || {};
+        client.info.wid = client.info.wid || { _serialized: message.from };
       }
-      const mySelf = client.info?.wid?._serialized;
-
-      // determine sender: message.fromMe -> bot itself
-      const sender = message.fromMe ? mySelf : message.from;
-      const isSelfChat = sender === mySelf;
-
-      // react to group messages optionally (non-blocking)
-      if (!message.fromMe) {
-        try {
-          const chat = await message.getChat();
-          if (chat && chat.isGroup) {
-            // only react if bot is participant
-            if ((chat.participants || []).some(p => p.id._serialized === mySelf)) {
-              try { await message.react('🚗'); } catch {}
-            }
-          }
-        } catch {}
-      }
-
-      if (!message.body.startsWith(COMMAND_PREFIX)) return;
-
-      // admin check (owner + optional secondary admins - you may implement per-session admin storage later)
-      // For now, allow self-chat and owner running via owner number stored in an env or CONFIG if you have it.
-      // We'll assume that the QR-scan user controls their own bot; commands from other numbers require them to be in a configured authorized list (not implemented global here).
-      // Determine command
-      const full = message.body.slice(COMMAND_PREFIX.length).trim();
-      const [cmdRaw, ...args] = full.split(/\s+/);
-      const cmd = (cmdRaw || '').toLowerCase();
-
-      // important: call handlers with try/catch
-      switch (cmd) {
-        case 'help':
-          await safeSend(message.from, `*Available Commands*\n!ping\n!help\n!list\n!listall\n!tag\n!tagexcept\n!members\n!admins\n!mygroups\n!forwardall (reply)\n!forward (reply + targets)\n!allow\n!deny\n!whitelist\n!blocklist\n!schedule\n!listschedules\n!cancelschedule`);
-          break;
-
-        case 'ping':
-          await safeSend(message.from, '🏓 Pong!');
-          break;
-
-        /* ---------- GROUP / ADMIN UTILITIES ---------- */
-
-        case 'listall': {
-          // list all groups the account is in
-          let chats = await client.getChats();
-          if (chats.length < CHAT_SYNC_THRESHOLD) {
-            // wait for chat sync
-            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
-              if (chats.length > CHAT_SYNC_THRESHOLD) break;
-              await new Promise(r => setTimeout(r, 500));
-              chats = await client.getChats();
-            }
-          }
-          const groups = chats.filter(c => c.isGroup);
-          if (groups.length === 0) { await safeSend(message.from, '❌ You are not in any group.'); break; }
-          let out = '*📋 All Groups You Belong To:*\n\n';
-          groups.forEach((g,i) => out += `${i+1}. *${g.name || 'Unnamed group'}*\n   ID: ${g.id?._serialized || g.id}\n\n`);
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'list': {
-          // groups where this account is admin/superadmin
-          let chats = await client.getChats();
-          if (chats.length < CHAT_SYNC_THRESHOLD) {
-            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
-              if (chats.length > CHAT_SYNC_THRESHOLD) break;
-              await new Promise(r => setTimeout(r, 500));
-              chats = await client.getChats();
-            }
-          }
-          const adminGroups = [];
-          for (const chat of chats) {
-            if (!chat.isGroup) continue;
-            // ensure participants loaded
-            const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-            const amIAdmin = participants.some(p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
-            if (amIAdmin) adminGroups.push({ name: chat.name, id: chat.id._serialized });
-          }
-          if (adminGroups.length === 0) {
-            await safeSend(message.from, '❌ No admin groups detected yet. Try again after a few seconds.');
-            break;
-          }
-          let out = '*📋 Groups Where You Are Admin:*\n\n';
-          adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.id}\n\n`);
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'members': {
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
-          const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-          let out = `*👥 Members of ${chat.name || 'Group'}:*\n\n`;
-          let n = 1;
-          for (const p of parts) {
-            const jid = p.id._serialized;
-            const contact = await client.getContactById(jid).catch(()=>null);
-            const name = contact?.pushname || contact?.name || jid.split('@')[0];
-            out += `${n}. *${name}*\n   ${jid}\n\n`;
-            n++;
-          }
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'admins': {
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
-          const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-          const admins = parts.filter(p => p.isAdmin || p.isSuperAdmin);
-          if (admins.length === 0) { await safeSend(message.from, '❌ No admins detected.'); break; }
-          let out = `*🛡 Admins of ${chat.name || 'Group'}:*\n\n`;
-          let n = 1;
-          for (const a of admins) {
-            const jid = a.id._serialized;
-            const contact = await client.getContactById(jid).catch(()=>null);
-            const name = contact?.pushname || contact?.name || jid.split('@')[0];
-            out += `${n}. *${name}*\n   ${jid}\n\n`;
-            n++;
-          }
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'mygroups': {
-          // groups where account is super admin (creator)
-          let chats = await client.getChats();
-          if (chats.length < CHAT_SYNC_THRESHOLD) {
-            for (let i=0;i<CHAT_SYNC_WAIT_ITER;i++){
-              if (chats.length > CHAT_SYNC_THRESHOLD) break;
-              await new Promise(r => setTimeout(r, 500));
-              chats = await client.getChats();
-            }
-          }
-          const owned = [];
-          for (const chat of chats) {
-            if (!chat.isGroup) continue;
-            const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-            const isOwner = participants.some(p => p.id._serialized === mySelf && p.isSuperAdmin);
-            if (isOwner) owned.push({ name: chat.name, id: chat.id._serialized });
-          }
-          if (owned.length === 0) { await safeSend(message.from, '❌ You did not create any groups.'); break; }
-          let out = '*👑 Groups Created By You:*\n\n';
-          owned.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ${g.id}\n\n`);
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'tag': {
-          // tag everyone in the current group (safe in self-chat or group)
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
-          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-          const mentions = [];
-          let text = '*Group Mentions:*\n\n';
-          for (const p of participants) {
-            mentions.push(await client.getContactById(p.id._serialized).catch(()=>null));
-            text += `mention (${p.id._serialized.split('@')[0]})\n`;
-          }
-          await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
-          break;
-        }
-
-        case 'tagexcept': {
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command only works in a group.'); break; }
-          if (args.length < 1) { await safeSend(message.from, 'Usage: !tagexcept 1,2,3 @234...'); break; }
-          const idxList = args[0].split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
-          const excludedRaw = args.slice(1).join(' ');
-          const excluded = excludedRaw.split('@').filter(x=>x.trim()).map(x => (x.replace(/[^0-9]/g,'')+'@c.us'));
-          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-          const allMembers = participants.map(p=>p.id._serialized);
-          const mentions = [];
-          let text = '*Filtered Mentions:*\n\n';
-          for (const idx of idxList) {
-            const memberJid = allMembers[idx-1];
-            if (!memberJid) continue;
-            if (excluded.includes(memberJid)) continue;
-            mentions.push(await client.getContactById(memberJid).catch(()=>null));
-            text += `mention (${memberJid.split('@')[0]})\n`;
-          }
-          await chat.sendMessage(text, { mentions: mentions.filter(Boolean) });
-          break;
-        }
-
-        /* ---------- PER-GROUP ALLOW / BLOCK (Option A) ---------- */
-        case 'allow':
-        case 'whitelistadd': {
-          // args[0] is number
-          if (!args[0]) { await safeSend(message.from, 'Usage: !allow 234801234567'); break; }
-          const jid = formatJid(args[0]);
-          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
-          // upsert permission doc for this group
-          const chatId = message.from;
-          await GroupPermission.updateOne(
-            { botUserId: sessionId, groupId: chatId },
-            { $addToSet: { allowed: jid }, $pull: { blocked: jid } },
-            { upsert: true }
-          );
-          await safeSend(message.from, `✅ ${jid} added to whitelist for this group.`);
-          break;
-        }
-
-        case 'unallow': {
-          if (!args[0]) { await safeSend(message.from, 'Usage: !unallow 234801234567'); break; }
-          const jid = formatJid(args[0]);
-          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
-          const chatId = message.from;
-          await GroupPermission.updateOne(
-            { botUserId: sessionId, groupId: chatId },
-            { $pull: { allowed: jid } },
-            { upsert: true }
-          );
-          await safeSend(message.from, `✅ ${jid} removed from whitelist.`);
-          break;
-        }
-
-        case 'deny':
-        case 'block': {
-          if (!args[0]) { await safeSend(message.from, 'Usage: !deny 234801234567'); break; }
-          const jid = formatJid(args[0]);
-          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
-          const chatId = message.from;
-          await GroupPermission.updateOne(
-            { botUserId: sessionId, groupId: chatId },
-            { $addToSet: { blocked: jid }, $pull: { allowed: jid } },
-            { upsert: true }
-          );
-          await safeSend(message.from, `⛔ ${jid} added to blocklist for this group.`);
-          break;
-        }
-
-        case 'unblock': {
-          if (!args[0]) { await safeSend(message.from, 'Usage: !unblock 234801234567'); break; }
-          const jid = formatJid(args[0]);
-          if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
-          const chatId = message.from;
-          await GroupPermission.updateOne(
-            { botUserId: sessionId, groupId: chatId },
-            { $pull: { blocked: jid } },
-            { upsert: true }
-          );
-          await safeSend(message.from, `✅ ${jid} removed from blocklist.`);
-          break;
-        }
-
-        case 'whitelist': {
-          const chatId = message.from;
-          const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
-          const list = (doc && Array.isArray(doc.allowed)) ? doc.allowed : [];
-          await safeSend(message.from, `📜 Whitelist:\n\n${list.join('\n') || 'No entries'}`);
-          break;
-        }
-
-        case 'blocklist': {
-          const chatId = message.from;
-          const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
-          const list = (doc && Array.isArray(doc.blocked)) ? doc.blocked : [];
-          await safeSend(message.from, `📵 Blocklist:\n\n${list.join('\n') || 'No entries'}`);
-          break;
-        }
-
-        /* ---------- FORWARDING ---------- */
-
-        case 'forwardall': {
-          // must be reply to a message
-          if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message you want to forward and run `!forwardall`.'); break; }
-          const quoted = await message.getQuotedMessage();
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
-          const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-          const targets = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
-          await safeSend(message.from, `🔁 Forwarding to ${targets.length} members. This may take some time.`);
-          for (const t of targets) {
-            try {
-              if (quoted.hasMedia) {
-                const media = await quoted.downloadMedia();
-                await client.sendMessage(t, media, { caption: quoted.body || '' });
-              } else {
-                await client.sendMessage(t, quoted.body || '');
-              }
-              // small throttle
-              await new Promise(r => setTimeout(r, 200));
-            } catch (e) {
-              logger.error(`[${sessionName}] forwardall -> ${t}`, e.message || e);
-            }
-          }
-          await safeSend(message.from, '✅ Forwarding complete.');
-          break;
-        }
-
-        case 'forward': {
-          if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message to forward and provide targets.'); break; }
-          const quoted = await message.getQuotedMessage();
-          const chat = await client.getChatById(message.from);
-          if (!chat || !chat.isGroup) { await safeSend(message.from, '❌ This command must be run inside a group.'); break; }
-
-          // parse args as targets: @numbers, indexes 1,3,5 or raw numbers
-          const raw = args.join(' ');
-          let targets = [];
-          const atMatches = raw.match(/@?(\d{6,20})/g);
-          if (atMatches && atMatches.length) {
-            targets = atMatches.map(m => `${m.replace(/[^0-9]/g,'')}@c.us`);
-          } else if (/^[0-9,\s]+$/.test(raw) && raw.trim().length) {
-            const idxs = raw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-            const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-            targets = idxs.map(i => parts[i-1] && parts[i-1].id._serialized).filter(Boolean);
-          } else {
-            const nums = raw.split(',').map(s => s.replace(/[^0-9]/g,'')).filter(s => s.length>5);
-            if (nums.length) targets = nums.map(n => `${n}@c.us`);
-          }
-
-          if (!targets.length) { await safeSend(message.from, '❗ Could not parse targets.'); break; }
-          await safeSend(message.from, `🔁 Forwarding to ${targets.length} recipients...`);
-          for (const t of targets) {
-            try {
-              if (quoted.hasMedia) {
-                const media = await quoted.downloadMedia();
-                await client.sendMessage(t, media, { caption: quoted.body || '' });
-              } else {
-                await client.sendMessage(t, quoted.body || '');
-              }
-              await new Promise(r => setTimeout(r, 200));
-            } catch (e) {
-              logger.error(`[${sessionName}] forward -> ${t}`, e.message || e);
-            }
-          }
-          await safeSend(message.from, '✅ Forwarding complete.');
-          break;
-        }
-
-        /* ---------- SCHEDULER (MongoDB-based) ---------- */
-
-        case 'schedule': {
-          // syntax: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>
-          // example: !schedule 10:00 group daily | Good morning!
-          const rest = full.slice(cmd.length).trim();
-          const pipeIndex = rest.indexOf('|');
-          if (pipeIndex === -1) {
-            await safeSend(message.from, 'Usage: !schedule HH:MM <group|dm> <once|daily|weekly> | <message>');
-            break;
-          }
-          const left = rest.slice(0, pipeIndex).trim();
-          const msgText = rest.slice(pipeIndex+1).trim();
-          const leftParts = left.split(/\s+/);
-          const time = leftParts[0];
-          const mode = leftParts[1] || 'group';
-          const repeat = leftParts[2] || 'once';
-          if (!/^\d{1,2}:\d{2}$/.test(time)) { await safeSend(message.from, 'Invalid time. Use HH:MM'); break; }
-          const nextRun = hhmmToNextDate(time);
-          const doc = new Schedule({
-            userId: sessionId,
-            chatId: message.from,
-            creator: message.author || message.from, // may be different shapes
-            mode,
-            targets: [],
-            message: msgText,
-            timeHHMM: time,
-            nextRun,
-            repeat,
-            active: true
-          });
-          await doc.save();
-          await safeSend(message.from, `✅ Schedule created. Next run: ${doc.nextRun.toLocaleString()}. ID: ${doc._id}`);
-          break;
-        }
-
-        case 'listschedules': {
-          const docs = await Schedule.find({ userId: sessionId, active: true }).sort({ nextRun: 1 }).limit(100).lean();
-          if (!docs.length) { await safeSend(message.from, 'No active schedules found.'); break; }
-          let out = '*📅 Schedules:*\n\n';
-          docs.forEach(d => out += `ID: ${d._id}\nNext: ${new Date(d.nextRun).toLocaleString()}\nMode: ${d.mode}\nRepeat: ${d.repeat}\nMessage: ${d.message}\n\n`);
-          await safeSend(message.from, out);
-          break;
-        }
-
-        case 'cancelschedule': {
-          if (!args[0]) { await safeSend(message.from, 'Usage: !cancelschedule <id>'); break; }
-          const id = args[0];
-          const doc = await Schedule.findOne({ _id: id, userId: sessionId });
-          if (!doc) { await safeSend(message.from, 'Schedule not found'); break; }
-          doc.active = false;
-          await doc.save();
-          await safeSend(message.from, `✅ Schedule ${id} cancelled`);
-          break;
-        }
-
-        default:
-          await safeSend(message.from, 'Unknown command. Try !help');
-      }
-
-    } catch (e) {
-      logger.error(`[${sessionName}] message handler error`, e);
     }
-  });
+    const mySelf = client.info?.wid?._serialized;
+
+    // determine sender: message.fromMe -> bot itself
+    const sender = message.fromMe ? mySelf : message.from;
+    const isSelfChat = sender === mySelf;
+
+    // react to group messages optionally (non-blocking)
+    if (!message.fromMe) {
+      try {
+        const chatCheck = await message.getChat().catch(()=>null);
+        if (chatCheck && chatCheck.isGroup) {
+          if ((chatCheck.participants || []).some(p => p.id._serialized === mySelf)) {
+            try { await message.react('🚗'); } catch {}
+          }
+        }
+      } catch {}
+    }
+
+    // Only handle commands sent in self-chat (DM to the bot)
+    // If someone types commands in group, ignore them.
+    if (!isSelfChat) {
+      // allow owners (if message.fromMe) or you can check allowed users here
+      // For now only allow self-chat commands, reply if someone tries in group:
+      // (If you want to allow owners to run commands from other numbers, modify this logic)
+      await safeSend(message.from, '❗ Please send commands to this bot in a private chat (your own chat with the bot).');
+      return;
+    }
+
+    if (!message.body.startsWith(COMMAND_PREFIX)) return;
+
+    // Parse command
+    const full = message.body.slice(COMMAND_PREFIX.length).trim();
+    const [cmdRaw, ...args] = full.split(/\s+/);
+    const cmd = (cmdRaw || '').toLowerCase();
+
+    // helper: fetch admin groups and save to DB
+    async function fetchAndSaveAdminGroups() {
+      let chats = await client.getChats();
+      if (chats.length < CHAT_SYNC_THRESHOLD) {
+        for (let i = 0; i < CHAT_SYNC_WAIT_ITER; i++) {
+          if (chats.length > CHAT_SYNC_THRESHOLD) break;
+          await new Promise(r => setTimeout(r, 500));
+          chats = await client.getChats();
+        }
+      }
+
+      const adminGroups = [];
+      for (const c of chats) {
+        if (!c.isGroup) continue;
+        const participants = c.participants?.length ? c.participants : await c.fetchParticipants().catch(()=>[]);
+        const amIAdmin = participants.some(p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
+        if (amIAdmin) adminGroups.push({ name: c.name || 'Unnamed group', groupId: c.id._serialized });
+      }
+
+      if (adminGroups.length) {
+        await SavedGroupList.findOneAndUpdate(
+          { sessionId },
+          { groups: adminGroups, updatedAt: new Date() },
+          { upsert: true }
+        );
+      }
+
+      return adminGroups;
+    }
+
+    // helper: resolve target group (index or default)
+    async function resolveTargetGroupArg(argIndex) {
+      // if caller provided an index (argIndex), use it
+      if (argIndex && !isNaN(argIndex)) {
+        const idx = parseInt(argIndex);
+        const group = await getGroupFromIndex(sessionId, idx);
+        return { index: idx, group };
+      }
+      // else use active default
+      const active = await getActiveGroup(sessionId);
+      if (active) {
+        return { index: active.index, group: { name: active.name, groupId: active.groupId } };
+      }
+      return { index: null, group: null };
+    }
+
+    // ------------ COMMANDS ------------
+    switch (cmd) {
+
+      case 'help':
+        await safeSend(message.from,
+`*Available Commands (DM -> group execution)*
+
+System:
+!help
+!ping
+!list        — list admin groups and SAVE in DB
+!use <n>    — set default active group by index (from !list)
+!unset     — clear default active group
+
+Group operations (use index or set default with !use):
+!tag <index>                 — mention everyone in target group
+!tagexcept <index> <1,2> ... — mention excluding listed member indexes
+!members <index>             — list members of target group
+!admins <index>              — list admins of target group
+
+Forwarding (reply to message):
+!forwardall <index>          — forward quoted message to all members
+!forward <index> <targets>   — forward to targets (indexes or @numbers)
+
+Permissions:
+!allow <index> <number>
+!unallow <index> <number>
+!deny <index> <number>
+!unblock <index> <number>
+!whitelist <index>
+!blocklist <index>
+
+Scheduling:
+!schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>
+!listschedules
+!cancelschedule <id>
+
+`
+        );
+        break;
+
+      case 'ping':
+        await safeSend(message.from, '🏓 Pong!');
+        break;
+
+      /* ---------- SAVE ADMIN GROUPS: !list ---------- */
+      case 'list': {
+        const adminGroups = await fetchAndSaveAdminGroups();
+        if (!adminGroups.length) {
+          await safeSend(message.from, '❌ You are not an admin in any group.');
+          break;
+        }
+        let out = '*📋 Groups Where You Are Admin:*\n\n';
+        adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.groupId}\n\n`);
+        out += '\nSet a default active group: `!use <index>`';
+        await safeSend(message.from, out);
+        break;
+      }
+
+      /* ---------- SET DEFAULT ACTIVE GROUP: !use ---------- */
+      case 'use': {
+        if (!args[0]) { await safeSend(message.from, 'Usage: !use <groupIndex>'); break; }
+        const idx = parseInt(args[0]);
+        if (isNaN(idx)) { await safeSend(message.from, 'Invalid index'); break; }
+        // ensure list exists
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) {
+          // try fetching and saving fresh list, then re-check
+          await fetchAndSaveAdminGroups();
+        }
+        const group2 = await getGroupFromIndex(sessionId, idx);
+        if (!group2) { await safeSend(message.from, 'Group not found. Run !list then try again.'); break; }
+        await setActiveGroup(sessionId, idx);
+        await safeSend(message.from, `✅ Default active group set to *${group2.name}* (index ${idx}).`);
+        break;
+      }
+
+      case 'unset': {
+        await ActiveGroup.deleteOne({ sessionId }).catch(()=>null);
+        await safeSend(message.from, '✅ Default active group cleared.');
+        break;
+      }
+
+      /* ---------- MEMBERS ---------- */
+      case 'members': {
+        // parse index or use active
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        let out = `*👥 Members of ${resolved.group.name}:*\n\n`;
+        parts.forEach((p,i)=> out += `${i+1}. ${p.id._serialized.split('@')[0]}\n`);
+        await safeSend(message.from, out);
+        break;
+      }
+
+      /* ---------- ADMINS ---------- */
+      case 'admins': {
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        const admins = parts.filter(p => p.isAdmin || p.isSuperAdmin);
+        if (!admins.length) { await safeSend(message.from, 'No admins detected.'); break; }
+        let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
+        admins.forEach((a,i)=> out += `${i+1}. ${a.id._serialized.split('@')[0]}\n`);
+        await safeSend(message.from, out);
+        break;
+      }
+
+      /* ---------- TAG ---------- */
+      case 'tag': {
+        // usage: !tag <index> OR !tag (use default)
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+
+        const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        const mentions = [];
+        // prepare mention Contact objects (these will be shown as mentions)
+        for (const p of participants) {
+          const contact = await client.getContactById(p.id._serialized).catch(()=>null);
+          if (contact) mentions.push(contact);
+        }
+
+        // optional custom message after index, e.g. "!tag 2 Meeting now"
+        const msgAfterIndex = (providedIdx ? args.slice(1) : args).join(' ').trim();
+        const text = msgAfterIndex || '*🔔 Attention everyone!*';
+
+        // send inside the group using mentions (WhatsApp will notify without showing raw numbers)
+        await client.sendMessage(resolved.group.groupId, text, { mentions });
+        await safeSend(message.from, `✅ Tag executed in *${resolved.group.name}* (index ${resolved.index}).`);
+        break;
+      }
+
+      /* ---------- TAGEXCEPT ---------- */
+      case 'tagexcept': {
+        // usage: !tagexcept <index> <1,2,3> [optional message]
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        if (!providedIdx) { await safeSend(message.from, 'Usage: !tagexcept <groupIndex> <comma-separated member indexes> [message]'); break; }
+        const membersArg = args[1] ? args[1] : '';
+        const excludeIdxs = membersArg.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        const allMembers = parts.map(p => p.id._serialized);
+
+        const mentions = [];
+        for (let i = 0; i < allMembers.length; i++) {
+          if (excludeIdxs.includes(i+1)) continue; // indexes are 1-based
+          const contact = await client.getContactById(allMembers[i]).catch(()=>null);
+          if (contact) mentions.push(contact);
+        }
+
+        const extraMessage = args.slice(2).join(' ').trim() || '*🔔 Attention (filtered)*';
+        await client.sendMessage(resolved.group.groupId, extraMessage, { mentions });
+        await safeSend(message.from, `✅ Filtered tag executed in *${resolved.group.name}*.`);
+        break;
+      }
+
+      /* ---------- FORWARDALL ---------- */
+      case 'forwardall': {
+        // usage: reply to a message in DM with !forwardall <index>
+        if (!message.hasQuotedMsg) { await safeSend(message.from, '❗ Reply to the message and run: !forwardall <groupIndex>'); break; }
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const quoted = await message.getQuotedMessage();
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        const targets = parts.map(p => p.id._serialized).filter(j => j !== mySelf);
+
+        await safeSend(message.from, `🔁 Forwarding to ${targets.length} members...`);
+        for (const t of targets) {
+          try {
+            if (quoted.hasMedia) {
+              const media = await quoted.downloadMedia();
+              await client.sendMessage(t, media, { caption: quoted.body || '' });
+            } else {
+              await client.sendMessage(t, quoted.body || '');
+            }
+            await new Promise(r=>setTimeout(r,200));
+          } catch (e) {
+            logger.error(`[${sessionName}] forwardall -> ${t}`, e.message || e);
+          }
+        }
+        await safeSend(message.from, '✅ Forwarding complete.');
+        break;
+      }
+
+      /* ---------- FORWARD ---------- */
+      case 'forward': {
+        // usage: reply to a message then: !forward <groupIndex> <targets>
+        if (!message.hasQuotedMsg) { await safeSend(message.from,'❗ Reply with !forward <groupIndex> <targets>'); break; }
+        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const rawTargets = args.slice(providedIdx ? 1 : 0).join(' ');
+        const resolved = await resolveTargetGroupArg(providedIdx);
+        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+        const quoted = await message.getQuotedMessage();
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+
+        // parse targets: indexes or @numbers
+        let targets = [];
+        const atMatches = rawTargets.match(/@?(\d{6,20})/g);
+        if (atMatches) {
+          targets = atMatches.map(m => `${m.replace(/[^0-9]/g,'')}@c.us`);
+        } else if (/^[0-9,\s]+$/.test(rawTargets) && rawTargets.trim()) {
+          const idxs = rawTargets.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+          targets = idxs.map(i => parts[i-1] && parts[i-1].id._serialized).filter(Boolean);
+        } else {
+          const nums = rawTargets.split(',').map(s => s.replace(/[^0-9]/g,'')).filter(s => s.length>5);
+          if (nums.length) targets = nums.map(n => `${n}@c.us`);
+        }
+
+        if (!targets.length) { await safeSend(message.from, '❗ Could not parse targets.'); break; }
+
+        await safeSend(message.from, `🔁 Forwarding to ${targets.length} recipients...`);
+        for (const t of targets) {
+          try {
+            if (quoted.hasMedia) {
+              const media = await quoted.downloadMedia();
+              await client.sendMessage(t, media, { caption: quoted.body || '' });
+            } else {
+              await client.sendMessage(t, quoted.body || '');
+            }
+            await new Promise(r=>setTimeout(r,200));
+          } catch (e) {
+            logger.error(`[${sessionName}] forward -> ${t}`, e.message || e);
+          }
+        }
+        await safeSend(message.from, '✅ Forwarding complete.');
+        break;
+      }
+
+      /* ---------- PER-GROUP ALLOW / DENY ---------- */
+      case 'allow':
+      case 'whitelistadd': {
+        // usage: !allow <groupIndex> <234801234567>
+        if (!args[0] || !args[1]) { await safeSend(message.from, 'Usage: !allow <groupIndex> <number>'); break; }
+        const idx = parseInt(args[0]);
+        if (isNaN(idx)) { await safeSend(message.from, 'Invalid group index.'); break; }
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from, 'Group not found. Run !list.'); break; }
+        const jid = formatJid(args[1]);
+        if (!jid) { await safeSend(message.from, 'Invalid number'); break; }
+        await GroupPermission.updateOne(
+          { botUserId: sessionId, groupId: group.groupId },
+          { $addToSet: { allowed: jid }, $pull: { blocked: jid } },
+          { upsert: true }
+        );
+        await safeSend(message.from, `✅ ${jid} added to whitelist for ${group.name}.`);
+        break;
+      }
+
+      case 'unallow': {
+        // usage: !unallow <groupIndex> <number>
+        if (!args[0] || !args[1]) { await safeSend(message.from,'Usage: !unallow <groupIndex> <number>'); break; }
+        const idx = parseInt(args[0]);
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from,'Group not found'); break; }
+        const jid = formatJid(args[1]);
+        await GroupPermission.updateOne(
+          { botUserId: sessionId, groupId: group.groupId },
+          { $pull: { allowed: jid } },
+          { upsert: true }
+        );
+        await safeSend(message.from, `✅ ${jid} removed from whitelist for ${group.name}.`);
+        break;
+      }
+
+      case 'deny':
+      case 'block': {
+        // usage: !deny <groupIndex> <number>
+        if (!args[0] || !args[1]) { await safeSend(message.from,'Usage: !deny <groupIndex> <number>'); break; }
+        const idx = parseInt(args[0]);
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from,'Group not found'); break; }
+        const jid = formatJid(args[1]);
+        await GroupPermission.updateOne(
+          { botUserId: sessionId, groupId: group.groupId },
+          { $addToSet: { blocked: jid }, $pull: { allowed: jid } },
+          { upsert: true }
+        );
+        await safeSend(message.from, `⛔ ${jid} added to blocklist for ${group.name}.`);
+        break;
+      }
+
+      case 'unblock': {
+        if (!args[0] || !args[1]) { await safeSend(message.from,'Usage: !unblock <groupIndex> <number>'); break; }
+        const idx = parseInt(args[0]);
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from,'Group not found'); break; }
+        const jid = formatJid(args[1]);
+        await GroupPermission.updateOne(
+          { botUserId: sessionId, groupId: group.groupId },
+          { $pull: { blocked: jid } },
+          { upsert: true }
+        );
+        await safeSend(message.from, `✅ ${jid} removed from blocklist for ${group.name}.`);
+        break;
+      }
+
+      case 'whitelist': {
+        if (!args[0]) { await safeSend(message.from,'Usage: !whitelist <groupIndex>'); break; }
+        const idx = parseInt(args[0]);
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from,'Group not found'); break; }
+        const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: group.groupId }).lean().catch(()=>null);
+        const list = (doc && Array.isArray(doc.allowed)) ? doc.allowed : [];
+        await safeSend(message.from, `📜 Whitelist for ${group.name}:\n\n${list.join('\n') || 'No entries'}`);
+        break;
+      }
+
+      case 'blocklist': {
+        if (!args[0]) { await safeSend(message.from,'Usage: !blocklist <groupIndex>'); break; }
+        const idx = parseInt(args[0]);
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from,'Group not found'); break; }
+        const doc = await GroupPermission.findOne({ botUserId: sessionId, groupId: group.groupId }).lean().catch(()=>null);
+        const list = (doc && Array.isArray(doc.blocked)) ? doc.blocked : [];
+        await safeSend(message.from, `📵 Blocklist for ${group.name}:\n\n${list.join('\n') || 'No entries'}`);
+        break;
+      }
+
+      /* ---------- SCHEDULER (same but uses group index) ---------- */
+      case 'schedule': {
+        // syntax: !schedule <groupIndex> HH:MM <group|dm> <once|daily|weekly> | <message>
+        // example: !schedule 2 10:00 group daily | Good morning!
+        const rest = full.slice(cmd.length).trim();
+        const pipeIndex = rest.indexOf('|');
+        if (pipeIndex === -1) {
+          await safeSend(message.from, 'Usage: !schedule <groupIndex> HH:MM <group|dm> <once|daily|weekly> | <message>');
+          break;
+        }
+        const left = rest.slice(0, pipeIndex).trim();
+        const msgText = rest.slice(pipeIndex+1).trim();
+        const leftParts = left.split(/\s+/);
+
+        const idx = leftParts[0] && !isNaN(leftParts[0]) ? parseInt(leftParts[0]) : null;
+        if (!idx) { await safeSend(message.from, 'You must supply a group index as the first argument'); break; }
+        const time = leftParts[1];
+        const mode = leftParts[2] || 'group';
+        const repeat = leftParts[3] || 'once';
+
+        if (!/^\d{1,2}:\d{2}$/.test(time)) { await safeSend(message.from, 'Invalid time. Use HH:MM'); break; }
+
+        const group = await getGroupFromIndex(sessionId, idx);
+        if (!group) { await safeSend(message.from, 'Group not found. Run !list.'); break; }
+
+        const nextRun = hhmmToNextDate(time);
+        const doc = new Schedule({
+          userId: sessionId,
+          chatId: group.groupId,
+          creator: message.author || message.from,
+          mode,
+          targets: [],
+          message: msgText,
+          timeHHMM: time,
+          nextRun,
+          repeat,
+          active: true
+        });
+        await doc.save();
+        await safeSend(message.from, `✅ Schedule created for ${group.name}. Next run: ${doc.nextRun.toLocaleString()}. ID: ${doc._id}`);
+        break;
+      }
+
+      case 'listschedules': {
+        const docs = await Schedule.find({ userId: sessionId, active: true }).sort({ nextRun: 1 }).limit(100).lean();
+        if (!docs.length) { await safeSend(message.from, 'No active schedules found.'); break; }
+        let out = '*📅 Schedules:*\n\n';
+        docs.forEach(d => out += `ID: ${d._id}\nNext: ${new Date(d.nextRun).toLocaleString()}\nMode: ${d.mode}\nRepeat: ${d.repeat}\nMessage: ${d.message}\n\n`);
+        await safeSend(message.from, out);
+        break;
+      }
+
+      case 'cancelschedule': {
+        if (!args[0]) { await safeSend(message.from, 'Usage: !cancelschedule <id>'); break; }
+        const id = args[0];
+        const doc = await Schedule.findOne({ _id: id, userId: sessionId });
+        if (!doc) { await safeSend(message.from, 'Schedule not found'); break; }
+        doc.active = false;
+        await doc.save();
+        await safeSend(message.from, `✅ Schedule ${id} cancelled`);
+        break;
+      }
+
+      default:
+        await safeSend(message.from, 'Unknown command. Try !help');
+    }
+
+  } catch (e) {
+    logger.error(`[${sessionName}] message handler error`, e);
+  }
+});
+
 
   // error handler
   client.on('error', (err) => {
