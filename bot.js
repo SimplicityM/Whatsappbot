@@ -1029,48 +1029,68 @@ case 'help': {
     if (!isSelfChat) return;
 
     const text = `
-🌟 *WHATSAPP BOT COMMANDS* 🌟
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✨ *TAGTHEMALL BOT COMMANDS* ✨
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 *Group Management*
-• !list — groups where you’re admin
-• !listall — all groups you belong to
-• !members <groupIndex>
-• !admins <groupIndex>
-• !mygroups — groups you created
+📋 *GROUP MANAGEMENT*
+• !list — Groups where you're an admin
+• !listall — All groups you're a member of
+• !use <index> — Set active group
+• !members <groupIndex> — Show group members
+• !admins <groupIndex> — Show admins
+• !mygroups — Groups you created
 
-👥 *Tagging*
-• !tag <groupIndex>
+👥 *TAGGING TOOLS*
+• !tag <groupIndex> — Tag all members
 • !tagexcept <groupIndex> <excluded>
    Examples:
-   - !tagexcept 2 @mary @john Meeting starts soon
-   - !tagexcept 3 08123456789
-   - !tagexcept 1 1,3,5
+     - !tagexcept 2 @john @mary
+     - !tagexcept 4 08123456789
+     - !tagexcept 1 1,3,5   (index skip)
 
-🔁 *Forwarding*
-• !forwardall (reply)
-• !forward <targets>
+   ✔ Supports: @mentions, phone numbers, DB cache
+   ✔ Works with 700+ member groups & communities
 
-🔐 *Permissions*
+📨 *DIRECT MESSAGING*
+• !dmall <groupIndex> | <message>
+• !dmselected <groupIndex> <targets> | <message>
+   Accepted target formats:
+   - @mentions
+   - 08123456789 / 2348012345678
+   - index list: 1,3,5
+
+🔁 *FORWARDING TOOLS*
+• (reply) !forwardall <groupIndex>
+• (reply) !forward <groupIndex> <targets>
+
+🔐 *PERMISSION CONTROLS*
 • !allow <number>
 • !deny <number>
-• !whitelist
-• !blocklist
+• !whitelist — Show allowed users
+• !blocklist — Show blocked users
 • !unallow <number>
 • !unblock <number>
 
-⏰ *Scheduler*
+⏰ *SCHEDULER*
 • !schedule HH:MM mode repeat | message
 • !listschedules
 • !cancelschedule <id>
 
-⚙ *System*
-• !ping
-• !help
+🗄 *SYSTEM & UTILITIES*
+• !ping — Check bot status
+• !cleanupcache — Rebuild group cache
+• !help — Show this help menu
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 *TIP:* You can type !tag without index if you used !use before.
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
 
     await safeSend(message.from, text);
     break;
 }
+
 
       case 'ping':
         await safeSend(message.from, '🏓 Pong!');
