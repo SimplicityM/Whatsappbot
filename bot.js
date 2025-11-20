@@ -406,45 +406,6 @@ if (message.body.startsWith(COMMAND_PREFIX)) {
 
     // ------------ COMMANDS ------------
     switch (cmd) {
-
-//       case 'help':
-//         await safeSend(message.from,
-// `*Available Commands (DM -> group execution)*
-
-// System:
-// !help
-// !ping
-// !list        — list admin groups and SAVE in DB
-// !use <n>    — set default active group by index (from !list)
-// !unset     — clear default active group
-
-// Group operations (use index or set default with !use):
-// !tag <index>                 — mention everyone in target group
-// !tagexcept <index> <1,2> ... — mention excluding listed member indexes
-// !members <index>             — list members of target group
-// !admins <index>              — list admins of target group
-
-// Forwarding (reply to message):
-// !forwardall <index>          — forward quoted message to all members
-// !forward <index> <targets>   — forward to targets (indexes or @numbers)
-
-// Permissions:
-// !allow <index> <number>
-// !unallow <index> <number>
-// !deny <index> <number>
-// !unblock <index> <number>
-// !whitelist <index>
-// !blocklist <index>
-
-// Scheduling:
-// !schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>
-// !listschedules
-// !cancelschedule <id>
-
-// `
-//         );
-//         break;
-
 case 'help': {
     if (!isSelfChat) return;
 
@@ -534,6 +495,181 @@ case 'help': {
         break;
       }
 
+      /* ---------- DMALL ---------- */
+case 'dmall': {
+    if (!isSelfChat) return;
+
+    // usage: !dmall <groupIndex> | <message>
+    const full = args.join(' ');
+    const pipeIndex = full.indexOf('|');
+    if (pipeIndex === -1) {
+        await safeSend(message.from,
+            'Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone'
+        );
+        break;
+    }
+
+    const groupIndex = parseInt(full.slice(0, pipeIndex).trim());
+    const msgText = full.slice(pipeIndex + 1).trim();
+
+    if (!groupIndex || !msgText) {
+        await safeSend(message.from, '❗ Missing group index or message.');
+        break;
+    }
+
+    const resolved = await resolveTargetGroupArg(groupIndex);
+    if (!resolved.group) {
+        await safeSend(message.from, '❌ Invalid group.');
+        break;
+    }
+
+    // Fetch group members
+    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    const allJids = parts.map(p => p.id._serialized);
+
+    let delivered = 0;
+
+    for (const jid of allJids) {
+        if (jid === mySelf) continue;
+        try {
+            await client.sendMessage(jid, msgText);
+            delivered++;
+        } catch {}
+        await new Promise(r => setTimeout(r, 300)); // throttle
+    }
+
+    await safeSend(
+        message.from,
+        `📩 *DM-all complete!*  
+Message delivered individually to **${delivered}** members of *${resolved.group.name}*.`
+    );
+
+    break;
+}
+
+/* ---------- DMSELECTED ---------- */
+case 'dmselected': {
+    if (!isSelfChat) return;
+
+    // Usage:
+    // !dmselected <groupIndex> <targets> | <message>
+    // Examples:
+    // !dmselected 2 @john @mary | Private notice
+    // !dmselected 1 08123456789 3 | Meeting now
+    // !dmselected 3 1,3,5 2348011223344 | Confidential
+
+    if (!args.length) {
+        await safeSend(message.from,
+`Usage:
+!dmselected <groupIndex> <targets> | <message>
+
+Examples:
+!dmselected 2 @john @mary | Private meeting
+!dmselected 1 08123456789 3 | Hello
+!dmselected 3 1,3,5 | Important update`);
+        break;
+    }
+
+    // 1️⃣ Group index
+    const groupIndex = parseInt(args[0]);
+    if (isNaN(groupIndex)) {
+        await safeSend(message.from, '❗ First argument must be group index.\nExample: !dmselected 2 @john | hello');
+        break;
+    }
+
+    // 2️⃣ Resolve group
+    const resolved = await resolveTargetGroupArg(groupIndex);
+    if (!resolved.group) {
+        await safeSend(message.from, '❌ Invalid group index. Run !list');
+        break;
+    }
+
+    // 3️⃣ Parse rest of command
+    const full = args.slice(1).join(' ');
+    const pipeIndex = full.indexOf('|');
+    if (pipeIndex === -1) {
+        await safeSend(message.from, '❗ Missing message. Use: | <message>');
+        break;
+    }
+
+    const targetPart = full.slice(0, pipeIndex).trim();
+    const msgText = full.slice(pipeIndex + 1).trim();
+
+    if (!msgText) {
+        await safeSend(message.from, '❗ The message after "|" cannot be empty.');
+        break;
+    }
+
+    // 4️⃣ Fetch group participants
+    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    if (!chat) {
+        await safeSend(message.from, '❌ Could not fetch group.');
+        break;
+    }
+
+    const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    const allJids = parts.map(p => p.id._serialized);
+
+    // 5️⃣ Parse targets (mentions, numbers, indexes)
+    const targetSet = new Set();
+
+    const tokens = targetPart.split(/\s+/);
+
+    for (const token of tokens) {
+
+        // A: Mentions (@username)
+        if (token.includes('@')) {
+            const num = token.replace(/[^0-9]/g, '');
+            if (num.length > 5) targetSet.add(num + '@c.us');
+        }
+
+        // B: Phone numbers
+        else if (/^\d+$/.test(token) && token.length >= 7) {
+            const formatted = token.startsWith('234') ? token : '234' + token;
+            targetSet.add(formatted + '@c.us');
+        }
+
+        // C: Index list (1,3,5)
+        else if (/^\d+(,\d+)*$/.test(token)) {
+            token.split(',').map(n => parseInt(n)).forEach(i => {
+                const jid = allJids[i - 1];
+                if (jid) targetSet.add(jid);
+            });
+        }
+    }
+
+    if (!targetSet.size) {
+        await safeSend(message.from, '❗ No valid targets detected.');
+        break;
+    }
+
+    // 6️⃣ Send private messages
+    let delivered = 0;
+
+    for (const jid of targetSet) {
+        if (jid === mySelf) continue;
+
+        try {
+            await client.sendMessage(jid, msgText);
+            delivered++;
+        } catch {}
+
+        await new Promise(r => setTimeout(r, 300)); // anti-spam throttle
+    }
+
+    // 7️⃣ Confirm to sender
+    await safeSend(
+        message.from,
+        `📨 *DM-Selected Completed*  
+Sent to **${delivered}** members in *${resolved.group.name}*.`
+    );
+
+    break;
+}
+
+
+
       /* ---------- MEMBERS ---------- */
       case 'members': {
         // parse index or use active
@@ -567,61 +703,194 @@ case 'help': {
         break;
       }
 
-      /* ---------- TAG ---------- */
-      case 'tag': {
-        // usage: !tag <index> OR !tag (use default)
-        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-        const resolved = await resolveTargetGroupArg(providedIdx);
-        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+      // /* ---------- TAG ---------- */
+      // case 'tag': {
+      //   // usage: !tag <index> OR !tag (use default)
+      //   const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+      //   const resolved = await resolveTargetGroupArg(providedIdx);
+      //   if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
 
-        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
-        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+      //   const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+      //   if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
 
-        const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-        const mentions = [];
-        // prepare mention Contact objects (these will be shown as mentions)
-        for (const p of participants) {
-          const contact = await client.getContactById(p.id._serialized).catch(()=>null);
-          if (contact) mentions.push(contact);
+      //   const participants = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+      //   const mentions = [];
+      //   // prepare mention Contact objects (these will be shown as mentions)
+      //   for (const p of participants) {
+      //     const contact = await client.getContactById(p.id._serialized).catch(()=>null);
+      //     if (contact) mentions.push(contact);
+      //   }
+
+      //   // optional custom message after index, e.g. "!tag 2 Meeting now"
+      //   const msgAfterIndex = (providedIdx ? args.slice(1) : args).join(' ').trim();
+      //   const text = msgAfterIndex || '*🔔 Attention everyone!*';
+
+      //   // send inside the group using mentions (WhatsApp will notify without showing raw numbers)
+      //   await client.sendMessage(resolved.group.groupId, text, { mentions });
+      //   await safeSend(message.from, `✅ Tag executed in *${resolved.group.name}* (index ${resolved.index}).`);
+      //   break;
+      // }
+
+      // /* ---------- TAGEXCEPT ---------- */
+      // case 'tagexcept': {
+      //   // usage: !tagexcept <index> <1,2,3> [optional message]
+      //   const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+      //   if (!providedIdx) { await safeSend(message.from, 'Usage: !tagexcept <groupIndex> <comma-separated member indexes> [message]'); break; }
+      //   const membersArg = args[1] ? args[1] : '';
+      //   const excludeIdxs = membersArg.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+      //   const resolved = await resolveTargetGroupArg(providedIdx);
+      //   if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
+
+      //   const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+      //   if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
+      //   const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+      //   const allMembers = parts.map(p => p.id._serialized);
+
+      //   const mentions = [];
+      //   for (let i = 0; i < allMembers.length; i++) {
+      //     if (excludeIdxs.includes(i+1)) continue; // indexes are 1-based
+      //     const contact = await client.getContactById(allMembers[i]).catch(()=>null);
+      //     if (contact) mentions.push(contact);
+      //   }
+
+      //   const extraMessage = args.slice(2).join(' ').trim() || '*🔔 Attention (filtered)*';
+      //   await client.sendMessage(resolved.group.groupId, extraMessage, { mentions });
+      //   await safeSend(message.from, `✅ Filtered tag executed in *${resolved.group.name}*.`);
+      //   break;
+      // }
+/* ---------- TAG ---------- */
+case 'tag': {
+    if (!isSelfChat) return;
+
+    // usage: !tag <index> OR !tag (use default)
+    const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+    const resolved = await resolveTargetGroupArg(providedIdx);
+
+    if (!resolved.group) {
+        await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
+        break;
+    }
+
+    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    if (!chat) {
+        await safeSend(message.from, '❌ Could not fetch group chat.');
+        break;
+    }
+
+    const participants = chat.participants?.length
+        ? chat.participants
+        : await chat.fetchParticipants().catch(() => []);
+
+    const mentions = [];
+    for (const p of participants) {
+        const contact = await client.getContactById(p.id._serialized).catch(() => null);
+        if (contact) mentions.push(contact);
+    }
+
+    const msgAfterIndex = (providedIdx ? args.slice(1) : args).join(' ').trim();
+    const text = msgAfterIndex || '*🔔 Attention everyone!*';
+
+    await client.sendMessage(resolved.group.groupId, text, { mentions });
+
+    await safeSend(
+        message.from,
+        `✅ Tag executed in *${resolved.group.name}* (index ${resolved.index}).`
+    );
+    break;
+}
+
+/* ---------- TAGEXCEPT ---------- */
+case 'tagexcept': {
+    if (!isSelfChat) return;
+
+    // First argument = group index
+    const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+    if (!providedIdx) {
+        await safeSend(message.from,
+            '❗ Usage: !tagexcept <groupIndex> <excluded> [optional message]\nExamples:\n' +
+            '!tagexcept 2 @john @mary\n!tagexcept 2 08123456789\n!tagexcept 2 1,3,5'
+        );
+        break;
+    }
+
+    // Resolve target group
+    const resolved = await resolveTargetGroupArg(providedIdx);
+    if (!resolved.group) {
+        await safeSend(message.from, '❌ No target group found. Use !list or !use <index>');
+        break;
+    }
+
+    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    if (!chat) {
+        await safeSend(message.from, '❌ Could not fetch group chat.');
+        break;
+    }
+
+    const participants = chat.participants?.length
+        ? chat.participants
+        : await chat.fetchParticipants().catch(() => []);
+
+    const participantJIDs = participants.map(p => p.id._serialized);
+
+    // ------------------------------
+    // 1️⃣ Parse exclusion list (mentions, phone numbers, indexes)
+    // ------------------------------
+    const excludedSet = new Set();
+
+    const exclusionArgs = args.slice(1); // all arguments after group index
+
+    for (const part of exclusionArgs) {
+        // A: Mentions (@username)
+        if (part.includes('@')) {
+            const num = part.replace(/[^0-9]/g, '');
+            if (num.length > 5) excludedSet.add(`${num}@c.us`);
         }
 
-        // optional custom message after index, e.g. "!tag 2 Meeting now"
-        const msgAfterIndex = (providedIdx ? args.slice(1) : args).join(' ').trim();
-        const text = msgAfterIndex || '*🔔 Attention everyone!*';
-
-        // send inside the group using mentions (WhatsApp will notify without showing raw numbers)
-        await client.sendMessage(resolved.group.groupId, text, { mentions });
-        await safeSend(message.from, `✅ Tag executed in *${resolved.group.name}* (index ${resolved.index}).`);
-        break;
-      }
-
-      /* ---------- TAGEXCEPT ---------- */
-      case 'tagexcept': {
-        // usage: !tagexcept <index> <1,2,3> [optional message]
-        const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-        if (!providedIdx) { await safeSend(message.from, 'Usage: !tagexcept <groupIndex> <comma-separated member indexes> [message]'); break; }
-        const membersArg = args[1] ? args[1] : '';
-        const excludeIdxs = membersArg.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-        const resolved = await resolveTargetGroupArg(providedIdx);
-        if (!resolved.group) { await safeSend(message.from, 'No target group found. Run !list or set a default with !use'); break; }
-
-        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
-        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
-        const allMembers = parts.map(p => p.id._serialized);
-
-        const mentions = [];
-        for (let i = 0; i < allMembers.length; i++) {
-          if (excludeIdxs.includes(i+1)) continue; // indexes are 1-based
-          const contact = await client.getContactById(allMembers[i]).catch(()=>null);
-          if (contact) mentions.push(contact);
+        // B: Phone numbers (081..., 090..., 234...)
+        else if (/^\d+$/.test(part) && part.length >= 7) {
+            const formatted = part.startsWith('234')
+                ? `${part}@c.us`
+                : `234${part}@c.us`;
+            excludedSet.add(formatted);
         }
 
-        const extraMessage = args.slice(2).join(' ').trim() || '*🔔 Attention (filtered)*';
-        await client.sendMessage(resolved.group.groupId, extraMessage, { mentions });
-        await safeSend(message.from, `✅ Filtered tag executed in *${resolved.group.name}*.`);
-        break;
-      }
+        // C: Old index system (1,3,4)
+        else if (/^\d+(,\d+)*$/.test(part)) {
+            const indexes = part.split(',').map(n => parseInt(n.trim()));
+            for (const idx of indexes) {
+                const jid = participantJIDs[idx - 1];
+                if (jid) excludedSet.add(jid);
+            }
+        }
+    }
+
+    // ------------------------------
+    // 2️⃣ Build mention list (everyone except excluded)
+    // ------------------------------
+    const mentions = [];
+    for (const jid of participantJIDs) {
+        if (!excludedSet.has(jid)) {
+            const contact = await client.getContactById(jid).catch(() => null);
+            if (contact) mentions.push(contact);
+        }
+    }
+
+    // ------------------------------
+    // 3️⃣ Send final message to group
+    // ------------------------------
+    const optionalMessageIndex = 1 + exclusionArgs.length;
+    const customMsg = args.slice(optionalMessageIndex).join(' ').trim()
+        || '*🔔 Attention (filtered)*';
+
+    await client.sendMessage(resolved.group.groupId, customMsg, { mentions });
+
+    await safeSend(
+        message.from,
+        `✅ Tag-except executed in *${resolved.group.name}*.\nExcluded: ${[...excludedSet].join(', ') || 'none'}`
+    );
+    break;
+}
+
 
       /* ---------- FORWARDALL ---------- */
       case 'forwardall': {

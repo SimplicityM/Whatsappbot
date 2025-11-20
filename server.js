@@ -52,6 +52,37 @@ app.use(cors({
     credentials: true
 }));
 
+// Middleware to check trial expiration
+const checkTrialExpiration = async (req, res, next) => {
+    try {
+        if (req.user && req.user.paymentStatus === 'trial') {
+            const now = new Date();
+            const expiry = new Date(req.user.subscriptionExpiry);
+            
+            // If trial expired, update status
+            if (expiry < now) {
+                req.user.paymentStatus = 'expired';
+                await req.user.save();
+                
+                return res.status(403).json({
+                    success: false,
+                    message: 'Your free trial has expired. Please subscribe to continue.',
+                    code: 'TRIAL_EXPIRED',
+                    redirectTo: '/pricing.html'
+                });
+            }
+        }
+        next();
+    } catch (error) {
+        console.error('Trial check error:', error);
+        next();
+    }
+};
+
+// Apply to protected routes
+app.use('/api/bot/*', authenticate, checkTrialExpiration);
+app.use('/api/sessions/*', authenticate, checkTrialExpiration);
+
 
 // Content Security Policy
 app.use((req, res, next) => {
@@ -778,15 +809,43 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
 });
 
 // Payment endpoints
+// app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
+//     try {
+//         const user = await User.findById(req.user.id);
+//         res.json({
+//             success: true,
+//             data: {
+//                 subscription: user.subscription,
+//                 paymentStatus: 'active',
+//                 daysRemaining: 30,
+//                 limits: subscriptionPlans[user.subscription]
+//             }
+//         });
+//     } catch (error) {
+//         res.status(500).json({ success: false, message: 'Error fetching subscription status' });
+//     }
+// });
+
 app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
+        
+        // Calculate real days remaining
+        let daysRemaining = 0;
+        if (user.subscriptionExpiry) {
+            const now = new Date();
+            const expiry = new Date(user.subscriptionExpiry);
+            const diffTime = expiry - now;
+            daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        }
+        
         res.json({
             success: true,
             data: {
                 subscription: user.subscription,
-                paymentStatus: 'active',
-                daysRemaining: 30,
+                paymentStatus: user.paymentStatus || 'trial',
+                daysRemaining: daysRemaining,
+                subscriptionExpiry: user.subscriptionExpiry,
                 limits: subscriptionPlans[user.subscription]
             }
         });

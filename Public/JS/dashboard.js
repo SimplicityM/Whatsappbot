@@ -1226,26 +1226,148 @@ async function loadSubscriptionInfo() {
     }
 }
 
+// function updateSubscriptionDisplay() {
+//     if (!userSubscription) return;
+
+//     const elements = {
+//         currentPlan: document.getElementById('currentPlan'),
+//         paymentStatus: document.getElementById('paymentStatus'),
+//         expiryDate: document.getElementById('expiryDate'),
+//         maxSessions: document.getElementById('maxSessions'),
+//         planDaysLeft: document.getElementById('planDaysLeft'),
+//         planStatus: document.getElementById('planStatus'),
+//         sessionLimit: document.getElementById('sessionLimit')
+//     };
+
+//     if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
+//     if (elements.paymentStatus) elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
+//     if (elements.expiryDate) elements.expiryDate.textContent = userSubscription.daysRemaining ? `${userSubscription.daysRemaining} days` : 'Never';
+//     if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
+//     if (elements.planDaysLeft) elements.planDaysLeft.textContent = userSubscription.daysRemaining || 0;
+//     if (elements.planStatus) elements.planStatus.textContent = userSubscription.subscription || 'Free';
+//     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+// }
+
 function updateSubscriptionDisplay() {
     if (!userSubscription) return;
 
-    const elements = {
-        currentPlan: document.getElementById('currentPlan'),
-        paymentStatus: document.getElementById('paymentStatus'),
-        expiryDate: document.getElementById('expiryDate'),
-        maxSessions: document.getElementById('maxSessions'),
-        planDaysLeft: document.getElementById('planDaysLeft'),
-        planStatus: document.getElementById('planStatus'),
-        sessionLimit: document.getElementById('sessionLimit')
-    };
-
+    const daysLeft = userSubscription.daysRemaining || 0;
+    const isTrial = userSubscription.paymentStatus === 'trial';
+    
     if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
-    if (elements.paymentStatus) elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
-    if (elements.expiryDate) elements.expiryDate.textContent = userSubscription.daysRemaining ? `${userSubscription.daysRemaining} days` : 'Never';
+    if (elements.paymentStatus) {
+        if (isTrial) {
+            elements.paymentStatus.textContent = `Trial (${daysLeft} days left)`;
+            elements.paymentStatus.style.color = daysLeft <= 2 ? '#f44336' : '#ff9800';
+        } else {
+            elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
+        }
+    }
+    if (elements.expiryDate) {
+        elements.expiryDate.textContent = daysLeft > 0 ? `${daysLeft} days` : 'Expired';
+        if (daysLeft <= 2 && isTrial) {
+            elements.expiryDate.style.color = '#f44336';
+            elements.expiryDate.style.fontWeight = 'bold';
+        }
+    }
     if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
-    if (elements.planDaysLeft) elements.planDaysLeft.textContent = userSubscription.daysRemaining || 0;
-    if (elements.planStatus) elements.planStatus.textContent = userSubscription.subscription || 'Free';
+    if (elements.planDaysLeft) {
+        elements.planDaysLeft.textContent = daysLeft;
+        if (daysLeft <= 2 && isTrial) {
+            elements.planDaysLeft.style.color = '#f44336';
+            elements.planDaysLeft.style.fontWeight = 'bold';
+        }
+    }
+    if (elements.planStatus) {
+        elements.planStatus.textContent = isTrial ? `Trial - ${daysLeft} days left` : userSubscription.subscription || 'Free';
+        if (daysLeft <= 2 && isTrial) {
+            elements.planStatus.classList.add('urgent');
+        }
+    }
     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+    
+    // Show upgrade banner if trial is expiring soon
+    if (isTrial && daysLeft <= 2) {
+        showTrialExpiringBanner(daysLeft);
+    }
+}
+
+// Add this new function
+function showTrialExpiringBanner(daysLeft) {
+    const existingBanner = document.querySelector('.trial-expiring-banner');
+    if (existingBanner) return; // Don't show multiple banners
+    
+    const banner = document.createElement('div');
+    banner.className = 'trial-expiring-banner';
+    banner.innerHTML = `
+        <div class="banner-content">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using AutoPay.</span>
+            <button onclick="window.location.href='pricing.html'" class="btn-upgrade">
+                <i class="fas fa-crown"></i> Upgrade Now
+            </button>
+            <button onclick="this.parentElement.parentElement.remove()" class="btn-close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .trial-expiring-banner {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+            z-index: 9999;
+            animation: slideDown 0.5s ease;
+        }
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .banner-content i.fa-exclamation-triangle {
+            font-size: 24px;
+            animation: pulse 2s infinite;
+        }
+        .btn-upgrade {
+            background: white;
+            color: #ff6b6b;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        .btn-upgrade:hover {
+            transform: scale(1.05);
+        }
+        .btn-close {
+            background: transparent;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        @keyframes slideDown {
+            from { top: -100px; opacity: 0; }
+            to { top: 70px; opacity: 1; }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(banner);
 }
 
 // IMPROVED: Statistics with real data
