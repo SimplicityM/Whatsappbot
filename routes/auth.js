@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { generateToken, authenticate, verifyToken } = require('../middleware/auth');
+const nodemailer = require('nodemailer');
 const router = express.Router();
 
 
@@ -436,8 +437,75 @@ router.post('/forgot-password', async (req, res) => {
         user.resetPasswordExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
 
-        // In a real app, send email with reset link
-        // For now, just return success (you can integrate with email service)
+        // Send reset email
+        const nodemailer = require('nodemailer');
+        
+        const transporter = nodemailer.createTransporter({
+            host: process.env.SMTP_HOST,
+            port: process.env.SMTP_PORT,
+            secure: true,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            }
+        });
+
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password.html?token=${resetToken}`;
+
+        const mailOptions = {
+            from: '"TagThemAll Bot" <noreply@tagthemallbot.com>',
+            to: user.email,
+            subject: 'Password Reset Request - TagThemAll Bot',
+            html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; }
+                        .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+                        .button { display: inline-block; padding: 12px 30px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+                        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+                        .token-box { background: #fff; padding: 15px; border: 2px dashed #4CAF50; margin: 20px 0; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>🔐 Password Reset Request</h1>
+                        </div>
+                        <div class="content">
+                            <h2>Hello ${user.fullName},</h2>
+                            <p>We received a request to reset your password for your TagThemAll Bot account.</p>
+                            
+                            <p><strong>Click the button below to reset your password:</strong></p>
+                            <a href="${resetUrl}" class="button">Reset Password</a>
+                            
+                            <p>Or copy and paste this link into your browser:</p>
+                            <p style="word-break: break-all; color: #4CAF50;">${resetUrl}</p>
+                            
+                            <div class="token-box">
+                                Reset Token: ${resetToken}
+                            </div>
+                            
+                            <p><strong>⏰ Important:</strong> This link will expire in <strong>10 minutes</strong>.</p>
+                            
+                            <p>If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
+                            
+                            <p>For security reasons, never share this link or token with anyone.</p>
+                        </div>
+                        <div class="footer">
+                            <p>© 2024 TagThemAll Bot. All rights reserved.</p>
+                            <p>This is an automated email. Please do not reply.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
         
         res.json({
             success: true,
@@ -450,8 +518,19 @@ router.post('/forgot-password', async (req, res) => {
         console.error('Forgot password error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error processing password reset request.'
+            message: 'Error processing password reset request. Please try again later.'
         });
+    }
+});
+
+// Create transporter (you can also move this to a separate config file)
+const transporter = nodemailer.createTransporter({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: true,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
     }
 });
 
