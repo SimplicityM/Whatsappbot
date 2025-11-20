@@ -1,0 +1,13 @@
+# robots.txt for TagThemAll WhatsApp Bot
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /admin-login.html
+
+# Sitemap location
+Sitemap: https://yourdomain.com/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 1
