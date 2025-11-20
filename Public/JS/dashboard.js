@@ -1248,49 +1248,274 @@ async function loadSubscriptionInfo() {
 //     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
 // }
 
+// function updateSubscriptionDisplay() {
+//     if (!userSubscription) return;
+
+//     const daysLeft = userSubscription.daysRemaining || 0;
+//     const isTrial = userSubscription.paymentStatus === 'trial';
+    
+//     if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
+//     if (elements.paymentStatus) {
+//         if (isTrial) {
+//             elements.paymentStatus.textContent = `Trial (${daysLeft} days left)`;
+//             elements.paymentStatus.style.color = daysLeft <= 2 ? '#f44336' : '#ff9800';
+//         } else {
+//             elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
+//         }
+//     }
+//     if (elements.expiryDate) {
+//         elements.expiryDate.textContent = daysLeft > 0 ? `${daysLeft} days` : 'Expired';
+//         if (daysLeft <= 2 && isTrial) {
+//             elements.expiryDate.style.color = '#f44336';
+//             elements.expiryDate.style.fontWeight = 'bold';
+//         }
+//     }
+//     if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
+//     if (elements.planDaysLeft) {
+//         elements.planDaysLeft.textContent = daysLeft;
+//         if (daysLeft <= 2 && isTrial) {
+//             elements.planDaysLeft.style.color = '#f44336';
+//             elements.planDaysLeft.style.fontWeight = 'bold';
+//         }
+//     }
+//     if (elements.planStatus) {
+//         elements.planStatus.textContent = isTrial ? `Trial - ${daysLeft} days left` : userSubscription.subscription || 'Free';
+//         if (daysLeft <= 2 && isTrial) {
+//             elements.planStatus.classList.add('urgent');
+//         }
+//     }
+//     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+    
+//     // Show upgrade banner if trial is expiring soon
+//     if (isTrial && daysLeft <= 2) {
+//         showTrialExpiringBanner(daysLeft);
+//     }
+// }
+
 function updateSubscriptionDisplay() {
     if (!userSubscription) return;
 
     const daysLeft = userSubscription.daysRemaining || 0;
     const isTrial = userSubscription.paymentStatus === 'trial';
     
-    if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
-    if (elements.paymentStatus) {
-        if (isTrial) {
-            elements.paymentStatus.textContent = `Trial (${daysLeft} days left)`;
-            elements.paymentStatus.style.color = daysLeft <= 2 ? '#f44336' : '#ff9800';
-        } else {
-            elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
-        }
-    }
-    if (elements.expiryDate) {
-        elements.expiryDate.textContent = daysLeft > 0 ? `${daysLeft} days` : 'Expired';
-        if (daysLeft <= 2 && isTrial) {
-            elements.expiryDate.style.color = '#f44336';
-            elements.expiryDate.style.fontWeight = 'bold';
-        }
-    }
-    if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
-    if (elements.planDaysLeft) {
-        elements.planDaysLeft.textContent = daysLeft;
-        if (daysLeft <= 2 && isTrial) {
-            elements.planDaysLeft.style.color = '#f44336';
-            elements.planDaysLeft.style.fontWeight = 'bold';
-        }
-    }
-    if (elements.planStatus) {
-        elements.planStatus.textContent = isTrial ? `Trial - ${daysLeft} days left` : userSubscription.subscription || 'Free';
-        if (daysLeft <= 2 && isTrial) {
-            elements.planStatus.classList.add('urgent');
-        }
-    }
-    if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+    // Get DOM elements (with null checks)
+    const currentPlanEl = document.getElementById('currentPlan');
+    const paymentStatusEl = document.getElementById('paymentStatus');
+    const expiryDateEl = document.getElementById('expiryDate');
+    const maxSessionsEl = document.getElementById('maxSessions');
+    const planDaysLeftEl = document.getElementById('planDaysLeft');
+    const planStatusEl = document.getElementById('planStatus');
+    const sessionLimitEl = document.getElementById('sessionLimit');
     
-    // Show upgrade banner if trial is expiring soon
+    // Update current plan
+    if (currentPlanEl) {
+        currentPlanEl.textContent = userSubscription.subscription || 'Free';
+    }
+    
+    // Update payment status with trial info
+    if (paymentStatusEl) {
+        if (isTrial) {
+            paymentStatusEl.textContent = `Trial (${daysLeft} days left)`;
+            paymentStatusEl.style.color = daysLeft <= 2 ? '#f44336' : daysLeft <= 5 ? '#ff9800' : '#4CAF50';
+        } else if (userSubscription.paymentStatus === 'expired') {
+            paymentStatusEl.textContent = 'Expired';
+            paymentStatusEl.style.color = '#f44336';
+        } else {
+            paymentStatusEl.textContent = userSubscription.paymentStatus || 'Active';
+            paymentStatusEl.style.color = '#4CAF50';
+        }
+    }
+    
+    // Update expiry date
+    if (expiryDateEl) {
+        if (daysLeft > 0) {
+            expiryDateEl.textContent = `${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
+            if (daysLeft <= 2 && isTrial) {
+                expiryDateEl.style.color = '#f44336';
+                expiryDateEl.style.fontWeight = 'bold';
+            }
+        } else {
+            expiryDateEl.textContent = 'Expired';
+            expiryDateEl.style.color = '#f44336';
+            expiryDateEl.style.fontWeight = 'bold';
+        }
+    }
+    
+    // Update max sessions
+    if (maxSessionsEl) {
+        maxSessionsEl.textContent = userSubscription.limits?.maxSessions || 1;
+    }
+    
+    // Update plan days left
+    if (planDaysLeftEl) {
+        planDaysLeftEl.textContent = daysLeft;
+        if (daysLeft <= 2 && isTrial) {
+            planDaysLeftEl.style.color = '#f44336';
+            planDaysLeftEl.style.fontWeight = 'bold';
+        }
+    }
+    
+    // Update plan status
+    if (planStatusEl) {
+        if (isTrial) {
+            planStatusEl.textContent = `Trial - ${daysLeft} days left`;
+        } else if (userSubscription.paymentStatus === 'expired') {
+            planStatusEl.textContent = 'Expired';
+        } else {
+            planStatusEl.textContent = userSubscription.subscription || 'Free';
+        }
+        
+        if (daysLeft <= 2 && isTrial) {
+            planStatusEl.classList.add('urgent');
+        }
+    }
+    
+    // Update session limit
+    if (sessionLimitEl) {
+        sessionLimitEl.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+    }
+    
+    // Show upgrade banner if trial is expiring soon or expired
     if (isTrial && daysLeft <= 2) {
         showTrialExpiringBanner(daysLeft);
+    } else if (userSubscription.paymentStatus === 'expired') {
+        showTrialExpiredBanner();
     }
 }
+
+// Add this new function for expiring trial
+function showTrialExpiringBanner(daysLeft) {
+    const existingBanner = document.querySelector('.trial-expiring-banner');
+    if (existingBanner) return; // Don't show multiple banners
+    
+    const banner = document.createElement('div');
+    banner.className = 'trial-expiring-banner';
+    banner.innerHTML = `
+        <div class="banner-content">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span><strong>Warning!</strong> Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using AutoPay.</span>
+            <button onclick="window.location.href='pricing.html'" class="btn-upgrade">
+                <i class="fas fa-crown"></i> Upgrade Now
+            </button>
+            <button onclick="this.parentElement.parentElement.remove()" class="btn-close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    addBannerStyles();
+    document.body.appendChild(banner);
+}
+
+// Add this new function for expired trial
+function showTrialExpiredBanner() {
+    const existingBanner = document.querySelector('.trial-expired-banner');
+    if (existingBanner) return;
+    
+    const banner = document.createElement('div');
+    banner.className = 'trial-expired-banner';
+    banner.innerHTML = `
+        <div class="banner-content">
+            <i class="fas fa-times-circle"></i>
+            <span><strong>Trial Expired!</strong> Your free trial has ended. Subscribe now to continue using AutoPay.</span>
+            <button onclick="window.location.href='pricing.html'" class="btn-subscribe">
+                <i class="fas fa-rocket"></i> Subscribe Now
+            </button>
+        </div>
+    `;
+    
+    addBannerStyles();
+    document.body.appendChild(banner);
+}
+
+// Add styles for banners
+function addBannerStyles() {
+    if (document.querySelector('#banner-styles')) return; // Already added
+    
+    const style = document.createElement('style');
+    style.id = 'banner-styles';
+    style.textContent = `
+        .trial-expiring-banner, .trial-expired-banner {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            z-index: 9999;
+            animation: slideDown 0.5s ease;
+            max-width: 600px;
+            width: 90%;
+        }
+        .trial-expiring-banner {
+            background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+        }
+        .trial-expired-banner {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .banner-content i.fa-exclamation-triangle,
+        .banner-content i.fa-times-circle {
+            font-size: 24px;
+            animation: pulse 2s infinite;
+        }
+        .banner-content span {
+            flex: 1;
+            min-width: 200px;
+        }
+        .btn-upgrade, .btn-subscribe {
+            background: white;
+            color: #ff5722;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+            white-space: nowrap;
+        }
+        .btn-upgrade:hover, .btn-subscribe:hover {
+            transform: scale(1.05);
+        }
+        .btn-close {
+            background: transparent;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 5px;
+        }
+        @keyframes slideDown {
+            from { top: -100px; opacity: 0; }
+            to { top: 70px; opacity: 1; }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        @media (max-width: 768px) {
+            .trial-expiring-banner, .trial-expired-banner {
+                top: 60px;
+                padding: 12px 15px;
+            }
+            .banner-content {
+                gap: 10px;
+            }
+            .banner-content i {
+                font-size: 20px;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 
 // Add this new function
 function showTrialExpiringBanner(daysLeft) {
