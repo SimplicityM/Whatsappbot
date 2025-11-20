@@ -18,6 +18,60 @@ const GroupMembers = require('./models/GroupMembers');
 // - Requires separate Mongoose models (listed after this file)
 // - Uses LocalAuth with clientId=sessionId so sessions persist and DO NOT log out on server restart
 
+// =========================
+// GROUP MEMBER DB HELPERS
+// =========================
+
+// Save full member list for a group
+async function setMembersForGroup(sessionId, groupId, memberJids = []) {
+    try {
+        await GroupMembers.updateOne(
+            { sessionId, groupId },
+            { $set: { members: memberJids, updatedAt: new Date() } },
+            { upsert: true }
+        );
+    } catch (err) {
+        console.error(`[${sessionId}] Failed to set members for group ${groupId}:`, err);
+    }
+}
+
+// Add/update one member
+async function addMemberToGroup(sessionId, groupId, jid) {
+    try {
+        await GroupMembers.updateOne(
+            { sessionId, groupId },
+            { $addToSet: { members: jid }, $set: { updatedAt: new Date() } },
+            { upsert: true }
+        );
+    } catch (err) {
+        console.error(`[${sessionId}] Failed to add member ${jid}:`, err);
+    }
+}
+
+// Remove a member
+async function removeMemberFromGroup(sessionId, groupId, jid) {
+    try {
+        await GroupMembers.updateOne(
+            { sessionId, groupId },
+            { $pull: { members: jid }, $set: { updatedAt: new Date() } }
+        );
+    } catch (err) {
+        console.error(`[${sessionId}] Failed to remove member ${jid}:`, err);
+    }
+}
+
+// Read stored members
+async function getMembersFromDB(sessionId, groupId) {
+    try {
+        const doc = await GroupMembers.findOne({ sessionId, groupId }).lean();
+        return doc?.members || [];
+    } catch (err) {
+        console.error(`[${sessionId}] Failed to fetch members for group ${groupId}:`, err);
+        return [];
+    }
+}
+s
+
 
 // ---------------- CONFIG (adjust as needed) ----------------
 const SESSION_DIR = path.join(__dirname, 'sessions');
@@ -94,6 +148,54 @@ function createClientOptions(sessionId) {
   };
 }
 
+// ===============================================================
+// 🔄 AUTO MEMBER SYNC (Every 30 minutes + real-time join/leave)
+// ===============================================================
+
+function startAutoMemberSync(client, sessionId, mySelf) {
+    const INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+    async function refreshAllMembers() {
+        try {
+            console.log(`♻️ [${sessionId}] Auto-member-sync started...`);
+
+            const chats = await client.getChats();
+
+            for (const c of chats) {
+                if (!c.isGroup) continue;
+
+                let participants = [];
+
+                try {
+                    if (Array.isArray(c.participants) && c.participants.length) {
+                        participants = c.participants;
+                    } else if (typeof c.getParticipants === "function") {
+                        participants = await c.getParticipants();
+                    }
+                } catch {
+                    participants = [];
+                }
+
+                const jids = participants
+                    .map(p => p.id?._serialized || null)
+                    .filter(Boolean);
+
+                await setMembersForGroup(sessionId, c.id._serialized, jids);
+            }
+
+            console.log(`✅ [${sessionId}] Auto-member-sync complete.`);
+        } catch (e) {
+            console.error(`❌ Auto-member-sync failed for ${sessionId}:`, e.message || e);
+        }
+    }
+
+    // First run 20 seconds after startup
+    setTimeout(refreshAllMembers, 20000);
+
+    // Background interval
+    setInterval(refreshAllMembers, INTERVAL);
+}
+
 
 // ---------------- Utility ----------------
 function formatJid(n) {
@@ -138,58 +240,6 @@ function normalizeJid(jid) {
   return jid.replace(/[^0-9]/g, '') + '@c.us';
 }
 
-// retrieve members list from DB
-async function getMembersFromDB(sessionId, groupId) {
-  try {
-    const doc = await GroupMembers.findOne({ sessionId, groupId }).lean();
-    return (doc && Array.isArray(doc.members)) ? doc.members : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-// upsert full list into DB (replace)
-async function setMembersForGroup(sessionId, groupId, membersArray) {
-  try {
-    const m = membersArray.map(m => (typeof m === 'string' ? m : m.id?._serialized || m.id)).filter(Boolean);
-    await GroupMembers.findOneAndUpdate(
-      { sessionId, groupId },
-      { sessionId, groupId, members: [...new Set(m)], updatedAt: new Date() },
-      { upsert: true }
-    );
-  } catch (e) {
-    logger.error(`[${sessionId}] setMembersForGroup error`, e);
-  }
-}
-
-// add a single member to DB list
-async function addMemberToGroup(sessionId, groupId, memberJid) {
-  try {
-    const jid = normalizeJid(memberJid);
-    if (!jid) return;
-    await GroupMembers.updateOne(
-      { sessionId, groupId },
-      { $addToSet: { members: jid }, $set: { updatedAt: new Date() } },
-      { upsert: true }
-    );
-  } catch (e) {
-    logger.error(`[${sessionId}] addMemberToGroup error`, e);
-  }
-}
-
-// remove a single member
-async function removeMemberFromGroup(sessionId, groupId, memberJid) {
-  try {
-    const jid = normalizeJid(memberJid);
-    if (!jid) return;
-    await GroupMembers.updateOne(
-      { sessionId, groupId },
-      { $pull: { members: jid }, $set: { updatedAt: new Date() } }
-    );
-  } catch (e) {
-    logger.error(`[${sessionId}] removeMemberFromGroup error`, e);
-  }
-}
 
   // QR
   client.on('qr', (qr) => {
@@ -220,40 +270,117 @@ async function removeMemberFromGroup(sessionId, groupId, memberJid) {
     logger.info(`[${sessionName}] loading ${percent}% ${message}`);
   });
 
-  client.on('ready', async () => {
+//   client.on('ready', async () => {
+//     try {
+//       logger.info(`[${sessionName}] READY fired`);
+//       // wait until client.info available
+//       let attempts = 0;
+//       while ((!client.info || !client.info.wid) && attempts < 60) {
+//         await new Promise(r => setTimeout(r, 100));
+//         attempts++;
+//       }
+//       if (!client.info || !client.info.wid) {
+//         logger.error(`[${sessionName}] client.info.wid missing after READY`);
+//         return;
+//       }
+//       selfId = client.info.wid._serialized;
+//       logger.info(`[${sessionName}] selfId set to ${selfId}`);
+
+//       // wait until connected state
+//       attempts = 0;
+//       let state = null;
+//       while (attempts < 50) {
+//         try { state = await client.getState(); } catch {}
+//         if (state === 'CONNECTED' || state === 'OPEN') break;
+//         await new Promise(r => setTimeout(r, 100));
+//         attempts++;
+//       }
+//       logger.info(`[${sessionName}] final state=${state}`);
+
+//       // small wait to let chats sync begin
+//       await new Promise(r => setTimeout(r, 2500));
+
+//       // deliver welcome-to-self
+//       await safeSend(selfId, `🤖 *BOT CONNECTED*\nSession: ${sessionId}`);
+//       await new Promise(r => setTimeout(r, 400));
+//       await safeSend(selfId, `
+// ━━━━━━━━━━━━━━━━━━
+// ✨ WELCOME TO TAGTHEMALL BOT ✨
+// ━━━━━━━━━━━━━━━━━━
+
+// 🤖 Your automation assistant is now active!
+
+// 📌 GROUP TOOLS
+// • !list — Groups where you're admin
+// • !members — View group members
+// • !admins — View group admins
+
+// 👥 TAGGING
+// • !tag — Tag all members
+// • !tagexcept — Tag everyone except selected users
+
+// 📨 DIRECT MESSAGING
+// • !dmall — DM all members
+// • !dmselected — DM selected members only
+
+// 💡 Type *!help* for full command details.
+// `);
+
+
+//       // start keepalive and scheduler
+//       keepAliveInterval = setInterval(async () => {
+//         try { await client.getState(); logger.info(`[${sessionName}] keepalive OK`); } catch (e) { logger.error(`[${sessionName}] keepalive failed`, e.message || e); }
+//       }, 300000);
+
+//       // start scheduler runner for this session
+//       schedulerInterval = setInterval(() => runSchedulerForSession(sessionId, client), SCHEDULER_POLL_MS);
+//       // immediate run once
+//       setTimeout(() => runSchedulerForSession(sessionId, client), 3000);
+
+//       sessionWorkers.set(sessionId, { keepAliveInterval, schedulerInterval });
+//       logger.info(`[${sessionName}] setup complete`);
+//     } catch (e) {
+//       logger.error(`[${sessionName}] ready handler error`, e);
+//     }
+//   });
+
+client.on('ready', async () => {
     try {
-      logger.info(`[${sessionName}] READY fired`);
-      // wait until client.info available
-      let attempts = 0;
-      while ((!client.info || !client.info.wid) && attempts < 60) {
-        await new Promise(r => setTimeout(r, 100));
-        attempts++;
-      }
-      if (!client.info || !client.info.wid) {
-        logger.error(`[${sessionName}] client.info.wid missing after READY`);
-        return;
-      }
-      selfId = client.info.wid._serialized;
-      logger.info(`[${sessionName}] selfId set to ${selfId}`);
+        logger.info(`[${sessionName}] READY fired`);
 
-      // wait until connected state
-      attempts = 0;
-      let state = null;
-      while (attempts < 50) {
-        try { state = await client.getState(); } catch {}
-        if (state === 'CONNECTED' || state === 'OPEN') break;
-        await new Promise(r => setTimeout(r, 100));
-        attempts++;
-      }
-      logger.info(`[${sessionName}] final state=${state}`);
+        // 🔹 Wait until client.info is available
+        let attempts = 0;
+        while ((!client.info || !client.info.wid) && attempts < 60) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+        }
+        if (!client.info || !client.info.wid) {
+            logger.error(`[${sessionName}] client.info.wid missing after READY`);
+            return;
+        }
 
-      // small wait to let chats sync begin
-      await new Promise(r => setTimeout(r, 2500));
+        selfId = client.info.wid._serialized;
+        logger.info(`[${sessionName}] selfId set to ${selfId}`);
 
-      // deliver welcome-to-self
-      await safeSend(selfId, `🤖 *BOT CONNECTED*\nSession: ${sessionId}`);
-      await new Promise(r => setTimeout(r, 400));
-      await safeSend(selfId, `
+        // 🔹 Wait for full WhatsApp connection
+        attempts = 0;
+        let state = null;
+        while (attempts < 50) {
+            try { state = await client.getState(); } catch {}
+            if (state === 'CONNECTED' || state === 'OPEN') break;
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+        }
+        logger.info(`[${sessionName}] final state=${state}`);
+
+        // 🔹 Allow WhatsApp to sync chats
+        await new Promise(r => setTimeout(r, 2500));
+
+        // ✅ SEND PROFESSIONAL WELCOME
+        await safeSend(selfId, `🤖 *BOT CONNECTED*\nSession: ${sessionId}`);
+        await new Promise(r => setTimeout(r, 400));
+
+        await safeSend(selfId, `
 ━━━━━━━━━━━━━━━━━━
 ✨ WELCOME TO TAGTHEMALL BOT ✨
 ━━━━━━━━━━━━━━━━━━
@@ -273,28 +400,45 @@ async function removeMemberFromGroup(sessionId, groupId, memberJid) {
 • !dmall — DM all members
 • !dmselected — DM selected members only
 
-💡 Type *!help* for full command details.
-`);
+💡 Type *!help* for full command list.
+        `);
 
+        // 🔄 -----------------------------------------
+        // 🔥 AUTO ADMIN GROUP REFRESH (every 12 hours)
+        // --------------------------------------------
+        startAutoAdminGroupRefresh(client, sessionId, selfId);
+        startAutoMemberSync(client, sessionId, selfId); 
+        logger.info(`[${sessionName}] Auto-admin-refresh activated`);
 
-      // start keepalive and scheduler
-      keepAliveInterval = setInterval(async () => {
-        try { await client.getState(); logger.info(`[${sessionName}] keepalive OK`); } catch (e) { logger.error(`[${sessionName}] keepalive failed`, e.message || e); }
-      }, 300000);
+        // 🔄 -----------------------------------------
+        // Existing keepalive + scheduler
+        // --------------------------------------------
+        keepAliveInterval = setInterval(async () => {
+            try { 
+                await client.getState(); 
+                logger.info(`[${sessionName}] keepalive OK`); 
+            } catch (e) { 
+                logger.error(`[${sessionName}] keepalive failed`, e.message || e); 
+            }
+        }, 300000);
 
-      // start scheduler runner for this session
-      schedulerInterval = setInterval(() => runSchedulerForSession(sessionId, client), SCHEDULER_POLL_MS);
-      // immediate run once
-      setTimeout(() => runSchedulerForSession(sessionId, client), 3000);
+        schedulerInterval = setInterval(
+            () => runSchedulerForSession(sessionId, client),
+            SCHEDULER_POLL_MS
+        );
 
-      sessionWorkers.set(sessionId, { keepAliveInterval, schedulerInterval });
-      logger.info(`[${sessionName}] setup complete`);
+        setTimeout(() => runSchedulerForSession(sessionId, client), 3000);
+
+        sessionWorkers.set(sessionId, { keepAliveInterval, schedulerInterval });
+
+        logger.info(`[${sessionName}] setup complete`);
     } catch (e) {
-      logger.error(`[${sessionName}] ready handler error`, e);
+        logger.error(`[${sessionName}] ready handler error`, e);
     }
-  });
+});
 
-  client.on('disconnected', (reason) => {
+
+client.on('disconnected', (reason) => {
     logger.info(`[${sessionName}] disconnected: ${reason}`);
     // cleanup
     const w = sessionWorkers.get(sessionId);
@@ -307,28 +451,165 @@ async function removeMemberFromGroup(sessionId, groupId, memberJid) {
   });
 
   // group participants change handler (for welcome + block enforcement)
+// client.on('group_participants_changed', async (notification) => {
+//     try {
+//         const chatId = notification.id?._serialized || notification.chatId || notification.from;
+//         if (!chatId) return;
+
+//         // normalize action & participants list
+//         const action = (notification.action || notification.type || '').toLowerCase();
+//         const participants = notification.participants || notification.who || notification.participantsChanged || [];
+//         const added = Array.isArray(participants) ? participants : [participants];
+
+//         for (const p of added) {
+//             const pid = (typeof p === 'string')
+            
+//                 ? p
+//                 : (p?._serialized || p.id?._serialized || p);
+
+//             if (!pid) continue;
+
+//             // 1) BOT ITSELF ADDED
+//             if (pid === client.info?.wid?._serialized) {
+//                 const meta = await WelcomeMeta.findOne({ sessionId, groupId: chatId })
+//                     .lean()
+//                     .catch(() => null);
+
+//                 if (!meta || !meta.welcomeSent) {
+//                     await safeSend(
+//                         chatId,
+//                         `Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`
+//                     );
+
+//                     await WelcomeMeta.updateOne(
+//                         { sessionId, groupId: chatId },
+//                         { $set: { welcomeSent: true } },
+//                         { upsert: true }
+//                     ).catch(() => null);
+//                 }
+
+//                 // Ensure DB has this group with bot stored as known member
+//                 await addMemberToGroup(sessionId, chatId, pid);
+//                 continue;
+//             }
+
+//             // 2) NORMAL USER JOIN / LEAVE UPDATE DB
+//             try {
+//                 if (action.includes('add') || action.includes('invite') || action.includes('promote')) {
+//                     await addMemberToGroup(sessionId, chatId, pid);
+//                 } else if (action.includes('remove') || action.includes('leave')) {
+//                     await removeMemberFromGroup(sessionId, chatId, pid);
+//                 } else {
+//                     // unknown action? still attempt to add
+//                     await addMemberToGroup(sessionId, chatId, pid);
+//                 }
+//             } catch (e) {
+//                 logger.error('DB update error (join/leave):', e);
+//             }
+
+//             // 3) WELCOME + BLOCKLIST HANDLING
+//             try {
+//                 const chat = await client.getChatById(chatId).catch(() => null);
+//                 if (!chat) continue;
+
+//                 // ---- SAFE PARTICIPANT FETCH (NO fetchParticipants) ----
+//                 let participantsList = [];
+//                 try {
+//                     if (Array.isArray(chat.participants) && chat.participants.length) {
+//                         participantsList = chat.participants;
+//                     } else if (typeof chat.getParticipants === 'function') {
+//                         participantsList = await chat.getParticipants();
+//                     } else {
+//                         participantsList = [];
+//                     }
+//                 } catch {
+//                     participantsList = [];
+//                 }
+
+//                 const botAdmin = participantsList.some(obj =>
+//                     obj.id._serialized === client.info?.wid?._serialized &&
+//                     (obj.isAdmin || obj.isSuperAdmin)
+//                 );
+
+//                 const perm = await GroupPermission.findOne({
+//                     botUserId: sessionId,
+//                     groupId: chatId
+//                 })
+//                     .lean()
+//                     .catch(() => null);
+
+//                 const whitelist = (perm && Array.isArray(perm.allowed)) ? perm.allowed : [];
+//                 const blocklist = (perm && Array.isArray(perm.blocked)) ? perm.blocked : [];
+
+//                 // ---- BLOCKLIST ENFORCEMENT ----
+//                 if (blocklist.includes(pid) && botAdmin) {
+//                     await safeSend(chatId, `⛔ ${pid} is on the blocklist and has been removed.`);
+//                     try {
+//                         await chat.removeParticipants([pid]);
+//                     } catch (e) {
+//                         logger.error(`[${sessionName}] failed to remove ${pid}`, e.message || e);
+//                     }
+//                     continue;
+//                 }
+
+//                 // ---- SEND WELCOME MESSAGE ----
+//                 try {
+//                     const num = pid.split('@')[0];
+//                     const contact = await client.getContactById(pid).catch(() => null);
+
+//                     const mentionOpts = contact ? { mentions: [contact] } : {};
+//                     const welcome = contact
+//                         ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`
+//                         : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`;
+
+//                     await safeSend(chatId, welcome, mentionOpts);
+//                 } catch (e) {
+//                     /* ignore welcome error */
+//                 }
+//             } catch (e) {
+//                 /* ignore failures in welcome & blocklist logic */
+//             }
+//         }
+//     } catch (e) {
+//         logger.error(`[${sessionName}] group_participants_changed error`, e);
+//     }
+// });
+
 client.on('group_participants_changed', async (notification) => {
     try {
-        const chatId = notification.id?._serialized || notification.chatId || notification.from;
+        const chatId =
+            notification.id?._serialized ||
+            notification.chatId ||
+            notification.from;
+
         if (!chatId) return;
 
-        // normalize action & participants list
+        // ---- Normalize action & participant list ----
         const action = (notification.action || notification.type || '').toLowerCase();
-        const participants = notification.participants || notification.who || notification.participantsChanged || [];
+        const participants = notification.participants ||
+                             notification.who ||
+                             notification.participantsChanged ||
+                             [];
         const added = Array.isArray(participants) ? participants : [participants];
 
         for (const p of added) {
+
+            // Resolve participant JID
             const pid = (typeof p === 'string')
                 ? p
                 : (p?._serialized || p.id?._serialized || p);
 
             if (!pid) continue;
 
-            // 1) BOT ITSELF ADDED
+            // =====================================================
+            // 1️⃣ BOT ITSELF WAS ADDED
+            // =====================================================
             if (pid === client.info?.wid?._serialized) {
-                const meta = await WelcomeMeta.findOne({ sessionId, groupId: chatId })
-                    .lean()
-                    .catch(() => null);
+
+                const meta = await WelcomeMeta.findOne({
+                    sessionId,
+                    groupId: chatId
+                }).lean().catch(() => null);
 
                 if (!meta || !meta.welcomeSent) {
                     await safeSend(
@@ -343,71 +624,86 @@ client.on('group_participants_changed', async (notification) => {
                     ).catch(() => null);
                 }
 
-                // Ensure DB has this group with bot stored as known member
+                // Ensure group member DB includes bot
                 await addMemberToGroup(sessionId, chatId, pid);
+
                 continue;
             }
 
-            // 2) NORMAL USER JOIN / LEAVE UPDATE DB
+            // =====================================================
+            // 2️⃣ REAL-TIME MEMBER SYNC (JOIN / LEAVE)
+            // =====================================================
             try {
-                if (action.includes('add') || action.includes('invite') || action.includes('promote')) {
+                if (action.includes('add') ||
+                    action.includes('invite') ||
+                    action.includes('promote')) {
+
                     await addMemberToGroup(sessionId, chatId, pid);
-                } else if (action.includes('remove') || action.includes('leave')) {
+
+                } else if (action.includes('remove') ||
+                           action.includes('leave')) {
+
                     await removeMemberFromGroup(sessionId, chatId, pid);
+
                 } else {
-                    // unknown action? still attempt to add
+                    // unknown action → still ensure DB consistency
                     await addMemberToGroup(sessionId, chatId, pid);
                 }
             } catch (e) {
                 logger.error('DB update error (join/leave):', e);
             }
 
-            // 3) WELCOME + BLOCKLIST HANDLING
+            // =====================================================
+            // 3️⃣ WELCOME MESSAGE + BLOCKLIST ENFORCEMENT
+            // =====================================================
             try {
                 const chat = await client.getChatById(chatId).catch(() => null);
                 if (!chat) continue;
 
-                // ---- SAFE PARTICIPANT FETCH (NO fetchParticipants) ----
+                // ---- Safe participant fetch ----
                 let participantsList = [];
                 try {
                     if (Array.isArray(chat.participants) && chat.participants.length) {
                         participantsList = chat.participants;
                     } else if (typeof chat.getParticipants === 'function') {
                         participantsList = await chat.getParticipants();
-                    } else {
-                        participantsList = [];
                     }
                 } catch {
                     participantsList = [];
                 }
 
-                const botAdmin = participantsList.some(obj =>
-                    obj.id._serialized === client.info?.wid?._serialized &&
-                    (obj.isAdmin || obj.isSuperAdmin)
+                const botAdmin = participantsList.some(
+                    obj =>
+                        obj.id._serialized === client.info?.wid?._serialized &&
+                        (obj.isAdmin || obj.isSuperAdmin)
                 );
 
                 const perm = await GroupPermission.findOne({
                     botUserId: sessionId,
                     groupId: chatId
-                })
-                    .lean()
-                    .catch(() => null);
+                }).lean().catch(() => null);
 
                 const whitelist = (perm && Array.isArray(perm.allowed)) ? perm.allowed : [];
                 const blocklist = (perm && Array.isArray(perm.blocked)) ? perm.blocked : [];
 
-                // ---- BLOCKLIST ENFORCEMENT ----
+                // ---- Blocklist handling ----
                 if (blocklist.includes(pid) && botAdmin) {
+
                     await safeSend(chatId, `⛔ ${pid} is on the blocklist and has been removed.`);
+
                     try {
                         await chat.removeParticipants([pid]);
                     } catch (e) {
-                        logger.error(`[${sessionName}] failed to remove ${pid}`, e.message || e);
+                        logger.error(
+                            `[${sessionName}] failed to remove ${pid}`,
+                            e.message || e
+                        );
                     }
+
                     continue;
                 }
 
-                // ---- SEND WELCOME MESSAGE ----
+                // ---- Welcome message ----
                 try {
                     const num = pid.split('@')[0];
                     const contact = await client.getContactById(pid).catch(() => null);
@@ -418,17 +714,21 @@ client.on('group_participants_changed', async (notification) => {
                         : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`;
 
                     await safeSend(chatId, welcome, mentionOpts);
+
                 } catch (e) {
-                    /* ignore welcome error */
+                    // ignore welcome failure
                 }
+
             } catch (e) {
-                /* ignore failures in welcome & blocklist logic */
+                // ignore failures here to avoid blocking the event
             }
         }
+
     } catch (e) {
         logger.error(`[${sessionName}] group_participants_changed error`, e);
     }
 });
+
 
 
   // Get saved group entry by sessionId and 1-based index
@@ -609,26 +909,119 @@ client.on('message_create', async (message) => {
       return adminGroups;
     }
 
-    async function resolveTargetGroupArg(argIndex) {
-      if (argIndex && !isNaN(argIndex)) {
-        const idx = parseInt(argIndex);
-        const group = await getGroupFromIndex(sessionId, idx);
-        return { index: idx, group };
-      }
+    // async function resolveTargetGroupArg(argIndex) {
+    //   if (argIndex && !isNaN(argIndex)) {
+    //     const idx = parseInt(argIndex);
+    //     const group = await getGroupFromIndex(sessionId, idx);
+    //     return { index: idx, group };
+    //   }
 
-      const active = await getActiveGroup(sessionId);
-      if (active) {
-        return {
-          index: active.index,
-          group: {
-            name: active.name,
-            groupId: active.groupId
-          }
-        };
-      }
+    //   const active = await getActiveGroup(sessionId);
+    //   if (active) {
+    //     return {
+    //       index: active.index,
+    //       group: {
+    //         name: active.name,
+    //         groupId: active.groupId
+    //       }
+    //     };
+    //   }
 
-      return { index: null, group: null };
+    //   return { index: null, group: null };
+    // }
+
+async function resolveTargetGroupArg(argIndex) {
+    try {
+        // 1️⃣ Load cached admin groups for this session
+        let cached = await SavedGroupList.findOne({ sessionId })
+            .lean()
+            .catch(() => null);
+
+        let adminGroups =
+            cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+        // If no cache exists → rebuild FAST
+        if (!adminGroups.length) {
+            logger.warn(`[${sessionId}] No cached admin groups — rebuilding list.`);
+
+            const chats = await client.getChats();
+            adminGroups = [];
+
+            for (const c of chats) {
+                if (!c.isGroup) continue;
+
+                let parts = [];
+                try {
+                    if (Array.isArray(c.participants) && c.participants.length) {
+                        parts = c.participants;
+                    } else if (typeof c.getParticipants === "function") {
+                        parts = await c.getParticipants();
+                    }
+                } catch { parts = []; }
+
+                const amIAdmin = parts.some(
+                    p =>
+                        p.id?._serialized === client.info?.wid?._serialized &&
+                        (p.isAdmin || p.isSuperAdmin)
+                );
+
+                if (amIAdmin) {
+                    adminGroups.push({
+                        name: c.name || 'Unnamed Group',
+                        groupId: c.id._serialized,
+                    });
+                }
+            }
+
+            // Save rebuilt cache
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId },
+                { groups: adminGroups, updatedAt: new Date() },
+                { upsert: true }
+            ).catch(() => null);
+        }
+
+        // 2️⃣ If user passed an index → resolve directly
+        if (argIndex && !isNaN(argIndex)) {
+            const idx = parseInt(argIndex);
+            const arrayIndex = idx - 1;
+
+            if (adminGroups[arrayIndex]) {
+                return {
+                    index: idx,
+                    group: adminGroups[arrayIndex],
+                };
+            }
+
+            return { index: null, group: null };
+        }
+
+        // 3️⃣ No index → try to load last active group (from !use)
+        const active = await ActiveGroup.findOne({ sessionId })
+            .lean()
+            .catch(() => null);
+
+        if (active) {
+            // Find this active group in cache
+            const match = adminGroups.find(g => g.groupId === active.groupId);
+
+            if (match) {
+                return {
+                    index: adminGroups.indexOf(match) + 1,
+                    group: match
+                };
+            }
+        }
+
+        // 4️⃣ Nothing found
+        return { index: null, group: null };
+
+    } catch (e) {
+        logger.error(`[${sessionId}] resolveTargetGroupArg ERROR`, e);
+        return { index: null, group: null };
     }
+}
+
 
     // ------------ COMMANDS ------------
     switch (cmd) {
@@ -684,18 +1077,88 @@ case 'help': {
         break;
 
       /* ---------- SAVE ADMIN GROUPS: !list ---------- */
-      case 'list': {
-        const adminGroups = await fetchAndSaveAdminGroups();
-        if (!adminGroups.length) {
-          await safeSend(message.from, '❌ You are not an admin in any group.');
-          break;
+      // case 'list': {
+      //   const adminGroups = await fetchAndSaveAdminGroups();
+      //   if (!adminGroups.length) {
+      //     await safeSend(message.from, '❌ You are not an admin in any group.');
+      //     break;
+      //   }
+      //   let out = '*📋 Groups Where You Are Admin:*\n\n';
+      //   adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.groupId}\n\n`);
+      //   out += '\nSet a default active group: `!use <index>`';
+      //   await safeSend(message.from, out);
+      //   break;
+      // }
+
+case 'list': {
+    // Usage: !list OR !list refresh
+    const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
+
+    if (!isRefresh) {
+        // Try loading cached list first
+        const cached = await SavedGroupList.findOne({ sessionId }).lean().catch(() => null);
+
+        if (cached && cached.groups && cached.groups.length) {
+            let out = '📋 *Groups Where You Are Admin (Cached):*\n\n';
+            cached.groups.forEach((g, i) => {
+                out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+            });
+            out += '\n🔄 To refresh the list, use: `!list refresh`';
+            await safeSend(message.from, out);
+            break;
         }
-        let out = '*📋 Groups Where You Are Admin:*\n\n';
-        adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.groupId}\n\n`);
-        out += '\nSet a default active group: `!use <index>`';
-        await safeSend(message.from, out);
-        break;
-      }
+    }
+
+    // If refresh or no cache → perform FULL SCAN (slow)
+    await safeSend(message.from, '⏳ Scanning all your groups… please wait (first time may take a while)…');
+
+    const chats = await client.getChats();
+    const adminGroups = [];
+
+    for (const c of chats) {
+        if (!c.isGroup) continue;
+
+        let participants = [];
+        try {
+            if (Array.isArray(c.participants) && c.participants.length) {
+                participants = c.participants;
+            } else if (typeof c.getParticipants === "function") {
+                participants = await c.getParticipants();
+            }
+        } catch {
+            participants = [];
+        }
+
+        const amIAdmin = participants.some(
+            p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin)
+        );
+        if (amIAdmin) {
+            adminGroups.push({
+                name: c.name || 'Unnamed group',
+                groupId: c.id._serialized
+            });
+        }
+    }
+
+    // Save cache
+    if (adminGroups.length) {
+        await SavedGroupList.findOneAndUpdate(
+            { sessionId },
+            { groups: adminGroups, updatedAt: new Date() },
+            { upsert: true }
+        );
+    }
+
+    let out = '*📋 Updated Admin Group List:*\n\n';
+    adminGroups.forEach((g, i) => {
+        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+    });
+    out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
+    await safeSend(message.from, out);
+
+    break;
+}
+
 
       case 'syncmembers': {
   // usage: !syncmembers <groupIndex>
@@ -1296,7 +1759,6 @@ case 'tag': {
 }
 
 
-/* ---------- TAGEXCEPT ---------- */
 
 
 /* ---------- TAGEXCEPT ---------- */
@@ -1875,6 +2337,73 @@ case 'forward': {
     logger.error(`[${sessionName}] client error`, err);
   });
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 🔄 AUTO-REFRESH ADMIN GROUP CACHE (every 12 hours)
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+function startAutoAdminGroupRefresh(client, sessionId, mySelf) {
+    const REFRESH_INTERVAL = 12 * 60 * 60 * 1000; // 12 hours
+
+    async function refreshAdminGroups() {
+        try {
+            console.log(`♻️ [${sessionId}] Auto-refreshing admin groups...`);
+
+            const chats = await client.getChats();
+            const adminGroups = [];
+
+            for (const c of chats) {
+                if (!c.isGroup) continue;
+
+                let participants = [];
+                try {
+                    if (Array.isArray(c.participants) && c.participants.length) {
+                        participants = c.participants;
+                    } else if (typeof c.getParticipants === "function") {
+                        participants = await c.getParticipants();
+                    }
+                } catch {
+                    participants = [];
+                }
+
+                const amIAdmin = participants.some(
+                    p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin)
+                );
+
+                if (amIAdmin) {
+                    adminGroups.push({
+                        name: c.name || 'Unnamed group',
+                        groupId: c.id._serialized
+                    });
+                }
+            }
+
+            if (adminGroups.length) {
+                await SavedGroupList.findOneAndUpdate(
+                    { sessionId },
+                    {
+                        groups: adminGroups,
+                        updatedAt: new Date()
+                    },
+                    { upsert: true }
+                );
+
+                console.log(`✅ [${sessionId}] Auto-refresh complete. Groups updated in cache.`);
+            } else {
+                console.log(`⚠️ [${sessionId}] No admin groups found during auto-refresh.`);
+            }
+        } catch (err) {
+            console.error(`❌ Auto-refresh failed for ${sessionId}:`, err.message || err);
+        }
+    }
+
+    // First run at startup (delay 30 seconds)
+    setTimeout(refreshAdminGroups, 30 * 1000);
+
+    // Schedule recurring refresh
+    setInterval(refreshAdminGroups, REFRESH_INTERVAL);
+}
+
 
 // ---------------- Scheduler runner (per-session) ----------------
 async function runSchedulerForSession(sessionId, client) {
