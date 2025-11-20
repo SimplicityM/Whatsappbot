@@ -1071,6 +1071,24 @@ app.get('/api/public/recent-activity', async (req, res) => {
     }
 });
 
+// Serve robots.txt
+app.get('/robots.txt', (req, res) => {
+    res.sendFile(path.join(__dirname, 'Public', 'robots.txt'));
+});
+
+// Serve sitemap.xml
+app.get('/sitemap.xml', (req, res) => {
+    res.sendFile(path.join(__dirname, 'Public', 'sitemap.xml'));
+});
+
+// Add security headers for SEO
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+});
+
 // Usage API for dashboard
 app.get('/api/user/usage', authenticate, async (req, res) => {
     try {
