@@ -407,43 +407,90 @@ if (message.body.startsWith(COMMAND_PREFIX)) {
     // ------------ COMMANDS ------------
     switch (cmd) {
 
-      case 'help':
-        await safeSend(message.from,
-`*Available Commands (DM -> group execution)*
+//       case 'help':
+//         await safeSend(message.from,
+// `*Available Commands (DM -> group execution)*
 
-System:
-!help
-!ping
-!list        — list admin groups and SAVE in DB
-!use <n>    — set default active group by index (from !list)
-!unset     — clear default active group
+// System:
+// !help
+// !ping
+// !list        — list admin groups and SAVE in DB
+// !use <n>    — set default active group by index (from !list)
+// !unset     — clear default active group
 
-Group operations (use index or set default with !use):
-!tag <index>                 — mention everyone in target group
-!tagexcept <index> <1,2> ... — mention excluding listed member indexes
-!members <index>             — list members of target group
-!admins <index>              — list admins of target group
+// Group operations (use index or set default with !use):
+// !tag <index>                 — mention everyone in target group
+// !tagexcept <index> <1,2> ... — mention excluding listed member indexes
+// !members <index>             — list members of target group
+// !admins <index>              — list admins of target group
 
-Forwarding (reply to message):
-!forwardall <index>          — forward quoted message to all members
-!forward <index> <targets>   — forward to targets (indexes or @numbers)
+// Forwarding (reply to message):
+// !forwardall <index>          — forward quoted message to all members
+// !forward <index> <targets>   — forward to targets (indexes or @numbers)
 
-Permissions:
-!allow <index> <number>
-!unallow <index> <number>
-!deny <index> <number>
-!unblock <index> <number>
-!whitelist <index>
-!blocklist <index>
+// Permissions:
+// !allow <index> <number>
+// !unallow <index> <number>
+// !deny <index> <number>
+// !unblock <index> <number>
+// !whitelist <index>
+// !blocklist <index>
 
-Scheduling:
-!schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>
-!listschedules
-!cancelschedule <id>
+// Scheduling:
+// !schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>
+// !listschedules
+// !cancelschedule <id>
 
-`
-        );
-        break;
+// `
+//         );
+//         break;
+
+case 'help': {
+    if (!isSelfChat) return;
+
+    const text = `
+🌟 *WHATSAPP BOT COMMANDS* 🌟
+
+📋 *Group Management*
+• !list — groups where you’re admin
+• !listall — all groups you belong to
+• !members <groupIndex>
+• !admins <groupIndex>
+• !mygroups — groups you created
+
+👥 *Tagging*
+• !tag <groupIndex>
+• !tagexcept <groupIndex> <excluded>
+   Examples:
+   - !tagexcept 2 @mary @john Meeting starts soon
+   - !tagexcept 3 08123456789
+   - !tagexcept 1 1,3,5
+
+🔁 *Forwarding*
+• !forwardall (reply)
+• !forward <targets>
+
+🔐 *Permissions*
+• !allow <number>
+• !deny <number>
+• !whitelist
+• !blocklist
+• !unallow <number>
+• !unblock <number>
+
+⏰ *Scheduler*
+• !schedule HH:MM mode repeat | message
+• !listschedules
+• !cancelschedule <id>
+
+⚙ *System*
+• !ping
+• !help
+`;
+
+    await safeSend(message.from, text);
+    break;
+}
 
       case 'ping':
         await safeSend(message.from, '🏓 Pong!');
