@@ -34,6 +34,7 @@
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "readline-sync": "^1.4.10",
+    "resend": "^6.5.2",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "something-else": "^0.1.0",
