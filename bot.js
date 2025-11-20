@@ -225,7 +225,20 @@ function setupClientEvents(client, sessionId, io) {
             // fetch participants list to determine bot admin status
             const chat = await client.getChatById(chatId).catch(()=>null);
             if (!chat) continue;
-            const participantsList = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+            // const participantsList = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+            let participantsList = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        participantsList = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        participantsList = await chat.getParticipants();
+    } else {
+        participantsList = [];
+    }
+} catch {
+    participantsList = [];
+}
+
             const botAdmin = participantsList.some(pobj => pobj.id._serialized === client.info?.wid?._serialized && (pobj.isAdmin || pobj.isSuperAdmin));
             // check group permission document
             const perm = await GroupPermission.findOne({ botUserId: sessionId, groupId: chatId }).lean().catch(()=>null);
@@ -372,7 +385,22 @@ if (message.body.startsWith(COMMAND_PREFIX)) {
       const adminGroups = [];
       for (const c of chats) {
         if (!c.isGroup) continue;
-        const participants = c.participants?.length ? c.participants : await c.fetchParticipants().catch(()=>[]);
+        // const participants = c.participants?.length ? c.participants : await c.fetchParticipants().catch(()=>[]);
+        let participants = [];
+
+try {
+    if (Array.isArray(c.participants) && c.participants.length) {
+        participants = c.participants;
+    } else if (typeof c.getParticipants === 'function') {
+        participants = await c.getParticipants();
+    } else {
+        // fallback (older wwebjs)
+        participants = [];
+    }
+} catch {
+    participants = [];
+}
+
         const amIAdmin = participants.some(p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
         if (amIAdmin) adminGroups.push({ name: c.name || 'Unnamed group', groupId: c.id._serialized });
       }
@@ -525,7 +553,20 @@ case 'dmall': {
 
     // Fetch group members
     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-    const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
     const allJids = parts.map(p => p.id._serialized);
 
     let delivered = 0;
@@ -608,7 +649,20 @@ Examples:
         break;
     }
 
-    const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants();
+    let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
     const allJids = parts.map(p => p.id._serialized);
 
     // 5️⃣ Parse targets (mentions, numbers, indexes)
@@ -679,7 +733,20 @@ Sent to **${delivered}** members in *${resolved.group.name}*.`
 
         const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
         if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
         let out = `*👥 Members of ${resolved.group.name}:*\n\n`;
         parts.forEach((p,i)=> out += `${i+1}. ${p.id._serialized.split('@')[0]}\n`);
         await safeSend(message.from, out);
@@ -694,7 +761,20 @@ Sent to **${delivered}** members in *${resolved.group.name}*.`
 
         const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
         if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
         const admins = parts.filter(p => p.isAdmin || p.isSuperAdmin);
         if (!admins.length) { await safeSend(message.from, 'No admins detected.'); break; }
         let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
@@ -903,7 +983,20 @@ case 'tagexcept': {
         const quoted = await message.getQuotedMessage();
         const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
         if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
         const targets = parts.map(p => p.id._serialized).filter(j => j !== mySelf);
 
         await safeSend(message.from, `🔁 Forwarding to ${targets.length} members...`);
@@ -936,7 +1029,19 @@ case 'tagexcept': {
         const quoted = await message.getQuotedMessage();
         const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
         if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-        const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+        // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
 
         // parse targets: indexes or @numbers
         let targets = [];
@@ -1154,7 +1259,20 @@ async function runSchedulerForSession(sessionId, client) {
           if (!targets.length && job.chatId) {
             const chat = await client.getChatById(job.chatId).catch(()=>null);
             if (chat) {
-              const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+              // const parts = chat.participants?.length ? chat.participants : await chat.fetchParticipants().catch(()=>[]);
+              let parts = [];
+try {
+    if (Array.isArray(chat.participants) && chat.participants.length) {
+        parts = chat.participants;
+    } else if (typeof chat.getParticipants === "function") {
+        parts = await chat.getParticipants();
+    } else {
+        parts = [];
+    }
+} catch {
+    parts = [];
+}
+
               targets = parts.map(p => p.id._serialized).filter(x => x !== client.info?.wid?._serialized);
             }
           }
