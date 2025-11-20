@@ -437,24 +437,15 @@ router.post('/forgot-password', async (req, res) => {
         user.resetPasswordExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
 
-        // Send reset email
-        const nodemailer = require('nodemailer');
-        
-        const transporter = nodemailer.createTransporter({
-            host: process.env.SMTP_HOST,
-            port: process.env.SMTP_PORT,
-            secure: true,
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS
-            }
-        });
+        // Send reset email using Resend
+        const { Resend } = require('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
 
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password.html?token=${resetToken}`;
 
-        const mailOptions = {
-            from: '"TagThemAll Bot" <noreply@tagthemallbot.com>',
-            to: user.email,
+        const { data, error } = await resend.emails.send({
+            from: 'TagThemAll Bot <onboarding@resend.dev>',
+            to: [user.email],
             subject: 'Password Reset Request - TagThemAll Bot',
             html: `
                 <!DOCTYPE html>
@@ -463,11 +454,11 @@ router.post('/forgot-password', async (req, res) => {
                     <style>
                         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
                         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; }
+                        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
                         .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
                         .button { display: inline-block; padding: 12px 30px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
                         .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-                        .token-box { background: #fff; padding: 15px; border: 2px dashed #4CAF50; margin: 20px 0; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; }
+                        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
                     </style>
                 </head>
                 <body>
@@ -485,15 +476,13 @@ router.post('/forgot-password', async (req, res) => {
                             <p>Or copy and paste this link into your browser:</p>
                             <p style="word-break: break-all; color: #4CAF50;">${resetUrl}</p>
                             
-                            <div class="token-box">
-                                Reset Token: ${resetToken}
+                            <div class="warning">
+                                <p><strong>⏰ Important:</strong> This link will expire in <strong>10 minutes</strong>.</p>
                             </div>
-                            
-                            <p><strong>⏰ Important:</strong> This link will expire in <strong>10 minutes</strong>.</p>
                             
                             <p>If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
                             
-                            <p>For security reasons, never share this link or token with anyone.</p>
+                            <p>For security reasons, never share this link with anyone.</p>
                         </div>
                         <div class="footer">
                             <p>© 2024 TagThemAll Bot. All rights reserved.</p>
@@ -503,9 +492,17 @@ router.post('/forgot-password', async (req, res) => {
                 </body>
                 </html>
             `
-        };
+        });
 
-        await transporter.sendMail(mailOptions);
+        if (error) {
+            console.error('Resend error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error sending reset email. Please try again later.'
+            });
+        }
+
+        console.log('Reset email sent:', data);
         
         res.json({
             success: true,
