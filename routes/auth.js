@@ -3,8 +3,11 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { generateToken, authenticate, verifyToken } = require('../middleware/auth');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');  // ✅ Only need Resend
 const router = express.Router();
+
+// Initialize Resend once at the top
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 // Register new user
@@ -141,7 +144,7 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Admin Login Route - Add this after the regular login route
+// Admin Login Route
 router.post('/admin-login', async (req, res) => {
     try {
         const { email, password, isAdmin } = req.body;
@@ -230,7 +233,7 @@ router.post('/admin-login', async (req, res) => {
     }
 });
 
-// Admin Token Verification Route - Add this too
+// Admin Token Verification Route
 router.get('/admin/verify-token', async (req, res) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -402,9 +405,8 @@ router.put('/change-password', authenticate, async (req, res) => {
     }
 });
 
-// Logout (if using token blacklist)
+// Logout
 router.post('/logout', authenticate, (req, res) => {
-    // In a real app, you might want to blacklist the token
     res.json({ 
         success: true, 
         message: 'Logged out successfully!' 
@@ -438,9 +440,6 @@ router.post('/forgot-password', async (req, res) => {
         await user.save();
 
         // Send reset email using Resend
-        const { Resend } = require('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
-
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password.html?token=${resetToken}`;
 
         const { data, error } = await resend.emails.send({
@@ -506,9 +505,7 @@ router.post('/forgot-password', async (req, res) => {
         
         res.json({
             success: true,
-            message: 'Password reset instructions sent to your email.',
-            // Remove this in production - only for testing
-            resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
+            message: 'Password reset instructions sent to your email.'
         });
 
     } catch (error) {
@@ -517,17 +514,6 @@ router.post('/forgot-password', async (req, res) => {
             success: false,
             message: 'Error processing password reset request. Please try again later.'
         });
-    }
-});
-
-// Create transporter (you can also move this to a separate config file)
-const transporter = nodemailer.createTransporter({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: true,
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
     }
 });
 
@@ -589,7 +575,5 @@ router.post('/reset-password', async (req, res) => {
         });
     }
 });
-
-
 
 module.exports = router;
