@@ -52,36 +52,45 @@ app.use(cors({
     credentials: true
 }));
 
-// Middleware to check trial expiration
-const checkTrialExpiration = async (req, res, next) => {
-    try {
-        if (req.user && req.user.paymentStatus === 'trial') {
-            const now = new Date();
-            const expiry = new Date(req.user.subscriptionExpiry);
+// // Middleware to check trial expiration
+// const checkTrialExpiration = async (req, res, next) => {
+//     try {
+//         if (req.user && req.user.paymentStatus === 'trial') {
+//             const now = new Date();
+//             const expiry = new Date(req.user.subscriptionExpiry);
             
-            // If trial expired, update status
-            if (expiry < now) {
-                req.user.paymentStatus = 'expired';
-                await req.user.save();
+//             // If trial expired, update status
+//             if (expiry < now) {
+//                 req.user.paymentStatus = 'expired';
+//                 await req.user.save();
                 
-                return res.status(403).json({
-                    success: false,
-                    message: 'Your free trial has expired. Please subscribe to continue.',
-                    code: 'TRIAL_EXPIRED',
-                    redirectTo: '/pricing.html'
-                });
-            }
-        }
-        next();
-    } catch (error) {
-        console.error('Trial check error:', error);
-        next();
-    }
-};
+//                 return res.status(403).json({
+//                     success: false,
+//                     message: 'Your free trial has expired. Please subscribe to continue.',
+//                     code: 'TRIAL_EXPIRED',
+//                     redirectTo: '/pricing.html'
+//                 });
+//             }
+//         }
+//         next();
+//     } catch (error) {
+//         console.error('Trial check error:', error);
+//         next();
+//     }
+// };
 
-// Apply to protected routes
-app.use('/api/bot/*', authenticate, checkTrialExpiration);
-app.use('/api/sessions/*', authenticate, checkTrialExpiration);
+// // Apply to routes that need trial checking
+// app.get('/api/bot/status', authenticate, checkTrialExpiration, async (req, res) => {
+//     // your code
+// });
+
+// app.post('/api/sessions/create', authenticate, checkTrialExpiration, async (req, res) => {
+//     // your code
+// });
+
+// // Apply to protected routes
+// app.use('/api/bot/*', authenticate, checkTrialExpiration);
+// app.use('/api/sessions/*', authenticate, checkTrialExpiration);
 
 
 // Content Security Policy
@@ -826,30 +835,69 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
 //     }
 // });
 
+// app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
+//     try {
+//         const user = await User.findById(req.user.id);
+        
+//         // Calculate real days remaining
+//         let daysRemaining = 0;
+//         if (user.subscriptionExpiry) {
+//             const now = new Date();
+//             const expiry = new Date(user.subscriptionExpiry);
+//             const diffTime = expiry - now;
+//             daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+//         }
+        
+//         res.json({
+//             success: true,
+//             data: {
+//                 subscription: user.subscription,
+//                 paymentStatus: user.paymentStatus || 'trial',
+//                 daysRemaining: daysRemaining,
+//                 subscriptionExpiry: user.subscriptionExpiry,
+//                 limits: subscriptionPlans[user.subscription]
+//             }
+//         });
+//     } catch (error) {
+//         res.status(500).json({ success: false, message: 'Error fetching subscription status' });
+//     }
+// });
+
 app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
         
         // Calculate real days remaining
         let daysRemaining = 0;
+        let paymentStatus = user.paymentStatus || 'trial';
+        
         if (user.subscriptionExpiry) {
             const now = new Date();
             const expiry = new Date(user.subscriptionExpiry);
             const diffTime = expiry - now;
             daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            
+            // Auto-update status if trial expired
+            if (daysRemaining === 0 && user.paymentStatus === 'trial') {
+                user.paymentStatus = 'expired';
+                await user.save();
+                paymentStatus = 'expired';
+            }
         }
         
         res.json({
             success: true,
             data: {
                 subscription: user.subscription,
-                paymentStatus: user.paymentStatus || 'trial',
+                paymentStatus: paymentStatus,
                 daysRemaining: daysRemaining,
                 subscriptionExpiry: user.subscriptionExpiry,
-                limits: subscriptionPlans[user.subscription]
+                limits: subscriptionPlans[user.subscription],
+                isExpired: paymentStatus === 'expired'
             }
         });
     } catch (error) {
+        console.error('Subscription status error:', error);
         res.status(500).json({ success: false, message: 'Error fetching subscription status' });
     }
 });
