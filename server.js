@@ -47,10 +47,15 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const cors = require('cors');
+
 app.use(cors({
-    origin: ["https://whatsappbot-tsya.onrender.com"],
+    origin: [
+        "https://whatsappbot-u5yq.onrender.com",     // YOUR CURRENT FRONTEND
+        "https://whatsappbot-tsya.onrender.com"       // YOUR BACKEND
+    ],
     credentials: true
 }));
+
 
 
 // Content Security Policy
@@ -62,13 +67,14 @@ app.use((req, res, next) => {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-        "connect-src 'self' https://whatsappbot-tsya.onrender.com ws://whatsappbot-tsya.onrender.com wss://whatsappbot-tsya.onrender.com; " +
+        "connect-src 'self' https://whatsappbot-tsya.onrender.com https://whatsappbot-u5yq.onrender.com ws://whatsappbot-tsya.onrender.com wss://whatsappbot-tsya.onrender.com; " +
         "img-src 'self' data: https: blob:; " +
         "object-src 'none'; " +
         "base-uri 'self';"
     );
     next();
 });
+
 
 
 
@@ -644,9 +650,6 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// app.get('/admin-dashboard', (req, res) => {
-//     res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
-// });
 
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
