@@ -1097,20 +1097,7 @@ case 'help': {
         break;
 
       /* ---------- SAVE ADMIN GROUPS: !list ---------- */
-      // case 'list': {
-      //   const adminGroups = await fetchAndSaveAdminGroups();
-      //   if (!adminGroups.length) {
-      //     await safeSend(message.from, '❌ You are not an admin in any group.');
-      //     break;
-      //   }
-      //   let out = '*📋 Groups Where You Are Admin:*\n\n';
-      //   adminGroups.forEach((g,i)=> out += `${i+1}. *${g.name}*\n   ID: ${g.groupId}\n\n`);
-      //   out += '\nSet a default active group: `!use <index>`';
-      //   await safeSend(message.from, out);
-      //   break;
-      // }
-
-case 'list': {
+      case 'list': {
     // Usage: !list OR !list refresh
     const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
 
@@ -1179,6 +1166,55 @@ case 'list': {
     break;
 }
 
+case 'listall': {
+    const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
+
+    if (!isRefresh) {
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            .lean()
+            .catch(() => null);
+
+        if (cached && cached.groups && cached.groups.length) {
+            let out = '📋 *All Groups (Cached):*\n\n';
+            cached.groups.forEach((g, i) => {
+                out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+            });
+            out += '\n🔄 To refresh: `!listall refresh`';
+            await safeSend(message.from, out);
+            break;
+        }
+    }
+
+    await safeSend(
+        message.from,
+        '⏳ Scanning ALL your groups… (may take 10–20s on 50+ groups)…'
+    );
+
+    const chats = await client.getChats();
+
+    const allGroups = chats
+        .filter(c => c.isGroup)
+        .map(c => ({
+            name: c.name || "Unnamed Group",
+            groupId: c.id._serialized
+        }));
+
+    await SavedGroupList.findOneAndUpdate(
+        { sessionId: sessionId + "_all" },
+        { groups: allGroups, updatedAt: new Date() },
+        { upsert: true }
+    );
+
+    let out = '*📋 Updated List of ALL Groups:*\n\n';
+    allGroups.forEach((g, i) => {
+        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+    });
+
+    out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
+    await safeSend(message.from, out);
+
+    break;
+}
 
       case 'syncmembers': {
   // usage: !syncmembers <groupIndex>
@@ -1242,16 +1278,139 @@ case 'list': {
       }
 
       /* ---------- DMALL ---------- */
+// case 'dmall': {
+//     if (!isSelfChat) return;
+
+//     // Usage: !dmall <groupIndex> | <message>
+//     const full = args.join(' ');
+//     const pipeIndex = full.indexOf('|');
+
+//     if (pipeIndex === -1) {
+//         await safeSend(message.from,
+//             'Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone');
+//         break;
+//     }
+
+//     const groupIndex = parseInt(full.slice(0, pipeIndex).trim());
+//     const msgText = full.slice(pipeIndex + 1).trim();
+
+//     if (!groupIndex || !msgText) {
+//         await safeSend(message.from, '❗ Missing group index or message.');
+//         break;
+//     }
+
+//     const resolved = await resolveTargetGroupArg(groupIndex);
+//     if (!resolved.group) {
+//         await safeSend(message.from, '❌ Invalid group.');
+//         break;
+//     }
+
+//     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+//     if (!chat) {
+//         await safeSend(message.from, '❌ Could not fetch group chat.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+//     // ------------------------------------------------------------
+//     let participants = [];
+//     try {
+//         const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+
+//         if (Array.isArray(dbList) && dbList.length) {
+//             participants = dbList.map(j => ({ id: { _serialized: j } }));
+//         } else if (typeof chat.getParticipants === "function") {
+//             const fetched = await chat.getParticipants().catch(() => []);
+//             if (Array.isArray(fetched) && fetched.length) {
+//                 participants = fetched;
+
+//                 await setMembersForGroup(
+//                     sessionId,
+//                     resolved.group.groupId,
+//                     fetched.map(p => p.id?._serialized || p)
+//                 );
+//             }
+//         } else if (Array.isArray(chat.participants) && chat.participants.length) {
+//             participants = chat.participants;
+
+//             const jids = participants
+//                 .map(p => p.id?._serialized || null)
+//                 .filter(Boolean);
+
+//             if (jids.length)
+//                 await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//         }
+//     } catch {
+//         participants = [];
+//     }
+
+//     if (!participants.length) {
+//         await safeSend(
+//             message.from,
+//             `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
+//             `Group may be a Community subgroup.\n` +
+//             `Promote bot to admin and run !syncmembers.`
+//         );
+//         break;
+//     }
+
+//     const allJids = participants
+//         .map(p => p.id._serialized)
+//         .filter(j => j !== mySelf);
+
+//     if (!allJids.length) {
+//         await safeSend(message.from, '❗ No valid members found.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 CONFIRMATION
+//     // ------------------------------------------------------------
+//     await safeSend(
+//         message.from,
+//         `📨 Sending DM to **${allJids.length}** members of *${resolved.group.name}*...`
+//     );
+
+//     // ------------------------------------------------------------
+//     // 🟢 SEND DM TO EACH MEMBER (Throttled)
+//     // ------------------------------------------------------------
+//     let delivered = 0;
+
+//     for (const jid of allJids) {
+//         try {
+//             await client.sendMessage(jid, msgText);
+//             delivered++;
+//         } catch (e) {
+//             logger.error(`[${sessionName}] dmall -> ${jid}`, e.message || e);
+//         }
+
+//         await new Promise(r => setTimeout(r, 300)); // throttle to avoid ban
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 DONE
+//     // ------------------------------------------------------------
+//     await safeSend(
+//         message.from,
+//         `📩 *DM-all complete!*  
+// Message delivered to **${delivered}** members of *${resolved.group.name}*.`
+//     );
+
+//     break;
+// }
+
 case 'dmall': {
     if (!isSelfChat) return;
 
-    // Usage: !dmall <groupIndex> | <message>
+    // usage: !dmall <groupIndex> | <message>
     const full = args.join(' ');
     const pipeIndex = full.indexOf('|');
 
     if (pipeIndex === -1) {
         await safeSend(message.from,
-            'Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone');
+            '❗ Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone'
+        );
         break;
     }
 
@@ -1263,12 +1422,14 @@ case 'dmall': {
         break;
     }
 
+    // resolve group
     const resolved = await resolveTargetGroupArg(groupIndex);
     if (!resolved.group) {
-        await safeSend(message.from, '❌ Invalid group.');
+        await safeSend(message.from, '❌ Invalid group index.');
         break;
     }
 
+    // fetch group chat
     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
     if (!chat) {
         await safeSend(message.from, '❌ Could not fetch group chat.');
@@ -1279,31 +1440,30 @@ case 'dmall': {
     // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
     // ------------------------------------------------------------
     let participants = [];
+
     try {
         const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
 
         if (Array.isArray(dbList) && dbList.length) {
             participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } else if (typeof chat.getParticipants === "function") {
+        } 
+        else if (typeof chat.getParticipants === "function") {
             const fetched = await chat.getParticipants().catch(() => []);
-            if (Array.isArray(fetched) && fetched.length) {
+            if (fetched.length) {
                 participants = fetched;
 
-                await setMembersForGroup(
-                    sessionId,
-                    resolved.group.groupId,
-                    fetched.map(p => p.id?._serialized || p)
-                );
+                const jids = fetched.map(p => p.id?._serialized || p);
+                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
             }
-        } else if (Array.isArray(chat.participants) && chat.participants.length) {
+        } 
+        else if (Array.isArray(chat.participants) && chat.participants.length) {
             participants = chat.participants;
 
             const jids = participants
                 .map(p => p.id?._serialized || null)
                 .filter(Boolean);
 
-            if (jids.length)
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+            await setMembersForGroup(sessionId, resolved.group.groupId, jids);
         }
     } catch {
         participants = [];
@@ -1312,53 +1472,43 @@ case 'dmall': {
     if (!participants.length) {
         await safeSend(
             message.from,
-            `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
-            `Group may be a Community subgroup.\n` +
-            `Promote bot to admin and run !syncmembers.`
+            `⚠ Unable to fetch members for *${resolved.group.name}*.\n` +
+            `This may happen in Community subgroups.\n` +
+            `Try !syncmembers if bot becomes admin.`
         );
         break;
     }
 
+    // convert to JIDs
     const allJids = participants
         .map(p => p.id._serialized)
-        .filter(j => j !== mySelf);
-
-    if (!allJids.length) {
-        await safeSend(message.from, '❗ No valid members found.');
-        break;
-    }
+        .filter(j => j !== mySelf); // skip bot
 
     // ------------------------------------------------------------
-    // 🟢 CONFIRMATION
-    // ------------------------------------------------------------
-    await safeSend(
-        message.from,
-        `📨 Sending DM to **${allJids.length}** members of *${resolved.group.name}*...`
-    );
-
-    // ------------------------------------------------------------
-    // 🟢 SEND DM TO EACH MEMBER (Throttled)
+    // 📨 SEND DM TO EACH MEMBER
     // ------------------------------------------------------------
     let delivered = 0;
+
+    await safeSend(
+        message.from,
+        `📨 *DM-All Started*\nSending message to ${allJids.length} members of *${resolved.group.name}*...`
+    );
 
     for (const jid of allJids) {
         try {
             await client.sendMessage(jid, msgText);
             delivered++;
         } catch (e) {
-            logger.error(`[${sessionName}] dmall -> ${jid}`, e.message || e);
+            logger.error("dmall send error", e);
         }
 
-        await new Promise(r => setTimeout(r, 300)); // throttle to avoid ban
+        // throttle to avoid WhatsApp spam detection
+        await new Promise(r => setTimeout(r, 350));
     }
 
-    // ------------------------------------------------------------
-    // 🟢 DONE
-    // ------------------------------------------------------------
     await safeSend(
         message.from,
-        `📩 *DM-all complete!*  
-Message delivered to **${delivered}** members of *${resolved.group.name}*.`
+        `✅ *DM-All Completed*\nMessage delivered to **${delivered}** members.`
     );
 
     break;
@@ -1620,96 +1770,224 @@ case 'members': {
 
 
       /* ---------- ADMINS ---------- */
+// case 'admins': {
+//     // 1️⃣ Parse group index (or use active)
+//     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+//     const resolved = await resolveTargetGroupArg(providedIdx);
+
+//     if (!resolved.group) {
+//         await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
+//         break;
+//     }
+
+//     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+//     if (!chat) {
+//         await safeSend(message.from, '❌ Could not fetch group chat.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+//     // ------------------------------------------------------------
+//     let participants = [];
+//     try {
+//         const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+
+//         // 1) DB fallback
+//         if (Array.isArray(dbList) && dbList.length) {
+//             participants = dbList.map(j => ({ id: { _serialized: j }, isAdmin: false, isSuperAdmin: false }));
+//         }
+
+//         // 2) Official API (best when permitted)
+//         else if (typeof chat.getParticipants === "function") {
+//             const fetched = await chat.getParticipants().catch(() => []);
+//             if (Array.isArray(fetched) && fetched.length) {
+//                 participants = fetched;
+
+//                 // update DB
+//                 const jids = fetched.map(p => p.id?._serialized || p);
+//                 await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//             }
+//         }
+
+//         // 3) Fallback (older API)
+//         else if (Array.isArray(chat.participants) && chat.participants.length) {
+//             participants = chat.participants;
+
+//             const jids = participants
+//                 .map(p => p.id?._serialized || null)
+//                 .filter(Boolean);
+
+//             if (jids.length)
+//                 await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//         }
+
+//     } catch {
+//         participants = [];
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟡 NO PARTICIPANTS AVAILABLE
+//     // ------------------------------------------------------------
+//     if (!participants.length) {
+//         await safeSend(
+//             message.from,
+//             `⚠ Cannot list admins for *${resolved.group.name}*.\n` +
+//             `This may be a WhatsApp Community subgroup.\n` +
+//             `Try: !syncmembers after promoting bot to admin.`
+//         );
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 FILTER ADMINS
+//     // ------------------------------------------------------------
+//     const admins = participants.filter(
+//         p => p.isAdmin || p.isSuperAdmin
+//     );
+
+//     if (!admins.length) {
+//         await safeSend(message.from, `⚠ No admins detected in *${resolved.group.name}*.`);
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 BUILD OUTPUT
+//     // ------------------------------------------------------------
+//     let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
+
+//     admins.forEach((admin, i) => {
+//         const jid = admin.id?._serialized || '';
+//         const num = jid.split('@')[0];
+//         out += `${i + 1}. ${num}\n`;
+//     });
+
+//     await safeSend(message.from, out);
+//     break;
+// }
+
 case 'admins': {
-    // 1️⃣ Parse group index (or use active)
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
     const resolved = await resolveTargetGroupArg(providedIdx);
 
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
+        await safeSend(message.from, '❌ No target group found. Run !list or !use <index>');
         break;
     }
 
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-    if (!chat) {
-        await safeSend(message.from, '❌ Could not fetch group chat.');
-        break;
-    }
+    const groupId = resolved.group.groupId;
 
-    // ------------------------------------------------------------
-    // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
-    // ------------------------------------------------------------
     let participants = [];
-    try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
 
-        // 1) DB fallback
+    try {
+        // 1️⃣ Try DB members first
+        const dbList = await getMembersFromDB(sessionId, groupId);
         if (Array.isArray(dbList) && dbList.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j }, isAdmin: false, isSuperAdmin: false }));
+            participants = dbList.map(j => ({ id: { _serialized: j } }));
         }
 
-        // 2) Official API (best when permitted)
-        else if (typeof chat.getParticipants === "function") {
-            const fetched = await chat.getParticipants().catch(() => []);
-            if (Array.isArray(fetched) && fetched.length) {
-                participants = fetched;
+        // 2️⃣ Try official getParticipants
+        if (!participants.length) {
+            const chat = await client.getChatById(groupId).catch(() => null);
+            if (chat && typeof chat.getParticipants === 'function') {
+                const fetched = await chat.getParticipants().catch(() => []);
+                if (fetched.length) {
+                    participants = fetched;
 
-                // update DB
-                const jids = fetched.map(p => p.id?._serialized || p);
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+                    // update DB cache
+                    const jids = fetched.map(p => p.id._serialized);
+                    await setMembersForGroup(sessionId, groupId, jids);
+                }
             }
         }
 
-        // 3) Fallback (older API)
-        else if (Array.isArray(chat.participants) && chat.participants.length) {
-            participants = chat.participants;
+        // 3️⃣ Fallback to chat.participants
+        if (!participants.length) {
+            const chat = await client.getChatById(groupId).catch(() => null);
+            if (chat && Array.isArray(chat.participants) && chat.participants.length) {
+                participants = chat.participants;
 
-            const jids = participants
-                .map(p => p.id?._serialized || null)
-                .filter(Boolean);
-
-            if (jids.length)
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+                // update DB
+                const jids = participants.map(p => p.id._serialized);
+                await setMembersForGroup(sessionId, groupId, jids);
+            }
         }
-
-    } catch {
+    } catch (e) {
         participants = [];
     }
 
-    // ------------------------------------------------------------
-    // 🟡 NO PARTICIPANTS AVAILABLE
-    // ------------------------------------------------------------
     if (!participants.length) {
         await safeSend(
             message.from,
-            `⚠ Cannot list admins for *${resolved.group.name}*.\n` +
-            `This may be a WhatsApp Community subgroup.\n` +
-            `Try: !syncmembers after promoting bot to admin.`
+            `⚠ Unable to fetch admins for ${resolved.group.name}.\nThis is common for Community groups.\nTry:\n• Promote bot to admin\n• Use !syncmembers <index>\n• Ask members to send a short message`
         );
         break;
     }
 
-    // ------------------------------------------------------------
-    // 🟢 FILTER ADMINS
-    // ------------------------------------------------------------
-    const admins = participants.filter(
-        p => p.isAdmin || p.isSuperAdmin
-    );
+    const admins = participants.filter(p => p.isAdmin || p.isSuperAdmin);
 
     if (!admins.length) {
-        await safeSend(message.from, `⚠ No admins detected in *${resolved.group.name}*.`);
+        await safeSend(message.from, `⚠ No admin data available for ${resolved.group.name}.`);
         break;
     }
 
-    // ------------------------------------------------------------
-    // 🟢 BUILD OUTPUT
-    // ------------------------------------------------------------
     let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
+    admins.forEach((a, i) => {
+        out += `${i + 1}. ${a.id._serialized.split('@')[0]}\n`;
+    });
 
-    admins.forEach((admin, i) => {
-        const jid = admin.id?._serialized || '';
-        const num = jid.split('@')[0];
-        out += `${i + 1}. ${num}\n`;
+    await safeSend(message.from, out);
+    break;
+}
+
+
+case 'mygroups': {
+    if (!isSelfChat) return;
+
+    await safeSend(message.from, `⏳ Checking groups you created...`);
+
+    let chats = await client.getChats().catch(() => []);
+
+    const myGroups = [];
+
+    for (const c of chats) {
+        if (!c.isGroup) continue;
+
+        let participants = [];
+
+        try {
+            if (typeof c.getParticipants === "function") {
+                participants = await c.getParticipants();
+            } else if (Array.isArray(c.participants) && c.participants.length) {
+                participants = c.participants;
+            }
+        } catch {
+            participants = [];
+        }
+
+        const me = participants.find(
+            p => p.id._serialized === mySelf
+        );
+
+        if (!me) continue;
+
+        // WhatsApp assigns creator as SuperAdmin
+        if (me.isSuperAdmin) {
+            myGroups.push({
+                name: c.name || "Unnamed Group",
+                groupId: c.id._serialized
+            });
+        }
+    }
+
+    if (!myGroups.length) {
+        await safeSend(message.from, `❌ No groups were detected as created by you.`);
+        break;
+    }
+
+    let out = `*👑 Groups YOU Created:*\n\n`;
+    myGroups.forEach((g, i) => {
+        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
     });
 
     await safeSend(message.from, out);
@@ -1782,55 +2060,206 @@ case 'tag': {
 
 
 /* ---------- TAGEXCEPT ---------- */
+// case 'tagexcept': {
+//     if (!isSelfChat) return;
+
+//     // First argument = group index
+//     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+//     if (!providedIdx) {
+//         await safeSend(message.from,
+//             '❗ Usage: !tagexcept <groupIndex> <excluded> [optional message]\nExamples:\n' +
+//             '!tagexcept 2 @john @mary\n!tagexcept 2 08123456789\n!tagexcept 2 1,3,5'
+//         );
+//         break;
+//     }
+
+//     // Resolve group
+//     const resolved = await resolveTargetGroupArg(providedIdx);
+//     if (!resolved.group) {
+//         await safeSend(message.from, '❌ No target group found. Use !list or !use <index>');
+//         break;
+//     }
+
+//     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+//     if (!chat) {
+//         await safeSend(message.from, '❌ Could not fetch group chat.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+//     // ------------------------------------------------------------
+//     let participants = [];
+//     try {
+//         const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+
+//         if (Array.isArray(dbList) && dbList.length) {
+//             participants = dbList.map(j => ({ id: { _serialized: j } }));
+//         } else if (typeof chat.getParticipants === "function") {
+//             const fetched = await chat.getParticipants().catch(() => []);
+//             if (fetched.length) {
+//                 participants = fetched;
+//                 const jids = fetched.map(p => p.id?._serialized || p);
+//                 await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//             }
+//         } else if (Array.isArray(chat.participants) && chat.participants.length) {
+//             participants = chat.participants;
+//             const jids = participants
+//                 .map(p => p.id?._serialized || null)
+//                 .filter(Boolean);
+//             if (jids.length)
+//                 await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//         }
+//     } catch {
+//         participants = [];
+//     }
+
+//     if (!participants.length) {
+//         await safeSend(
+//             message.from,
+//             `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
+//             `This is common in Community subgroups.\n` +
+//             `Try !syncmembers after promoting the bot to admin.`
+//         );
+//         break;
+//     }
+
+//     const participantJIDs = participants.map(p => p.id._serialized);
+
+//     // ------------------------------------------------------------
+//     // 1️⃣ Parse exclusion list
+//     // ------------------------------------------------------------
+//     const excludedSet = new Set();
+//     const exclusionArgs = args.slice(1);
+
+//     for (const part of exclusionArgs) {
+
+//         // A - @mentions
+//         if (part.includes('@')) {
+//             const num = part.replace(/[^0-9]/g, '');
+//             if (num.length >= 7) excludedSet.add(`${num}@c.us`);
+//         }
+
+//         // B - phone numbers
+//         else if (/^\d+$/.test(part) && part.length >= 7) {
+//             const formatted = part.startsWith('234') ? part : `234${part}`;
+//             excludedSet.add(`${formatted}@c.us`);
+//         }
+
+//         // C - index list: 1,3,5
+//         else if (/^\d+(,\d+)*$/.test(part)) {
+//             const idxs = part.split(',').map(n => parseInt(n.trim()));
+//             for (const i of idxs) {
+//                 const jid = participantJIDs[i - 1];
+//                 if (jid) excludedSet.add(jid);
+//             }
+//         }
+//     }
+
+//     // ------------------------------------------------------------
+//     // 2️⃣ Build mentions (EVERYONE except excluded)
+//     // ------------------------------------------------------------
+//     const finalMentions = [];
+//     for (const jid of participantJIDs) {
+//         if (!excludedSet.has(jid)) {
+//             const contact = await client.getContactById(jid).catch(() => null);
+//             if (contact) finalMentions.push(contact);
+//         }
+//     }
+
+//     // ------------------------------------------------------------
+//     // 3️⃣ Custom message
+//     // ------------------------------------------------------------
+//     const optionalMsg = exclusionArgs.length
+//         ? args.slice(1 + exclusionArgs.length).join(' ').trim()
+//         : '';
+
+//     const finalMsg = optionalMsg || '*🔔 Attention (filtered)*';
+
+//     // ------------------------------------------------------------
+//     // 4️⃣ Send in CHUNKS (avoid 1000-mention crash)
+//     // ------------------------------------------------------------
+//     async function sendInChunks(list, chunkSize = 50) {
+//         for (let i = 0; i < list.length; i += chunkSize) {
+//             const chunk = list.slice(i, i + chunkSize);
+//             try {
+//                 await client.sendMessage(resolved.group.groupId, finalMsg, { mentions: chunk });
+//                 await new Promise(r => setTimeout(r, 700));
+//             } catch (e) {
+//                 logger.error("tagexcept chunk error", e);
+//             }
+//         }
+//     }
+
+//     await sendInChunks(finalMentions);
+
+//     await safeSend(
+//         message.from,
+//         `✅ Tag-except completed in *${resolved.group.name}*.\nExcluded: ${[...excludedSet].join(', ') || 'NONE'}`
+//     );
+
+//     break;
+// }
+
 case 'tagexcept': {
     if (!isSelfChat) return;
 
-    // First argument = group index
-    const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+    // ------------------------------------------------------------
+    // 0️⃣ CLEAN GROUP INDEX
+    // ------------------------------------------------------------
+    const cleanedIndex = args[0] ? args[0].replace(/[^0-9]/g, '') : null;
+    const providedIdx = cleanedIndex && !isNaN(cleanedIndex) ? parseInt(cleanedIndex) : null;
+
     if (!providedIdx) {
         await safeSend(message.from,
-            '❗ Usage: !tagexcept <groupIndex> <excluded> [optional message]\nExamples:\n' +
-            '!tagexcept 2 @john @mary\n!tagexcept 2 08123456789\n!tagexcept 2 1,3,5'
+            '❗ Usage: !tagexcept <groupIndex> <excluded> | <message>\nExamples:\n' +
+            '!tagexcept 2 @john @mary | Meeting starts\n' +
+            '!tagexcept 2 08123456789 | Hello team\n' +
+            '!tagexcept 2 1,3,5 | Quick notice'
         );
         break;
     }
 
-    // Resolve group
+    // ------------------------------------------------------------
+    // 1️⃣ RESOLVE GROUP
+    // ------------------------------------------------------------
     const resolved = await resolveTargetGroupArg(providedIdx);
     if (!resolved.group) {
         await safeSend(message.from, '❌ No target group found. Use !list or !use <index>');
         break;
     }
 
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    const groupId = resolved.group.groupId;
+    const chat = await client.getChatById(groupId).catch(() => null);
     if (!chat) {
         await safeSend(message.from, '❌ Could not fetch group chat.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+    // 2️⃣ PARTICIPANT RESOLVER (DB → getParticipants → fallback)
     // ------------------------------------------------------------
     let participants = [];
-    try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
 
+    try {
+        const dbList = await getMembersFromDB(sessionId, groupId);
         if (Array.isArray(dbList) && dbList.length) {
             participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } else if (typeof chat.getParticipants === "function") {
+        }
+
+        if (!participants.length && typeof chat.getParticipants === "function") {
             const fetched = await chat.getParticipants().catch(() => []);
             if (fetched.length) {
                 participants = fetched;
-                const jids = fetched.map(p => p.id?._serialized || p);
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+                const jids = fetched.map(p => p.id._serialized);
+                await setMembersForGroup(sessionId, groupId, jids);
             }
-        } else if (Array.isArray(chat.participants) && chat.participants.length) {
+        }
+
+        if (!participants.length && Array.isArray(chat.participants) && chat.participants.length) {
             participants = chat.participants;
-            const jids = participants
-                .map(p => p.id?._serialized || null)
-                .filter(Boolean);
-            if (jids.length)
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+            const jids = participants.map(p => p.id._serialized);
+            await setMembersForGroup(sessionId, groupId, jids);
         }
     } catch {
         participants = [];
@@ -1840,8 +2269,7 @@ case 'tagexcept': {
         await safeSend(
             message.from,
             `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
-            `This is common in Community subgroups.\n` +
-            `Try !syncmembers after promoting the bot to admin.`
+            `This is common in Community subgroups.\nTry promoting the bot to admin and run !syncmembers.`
         );
         break;
     }
@@ -1849,72 +2277,90 @@ case 'tagexcept': {
     const participantJIDs = participants.map(p => p.id._serialized);
 
     // ------------------------------------------------------------
-    // 1️⃣ Parse exclusion list
+    // 3️⃣ PARSE EXCLUSIONS
     // ------------------------------------------------------------
     const excludedSet = new Set();
+
+    // All args after the index
     const exclusionArgs = args.slice(1);
 
-    for (const part of exclusionArgs) {
+    for (const token of exclusionArgs) {
 
-        // A - @mentions
-        if (part.includes('@')) {
-            const num = part.replace(/[^0-9]/g, '');
-            if (num.length >= 7) excludedSet.add(`${num}@c.us`);
+        // A: @mentions
+        if (token.includes('@')) {
+            const num = token.replace(/[^0-9]/g, '');
+            if (num.length >= 7) excludedSet.add(num + '@c.us');
         }
 
-        // B - phone numbers
-        else if (/^\d+$/.test(part) && part.length >= 7) {
-            const formatted = part.startsWith('234') ? part : `234${part}`;
-            excludedSet.add(`${formatted}@c.us`);
+        // B: Phone numbers
+        else if (/^\d+$/.test(token) && token.length >= 7) {
+            const formatted = token.startsWith('234') ? token : '234' + token;
+            excludedSet.add(formatted + '@c.us');
         }
 
-        // C - index list: 1,3,5
-        else if (/^\d+(,\d+)*$/.test(part)) {
-            const idxs = part.split(',').map(n => parseInt(n.trim()));
-            for (const i of idxs) {
-                const jid = participantJIDs[i - 1];
+        // C: Index list
+        else if (/^\d+(,\d+)*$/.test(token)) {
+            token.split(',').map(x => parseInt(x)).forEach(idx => {
+                const jid = participantJIDs[idx - 1];
                 if (jid) excludedSet.add(jid);
-            }
+            });
         }
+
+        // Ignore pipe symbol and message contents
+        else if (token === '|') break;
     }
 
     // ------------------------------------------------------------
-    // 2️⃣ Build mentions (EVERYONE except excluded)
+    // 4️⃣ EXTRACT CUSTOM MESSAGE SAFELY
     // ------------------------------------------------------------
-    const finalMentions = [];
+    let finalMsg = null;
+    const fullBody = message.body;
+
+    // Supports: !tagexcept 3 num1 num2 | Hello Team
+    if (fullBody.includes('|')) {
+        finalMsg = fullBody.split('|')[1].trim();
+    }
+
+    // fallback: message after exclusions
+    if (!finalMsg) {
+        const extra = args.slice(1 + exclusionArgs.length).join(' ').trim();
+        finalMsg = extra;
+    }
+
+    // last fallback
+    if (!finalMsg) finalMsg = '*🔔 Attention (filtered)*';
+
+    // ------------------------------------------------------------
+    // 5️⃣ BUILD MENTION LIST
+    // ------------------------------------------------------------
+    const mentionList = [];
     for (const jid of participantJIDs) {
         if (!excludedSet.has(jid)) {
             const contact = await client.getContactById(jid).catch(() => null);
-            if (contact) finalMentions.push(contact);
+            if (contact) mentionList.push(contact);
         }
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ Custom message
-    // ------------------------------------------------------------
-    const optionalMsg = exclusionArgs.length
-        ? args.slice(1 + exclusionArgs.length).join(' ').trim()
-        : '';
-
-    const finalMsg = optionalMsg || '*🔔 Attention (filtered)*';
-
-    // ------------------------------------------------------------
-    // 4️⃣ Send in CHUNKS (avoid 1000-mention crash)
+    // 6️⃣ SEND IN SAFE CHUNKS
     // ------------------------------------------------------------
     async function sendInChunks(list, chunkSize = 50) {
         for (let i = 0; i < list.length; i += chunkSize) {
             const chunk = list.slice(i, i + chunkSize);
             try {
-                await client.sendMessage(resolved.group.groupId, finalMsg, { mentions: chunk });
-                await new Promise(r => setTimeout(r, 700));
+                await client.sendMessage(groupId, finalMsg, { mentions: chunk });
+                await new Promise(r => setTimeout(r, 600));
             } catch (e) {
-                logger.error("tagexcept chunk error", e);
+                logger.error(`[${sessionName}] tagexcept chunk error`, e);
             }
         }
     }
 
-    await sendInChunks(finalMentions);
+    await sendInChunks(mentionList);
 
+    // ------------------------------------------------------------
+    // 7️⃣ CONFIRMATION
+    // ------------------------------------------------------------
     await safeSend(
         message.from,
         `✅ Tag-except completed in *${resolved.group.name}*.\nExcluded: ${[...excludedSet].join(', ') || 'NONE'}`
@@ -1924,58 +2370,68 @@ case 'tagexcept': {
 }
 
 
-
-      /* ---------- FORWARDALL ---------- */
-case 'forwardall': {
+case 'tagfew': {
     if (!isSelfChat) return;
 
-    // Must reply to a message
-    if (!message.hasQuotedMsg) {
-        await safeSend(message.from, '❗ Reply to the message and run:\n!forwardall <groupIndex>');
+    // ------------------------------------------------------------
+    // 0️⃣ CLEAN GROUP INDEX
+    // ------------------------------------------------------------
+    const cleanedIndex = args[0] ? args[0].replace(/[^0-9]/g, '') : null;
+    const providedIdx = cleanedIndex && !isNaN(cleanedIndex) ? parseInt(cleanedIndex) : null;
+
+    if (!providedIdx) {
+        await safeSend(message.from,
+`❗ Usage: !tagfew <groupIndex> <targets> | <message>
+
+Examples:
+!tagfew 3 @john @mary | Private update
+!tagfew 4 08123334444 07056667777 | Check this
+!tagfew 2 1,3 | Important message for two people
+`);
         break;
     }
 
-    const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+    // ------------------------------------------------------------
+    // 1️⃣ RESOLVE GROUP
+    // ------------------------------------------------------------
     const resolved = await resolveTargetGroupArg(providedIdx);
-
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Run !list or set default with !use.');
+        await safeSend(message.from, '❌ No target group found. Use !list or !use <index>');
         break;
     }
 
-    const quoted = await message.getQuotedMessage();
+    const groupId = resolved.group.groupId;
+    const chat = await client.getChatById(groupId).catch(() => null);
 
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
     if (!chat) {
         await safeSend(message.from, '❌ Could not fetch group chat.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+    // 2️⃣ SAFE PARTICIPANT RESOLVER (DB → getParticipants → fallback)
     // ------------------------------------------------------------
     let participants = [];
-    try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
 
+    try {
+        const dbList = await getMembersFromDB(sessionId, groupId);
         if (Array.isArray(dbList) && dbList.length) {
             participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } else if (typeof chat.getParticipants === "function") {
+        }
+
+        if (!participants.length && typeof chat.getParticipants === "function") {
             const fetched = await chat.getParticipants().catch(() => []);
-            if (Array.isArray(fetched) && fetched.length) {
+            if (fetched.length) {
                 participants = fetched;
-                await setMembersForGroup(
-                    sessionId,
-                    resolved.group.groupId,
-                    fetched.map(p => p.id?._serialized || p)
-                );
+                const jids = fetched.map(p => p.id._serialized);
+                await setMembersForGroup(sessionId, groupId, jids);
             }
-        } else if (Array.isArray(chat.participants) && chat.participants.length) {
+        }
+
+        if (!participants.length && Array.isArray(chat.participants) && chat.participants.length) {
             participants = chat.participants;
-            const jids = participants
-                .map(p => p.id?._serialized || null)
-                .filter(Boolean);
-            if (jids.length) await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+            const jids = participants.map(p => p.id._serialized);
+            await setMembersForGroup(sessionId, groupId, jids);
         }
     } catch {
         participants = [];
@@ -1984,56 +2440,303 @@ case 'forwardall': {
     if (!participants.length) {
         await safeSend(
             message.from,
-            `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
-            `Bot may not be admin or group is a Community subgroup.\n` +
-            `Try !syncmembers after promoting bot to admin.`
+            `⚠ Unable to get members for *${resolved.group.name}*.\nTry promoting bot to admin and run !syncmembers.`
         );
         break;
     }
 
-    const targetJIDs = participants
-        .map(p => p.id._serialized)
-        .filter(j => j !== mySelf); // skip bot itself
+    const participantJIDs = participants.map(p => p.id._serialized);
 
-    if (!targetJIDs.length) {
-        await safeSend(message.from, '❗ No valid members to forward to.');
+    // ------------------------------------------------------------
+    // 3️⃣ PARSE TARGETS (ONLY USERS YOU WANT TO TAG)
+    // ------------------------------------------------------------
+    const targetSet = new Set();
+
+    // Everything after the index until the |
+    const rawTargetSection = message.body.includes('|')
+        ? message.body.split('|')[0]
+        : message.body;
+
+    const tokens = rawTargetSection.split(' ').slice(2); // skip command + index
+
+    for (const token of tokens) {
+
+        // A — @mentions
+        if (token.includes('@')) {
+            const num = token.replace(/[^0-9]/g, '');
+            if (num.length >= 7) targetSet.add(`${num}@c.us`);
+        }
+
+        // B — phone numbers
+        else if (/^\d+$/.test(token) && token.length >= 7) {
+            const formatted = token.startsWith('234') ? token : '234' + token;
+            targetSet.add(`${formatted}@c.us`);
+        }
+
+        // C — index list 1,3,5
+        else if (/^\d+(,\d+)*$/.test(token)) {
+            const idxs = token.split(',').map(n => parseInt(n.trim()));
+            for (const i of idxs) {
+                const jid = participantJIDs[i - 1];
+                if (jid) targetSet.add(jid);
+            }
+        }
+    }
+
+    if (!targetSet.size) {
+        await safeSend(message.from, '❗ No valid targets found.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 🟢 CONFIRMATION TO OWNER
+    // 4️⃣ EXTRACT CUSTOM MESSAGE USING |
     // ------------------------------------------------------------
-    await safeSend(
-        message.from,
-        `🔁 Forwarding to **${targetJIDs.length}** members of *${resolved.group.name}*...`
-    );
+    let finalMsg = null;
+    if (message.body.includes('|')) {
+        finalMsg = message.body.split('|')[1].trim();
+    }
+    if (!finalMsg) finalMsg = '*🔔 Attention (selected users only)*';
 
     // ------------------------------------------------------------
-    // 🟢 SEND MEDIA OR TEXT TO EACH MEMBER (throttled)
+    // 5️⃣ BUILD FINAL MENTION LIST
     // ------------------------------------------------------------
-    for (const jid of targetJIDs) {
-        try {
-            if (quoted.hasMedia) {
-                const media = await quoted.downloadMedia();
-                await client.sendMessage(jid, media, {
-                    caption: quoted.body || ''
-                });
-            } else {
-                await client.sendMessage(jid, quoted.body || '');
-            }
-
-            // throttle to avoid spam-ban
-            await new Promise(r => setTimeout(r, 300));
-
-        } catch (e) {
-            logger.error(`[${sessionName}] forwardall -> ${jid}`, e.message || e);
-        }
+    const finalMentions = [];
+    for (const jid of targetSet) {
+        const contact = await client.getContactById(jid).catch(() => null);
+        if (contact) finalMentions.push(contact);
     }
 
     // ------------------------------------------------------------
-    // 🟢 DONE
+    // 6️⃣ SEND SAFELY (CHUNKED)
     // ------------------------------------------------------------
-    await safeSend(message.from, '✅ Forward-all completed successfully.');
+    async function sendInChunks(list, chunkSize = 50) {
+        for (let i = 0; i < list.length; i += chunkSize) {
+            const chunk = list.slice(i, i + chunkSize);
+            try {
+                await client.sendMessage(groupId, finalMsg, { mentions: chunk });
+                await new Promise(r => setTimeout(r, 600));
+            } catch (e) {
+                logger.error(`[${sessionName}] tagfew chunk error`, e);
+            }
+        }
+    }
+
+    await sendInChunks(finalMentions);
+
+    // ------------------------------------------------------------
+    // 7️⃣ CONFIRMATION
+    // ------------------------------------------------------------
+    await safeSend(
+        message.from,
+        `✅ *TagFew completed* in *${resolved.group.name}*.\nTagged: ${[...targetSet].join(', ')}`
+    );
+
+    break;
+}
+
+
+      /* ---------- FORWARDALL ---------- */
+// case 'forwardall': {
+//     if (!isSelfChat) return;
+
+//     // Must reply to a message
+//     if (!message.hasQuotedMsg) {
+//         await safeSend(message.from, '❗ Reply to the message and run:\n!forwardall <groupIndex>');
+//         break;
+//     }
+
+//     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+//     const resolved = await resolveTargetGroupArg(providedIdx);
+
+//     if (!resolved.group) {
+//         await safeSend(message.from, '❌ No target group found. Run !list or set default with !use.');
+//         break;
+//     }
+
+//     const quoted = await message.getQuotedMessage();
+
+//     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+//     if (!chat) {
+//         await safeSend(message.from, '❌ Could not fetch group chat.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+//     // ------------------------------------------------------------
+//     let participants = [];
+//     try {
+//         const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+
+//         if (Array.isArray(dbList) && dbList.length) {
+//             participants = dbList.map(j => ({ id: { _serialized: j } }));
+//         } else if (typeof chat.getParticipants === "function") {
+//             const fetched = await chat.getParticipants().catch(() => []);
+//             if (Array.isArray(fetched) && fetched.length) {
+//                 participants = fetched;
+//                 await setMembersForGroup(
+//                     sessionId,
+//                     resolved.group.groupId,
+//                     fetched.map(p => p.id?._serialized || p)
+//                 );
+//             }
+//         } else if (Array.isArray(chat.participants) && chat.participants.length) {
+//             participants = chat.participants;
+//             const jids = participants
+//                 .map(p => p.id?._serialized || null)
+//                 .filter(Boolean);
+//             if (jids.length) await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+//         }
+//     } catch {
+//         participants = [];
+//     }
+
+//     if (!participants.length) {
+//         await safeSend(
+//             message.from,
+//             `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
+//             `Bot may not be admin or group is a Community subgroup.\n` +
+//             `Try !syncmembers after promoting bot to admin.`
+//         );
+//         break;
+//     }
+
+//     const targetJIDs = participants
+//         .map(p => p.id._serialized)
+//         .filter(j => j !== mySelf); // skip bot itself
+
+//     if (!targetJIDs.length) {
+//         await safeSend(message.from, '❗ No valid members to forward to.');
+//         break;
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 CONFIRMATION TO OWNER
+//     // ------------------------------------------------------------
+//     await safeSend(
+//         message.from,
+//         `🔁 Forwarding to **${targetJIDs.length}** members of *${resolved.group.name}*...`
+//     );
+
+//     // ------------------------------------------------------------
+//     // 🟢 SEND MEDIA OR TEXT TO EACH MEMBER (throttled)
+//     // ------------------------------------------------------------
+//     for (const jid of targetJIDs) {
+//         try {
+//             if (quoted.hasMedia) {
+//                 const media = await quoted.downloadMedia();
+//                 await client.sendMessage(jid, media, {
+//                     caption: quoted.body || ''
+//                 });
+//             } else {
+//                 await client.sendMessage(jid, quoted.body || '');
+//             }
+
+//             // throttle to avoid spam-ban
+//             await new Promise(r => setTimeout(r, 300));
+
+//         } catch (e) {
+//             logger.error(`[${sessionName}] forwardall -> ${jid}`, e.message || e);
+//         }
+//     }
+
+//     // ------------------------------------------------------------
+//     // 🟢 DONE
+//     // ------------------------------------------------------------
+//     await safeSend(message.from, '✅ Forward-all completed successfully.');
+//     break;
+// }
+
+case 'forwardall': {
+    if (!isSelfChat) return;
+
+    // usage: !forwardall <groupIndex> <message>
+    if (args.length < 2) {
+        await safeSend(message.from,
+            "Usage:\n!forwardall <groupIndex> <message>\nExample:\n!forwardall 20 Hello everyone!");
+        break;
+    }
+
+    // 1️⃣ Extract group index
+    const groupIndex = parseInt(args[0]);
+    if (isNaN(groupIndex)) {
+        await safeSend(message.from, "❌ First argument must be a group index.");
+        break;
+    }
+
+    // 2️⃣ Extract message text
+    const msgText = args.slice(1).join(" ").trim();
+    if (!msgText) {
+        await safeSend(message.from, "❌ Message cannot be empty.");
+        break;
+    }
+
+    // 3️⃣ Resolve group
+    const resolved = await resolveTargetGroupArg(groupIndex);
+    if (!resolved.group) {
+        await safeSend(message.from, "❌ Invalid group index. Run !list first.");
+        break;
+    }
+
+    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    if (!chat) {
+        await safeSend(message.from, "❌ Could not fetch group.");
+        break;
+    }
+
+    // 4️⃣ Safe participant resolver (DB → fetch → fallback)
+    let participants = [];
+    try {
+        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+
+        if (dbList?.length) {
+            participants = dbList.map(j => ({ id: { _serialized: j } }));
+        } else if (typeof chat.getParticipants === "function") {
+            const fetched = await chat.getParticipants().catch(() => []);
+            if (fetched.length) {
+                participants = fetched;
+                const jids = fetched.map(p => p.id._serialized);
+                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+            }
+        } else if (chat.participants?.length) {
+            participants = chat.participants;
+            const jids = participants.map(p => p.id._serialized);
+            await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+        }
+    } catch {
+        participants = [];
+    }
+
+    if (!participants.length) {
+        await safeSend(message.from, `⚠ Cannot get members of *${resolved.group.name}*.`);
+        break;
+    }
+
+    const JIDS = participants.map(p => p.id._serialized);
+
+    // 5️⃣ Send private DMs one by one
+    let delivered = 0;
+    await safeSend(message.from,
+        `📨 Sending your message privately to **${JIDS.length}** members of *${resolved.group.name}*...`
+    );
+
+    for (const jid of JIDS) {
+        if (jid === mySelf) continue; // skip bot
+
+        try {
+            await client.sendMessage(jid, msgText);
+            delivered++;
+        } catch (e) {
+            logger.error("forwardall DM error:", e);
+        }
+
+        await new Promise(r => setTimeout(r, 300)); // anti-spam throttle
+    }
+
+    await safeSend(message.from,
+        `✅ *ForwardAll completed!*\nMessage delivered to **${delivered}** members of *${resolved.group.name}*.`
+    );
+
     break;
 }
 
