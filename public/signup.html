@@ -277,27 +277,29 @@
             strengthText.textContent = strength > 0 ? texts[strength - 1] : 'Password strength';
         }
 
-        async function submitForm() {
-            if (!submitBtn || !btnText || !btnLoader) return;
-            
-            submitBtn.disabled = true;
-            btnText.style.opacity = '0';
-            btnLoader.style.display = 'block';
-            try {
-                const formData = new FormData(form);
-                
-                const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        fullName: formData.get('fullName'),
-                        email: formData.get('email'),
-                        password: formData.get('password'),
-                        confirmPassword: formData.get('confirmPassword')
-                    })
-                });
+       async function submitForm() {
+    if (!submitBtn || !btnText || !btnLoader) return;
+    
+    submitBtn.disabled = true;
+    btnText.style.opacity = '0';
+    btnLoader.style.display = 'block';
+
+    try {
+        const formData = new FormData(form);
+
+        const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                fullName: formData.get('fullName'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                confirmPassword: formData.get('confirmPassword')
+            })
+        });
+
 
 
                 const data = await response.json();

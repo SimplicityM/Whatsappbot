@@ -8,11 +8,6 @@ let currentSessionId = null;
 let isCreatingSession = false;
 let socket; // Declare socket variable
 
-// Get current admin ID
-// function getCurrentAdminId() {
-//     const userSession = JSON.parse(localStorage.getItem('userSession') || '{}');
-//     return userSession.id || userSession.userId || 'admin-user';
-// }
 
 // Get current admin ID
 function getCurrentAdminId() {
@@ -313,13 +308,14 @@ async function createNewSession() {
         }
 
         // 🔑 NEW: Call the ADMIN session creation endpoint
-        const response = await fetch('/api/admin/sessions/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${getAuthToken()}` // Add auth token
-            }
-        });
+const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/admin/sessions/create', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`
+    }
+});
+
 
         if (!response.ok) {
             const errorText = await response.text();
