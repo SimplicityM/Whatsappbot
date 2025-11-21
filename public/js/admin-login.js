@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('🔐 Attempting admin login for:', loginData.email);
             
-            const response = await fetch('https://whatsappbot-tsya.onrender.com/api/auth/admin-login', {
+            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/admin-login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
