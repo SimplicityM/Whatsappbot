@@ -4,8 +4,10 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "npm run start:web",
+    "start:web": "node server.js",
+    "start:worker": "node bot.js",
+    "dev": "nodemon server.js"
   },
   "keywords": [],
   "author": "",

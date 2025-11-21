@@ -1,3 +1,19 @@
+// =============================
+// WORKER SOCKET.IO SERVER (Render Worker)
+// =============================
+const http = require("http");
+const workerServer = http.createServer();
+const workerIO = require("socket.io")(workerServer, {
+    cors: { origin: "*" }
+});
+
+workerServer.listen(5001, () => {
+    console.log("Worker socket running on port 5001");
+});
+
+// This IO instance will be passed to createBotSession()
+
+
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -3207,7 +3223,7 @@ function createSession(sessionId) {
 }
 
 // createBotSession exposed for dashboard integration
-async function createBotSession(userId, sessionId, io) {
+async function createBotSession(userId, sessionId, workerIO) {
   try {
     // allow passing io (socket server) so we can emit QR updates to dashboard
     if (io && !global.io) global.io = io;
