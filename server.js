@@ -48,26 +48,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const cors = require('cors');
 app.use(cors({
-    origin: ["https://whatsappbot-tsya.onrender.com", "http://127.0.0.1:3000"],
+    origin: ["https://whatsappbot-tsya.onrender.com"],
     credentials: true
 }));
 
 
 // Content Security Policy
 app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', 
+    res.setHeader(
+        "Content-Security-Policy",
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.socket.io https://cdnjs.cloudflare.com; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-        "connect-src 'self' ws: wss: https: http://localhost:* ws://localhost:*; " +
+        "connect-src 'self' https://whatsappbot-tsya.onrender.com ws://whatsappbot-tsya.onrender.com wss://whatsappbot-tsya.onrender.com; " +
         "img-src 'self' data: https: blob:; " +
         "object-src 'none'; " +
         "base-uri 'self';"
     );
     next();
 });
+
 
 
 // Database connection
@@ -633,9 +635,6 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
 
 app.use('/api/sessions', require('./routes/sessions'));
 
-// Static file serving
-app.use(express.static(path.join(__dirname, 'public')));
-
 // Page routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -1053,16 +1052,6 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
     }
 });
 
-// // Email marketing and other routes (optional)
-// try {
-//     const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
-//     const abTestRoutes = require('./routes/ab-tests');
-
-//     app.use('/api/ab-tests', abTestRoutes);
-//     app.use('/api/analytics', abTestRoutes);
-// } catch (error) {
-//     console.log('Email marketing routes not available:', error.message);
-// }
 
 // Public stats API
 app.get('/api/public/stats', async (req, res) => {
@@ -1131,17 +1120,10 @@ app.get('/api/user/usage', authenticate, async (req, res) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, () => {
     console.log(`🚀 WhatsApp Bot Server running on port ${PORT}`);
-    console.log(`📱 Home Page: http://localhost:${PORT}`);
-    console.log(`👤 User Dashboard: http://localhost:${PORT}/dashboard`);
-    console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
-    console.log(`💳 Payment Page: http://localhost:${PORT}/payment`);
+    console.log(`🌍 Running on Render deployment`);
 });
-
-
 
 
 // Export functions for use in routes
