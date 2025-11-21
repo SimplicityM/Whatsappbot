@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             showLoadingOverlay(true);
             
-            const response = await fetch('/api/admin/verify-token', {
+            const response = await fetch('https://whatsappbot-tsya.onrender.com/api/admin/verify-token', {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('🔐 Attempting admin login for:', loginData.email);
             
-            const response = await fetch('/api/auth/admin-login', {
+            const response = await fetch('https://whatsappbot-tsya.onrender.com/api/auth/admin-login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

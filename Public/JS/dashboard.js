@@ -84,51 +84,11 @@ function normalizeUserData(userData) {
 
 // Configuration
 const CONFIG = {
-    API_BASE: window.location.origin,
-    SOCKET_URL: window.location.origin,
+    API_BASE: "https://whatsappbot-tsya.onrender.com",
+    SOCKET_URL: "https://whatsappbot-tsya.onrender.com",
     REFRESH_INTERVAL: 30000 // 30 seconds
 };
 
-
-
-// FIXED: Authentication check function with normalization
-// function initializeDashboard() {
-//     showLoading(true);
-
-//     const userSession = localStorage.getItem('userSession');
-//     if (!userSession) {
-//         window.location.href = '/index.html';
-//         return;
-//     }
-
-//     try {
-//         currentUser = JSON.parse(userSession);
-        
-//         // NORMALIZE USER DATA - This is the key fix!
-//         currentUser = normalizeUserData(currentUser);
-        
-//         if (!currentUser || !currentUser.token) {
-//             throw new Error('Invalid session data');
-//         }
-        
-//         console.log('✅ User session loaded and normalized:', {
-//             id: currentUser.user.id,
-//             name: currentUser.user.fullName,
-//             email: currentUser.user.email
-//         });
-        
-//         updateUserInfo();
-//         loadUserData();
-//         initializeAllSections();
-        
-//     } catch (error) {
-//         console.error('Invalid user session:', error);
-//         localStorage.removeItem('userSession');
-//         window.location.href = '/index.html';
-//     } finally {
-//         showLoading(false);
-//     }
-// }
 
 function updateUserInfo() {
     if (!currentUser || !currentUser.user) return;

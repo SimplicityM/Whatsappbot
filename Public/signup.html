@@ -283,11 +283,10 @@
             submitBtn.disabled = true;
             btnText.style.opacity = '0';
             btnLoader.style.display = 'block';
-
             try {
                 const formData = new FormData(form);
                 
-                const response = await fetch('/api/auth/register', {
+                const response = await fetch('https://whatsappbot-tsya.onrender.com/api/auth/register', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -299,6 +298,7 @@
                         confirmPassword: formData.get('confirmPassword')
                     })
                 });
+
 
                 const data = await response.json();
 
