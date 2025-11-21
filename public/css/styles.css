@@ -840,7 +840,7 @@ input[type="password"].success {
   color: var(--warning-color);
 }
 
-.hero-title {
+/* .hero-title {
   font-size: var(--font-size-5xl);
   font-weight: 800;
   line-height: 1.1;
@@ -860,6 +860,33 @@ input[type="password"].success {
   color: var(--gray-600);
   margin-bottom: var(--space-8);
   line-height: 1.7;
+} */
+
+.hero-title {
+  font-size: var(--font-size-5xl);
+  font-weight: 800;
+  line-height: 1.2; /* Changed from 1.1 to 1.2 for better spacing */
+  margin-bottom: var(--space-6);
+  color: var(--gray-900);
+  word-wrap: break-word; /* Add this */
+  overflow-wrap: break-word; /* Add this */
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-fill-color: transparent; /* Add fallback */
+  display: inline-block; /* Add this to prevent breaking */
+}
+
+.hero-description {
+  font-size: var(--font-size-lg);
+  color: var(--gray-600);
+  margin-bottom: var(--space-8);
+  line-height: 1.8; /* Changed from 1.7 for better readability */
+  max-width: 540px; /* Add this to prevent text from being too wide */
 }
 
 .hero-buttons {
@@ -2161,6 +2188,12 @@ input:checked + .slider:before {
 
   .hero-title {
     font-size: var(--font-size-2xl);
+    line-height: 1.3; /* Better line height for mobile */
+  }
+  
+  .hero-description {
+    font-size: var(--font-size-base); /* Slightly smaller on mobile */
+    line-height: 1.6;
   }
 
   .section-header h2 {
@@ -2177,12 +2210,18 @@ input:checked + .slider:before {
     width: 200px;
     height: 400px;
   }
-
-  .btn-primary,
-  .btn-secondary {
-    padding: var(--space-3) var(--space-6);
-    font-size: var(--font-size-sm);
+  
+  /* Add this for better button layout */
+  .hero-buttons {
+    width: 100%;
   }
+  
+  .hero-buttons .btn-primary,
+  .hero-buttons .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
 
   .hero-buttons {
     width: 100%;
