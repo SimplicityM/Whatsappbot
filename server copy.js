@@ -7,13 +7,28 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 require('dotenv').config();
 
+
 // Import models and routes
 const User = require('./models/User');
 const Session = require('./models/Session');
 const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const paymentsRoute = require('./routes/payment.js');
+
+
+
+// Add this after your imports in server.js
+console.log('🛑 Disabling periodic checks for testing');
+// Add this near the top of server.js to disable email marketing
+process.env.DISABLE_EMAIL_MARKETING = 'true';
 
 // Import bot functionality
-const { createBotSession } = require('./bot');
+const { 
+    createBotSession, 
+    restoreAllSessions,
+    restoreUserSessionAfterPayment,
+    clients 
+} = require('./bot.js');
+
 
 // Initialize Express app
 const app = express();
@@ -25,34 +40,43 @@ const io = socketIo(server, {
     }
 });
 
+app.set('io', io); 
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const cors = require('cors');
+
 app.use(cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: [
+        "https://whatsappbot-u5yq.onrender.com",     // YOUR CURRENT FRONTEND
+        "https://whatsappbot-tsya.onrender.com"       // YOUR BACKEND
+    ],
     credentials: true
 }));
 
 
+
 // Content Security Policy
 app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', 
+    res.setHeader(
+        "Content-Security-Policy",
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.socket.io https://cdnjs.cloudflare.com; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-        "connect-src 'self' ws: wss: https: http://localhost:* ws://localhost:*; " +
+        "connect-src 'self' https://whatsappbot-u5yq.onrender.com https://cdn.socket.io ws: wss:; " +
         "img-src 'self' data: https: blob:; " +
         "object-src 'none'; " +
         "base-uri 'self';"
     );
     next();
 });
+
 // Database connection
-const connectDB = async () => {
+const connectDB = async (io) => {
     try {
         const mongoURI = process.env.MONGODB_URI;
 
@@ -67,14 +91,18 @@ const connectDB = async () => {
         
         console.log('✅ Connected to MongoDB');
         console.log(`📊 Database: ${mongoose.connection.name}`);
-        
+
+        // 🔥 Restore WhatsApp sessions ONLY after DB connection is ready
+        console.log("♻ Restoring previous WhatsApp sessions...");
+        restoreAllSessions(io);
+
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
         process.exit(1);
     }
 };
 
-connectDB();
+connectDB(io);
 
 // Global variables
 const activeClients = new Map();
@@ -82,33 +110,127 @@ const activeClients = new Map();
 // Subscription tiers and their features
 const subscriptionPlans = {
     free: {
+        name: 'Free Plan',
         maxSessions: 1,
+        amount: 0, // Free
         allowedCommands: ['ping', 'help', 'status'],
-        features: ['basic_messaging']
-    },
-    basic: {
-        maxSessions: 3,
-        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply'],
-        features: ['basic_messaging', 'broadcast', 'auto_reply']
-    },
-    premium: {
-        maxSessions: 10,
-        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands'],
-        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands']
+        features: ['basic_messaging'],
+        description: 'Perfect for trying out the bot',
+        limits: {
+            dailyMessages: 50,
+            monthlyMessages: 1000,
+            groupsPerSession: 5
+        }
     },
     starter: {
-        maxSessions: 5
+        name: 'Starter Plan',
+        maxSessions: 5,
+        amount: 2900, // ₦29/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'tag', 'tagexcept'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'group_tagging'],
+        description: 'Essential features for small businesses',
+        limits: {
+            dailyMessages: 500,
+            monthlyMessages: 10000,
+            groupsPerSession: 20
+        }
     },
     professional: {
-        maxSessions: 25
+        name: 'Professional Plan',
+        maxSessions: 25,
+        amount: 7900, // ₦79/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'tag', 'tagexcept', 'list'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'group_tagging', 'advanced_commands'],
+        description: 'Advanced features for growing businesses',
+        limits: {
+            dailyMessages: 2000,
+            monthlyMessages: 50000,
+            groupsPerSession: 50
+        }
     },
     business: {
-        maxSessions: 100
+        name: 'Business Plan',
+        maxSessions: 100,
+        amount: 14900, // ₦149/month (in kobo)
+        allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export'],
+        features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands', 'group_tagging', 'advanced_commands', 'priority_support', 'data_export'],
+        description: 'Comprehensive solution for established businesses',
+        limits: {
+            dailyMessages: 10000,
+            monthlyMessages: 250000,
+            groupsPerSession: 200
+        }
     },
     enterprise: {
-        maxSessions: -1
+        name: 'Enterprise Plan',
+        maxSessions: -1, // Unlimited
+        amount: 27900, // ₦279/month (in kobo)
+        allowedCommands: 'all', // All commands available
+        features: ['all_features', 'unlimited_messaging', 'dedicated_support', 'custom_integrations', 'white_label', 'api_access', 'advanced_analytics', 'multi_user_access'],
+        description: 'Full-featured solution for large organizations',
+        limits: {
+            dailyMessages: -1, // Unlimited
+            monthlyMessages: -1, // Unlimited
+            groupsPerSession: -1 // Unlimited
+        }
     }
 };
+
+// Helper function to check if a command is allowed for a subscription plan
+function isCommandAllowed(subscription, command) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    
+    // Enterprise has all commands
+    if (plan.allowedCommands === 'all') {
+        return true;
+    }
+    
+    // Check if command is in the allowed list
+    return plan.allowedCommands.includes(command);
+}
+
+// Helper function to check if a feature is available for a subscription plan
+function hasFeature(subscription, feature) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    
+    // Enterprise has all features
+    if (plan.features.includes('all_features')) {
+        return true;
+    }
+    
+    return plan.features.includes(feature);
+}
+
+// Helper function to get subscription plan details
+function getPlanDetails(subscription) {
+    return subscriptionPlans[subscription] || subscriptionPlans.free;
+}
+
+// Helper function to check usage limits
+function checkUsageLimit(subscription, limitType, currentUsage) {
+    const plan = subscriptionPlans[subscription] || subscriptionPlans.free;
+    const limit = plan.limits[limitType];
+    
+    // -1 means unlimited
+    if (limit === -1) {
+        return { allowed: true, remaining: -1, limit: -1 };
+    }
+    
+    const allowed = currentUsage < limit;
+    const remaining = limit - currentUsage;
+    
+    return { allowed, remaining, limit };
+}
+
+// Export for use in other modules
+module.exports = {
+    subscriptionPlans,
+    isCommandAllowed,
+    hasFeature,
+    getPlanDetails,
+    checkUsageLimit
+};
+
 
 // WhatsApp session creation using bot.js
 async function createWhatsAppSession(userId, sessionId) {
@@ -392,7 +514,8 @@ async function executeCommand(user, sessionId, command, message) {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('🔌 Client connected:', socket.id);
-
+    
+    // 🔑 EXISTING: User room handling
     socket.on('join-user-room', (userId) => {
         if (!userId) {
             console.log('❌ Cannot join room: user ID is null/undefined');
@@ -407,13 +530,38 @@ io.on('connection', (socket) => {
         socket.emit('room-joined', { roomName, userId });
     });
 
-    // Add room verification endpoint
-    socket.on('verify-room', (userId, callback) => {
-        const roomName = `user-${userId}`;
+    // 🔑 NEW: Admin room handling
+    socket.on('join-admin-room', (adminId) => {
+        if (!adminId) {
+            console.log('❌ Cannot join admin room: admin ID is null/undefined');
+            return;
+        }
+        
+        const roomName = `admin-${adminId}`;
+        socket.join(roomName);
+        console.log(`✅ Admin ${adminId} (socket ${socket.id}) joined room: ${roomName}`);
+        
+        // Send confirmation back to client
+        socket.emit('admin-room-joined', { roomName, adminId });
+    });
+
+    // 🔑 UPDATED: Room verification for both users and admins
+    socket.on('verify-room', (data, callback) => {
+        let roomName, userId;
+        
+        // Handle both old format (userId) and new format ({ userId, isAdmin })
+        if (typeof data === 'string') {
+            userId = data;
+            roomName = `user-${userId}`;
+        } else {
+            userId = data.userId || data.adminId;
+            roomName = data.isAdmin ? `admin-${userId}` : `user-${userId}`;
+        }
+        
         const rooms = Array.from(socket.rooms);
         const inRoom = rooms.includes(roomName);
         
-        console.log(`🔍 Room verification for ${userId}:`, {
+        console.log(`🔍 Room verification for ${userId} (${data.isAdmin ? 'admin' : 'user'}):`, {
             socketId: socket.id,
             rooms: rooms,
             targetRoom: roomName,
@@ -434,9 +582,17 @@ io.on('connection', (socket) => {
     });
 });
 
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/sessions', require('./routes/sessions'));
 
 app.post('/api/sessions/create', authenticate, async (req, res) => {
     try {
@@ -459,11 +615,162 @@ app.post('/api/sessions/create', authenticate, async (req, res) => {
     }
 });
 
+// ============================================
+// 📱 MOBILE APP: Create Session with Phone Number
+// ============================================
+app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
+    try {
+        console.log('📱 MOBILE: Creating session with phone number for user:', req.user.id);
+        
+        const { phoneNumber } = req.body;
+        
+        // Validate phone number
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number is required'
+            });
+        }
+
+        // Format and validate phone number
+        const formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
+        
+        // Check if phone number is valid (Nigerian format)
+        if (formattedPhone.length < 10 || formattedPhone.length > 13) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid phone number format. Use format: +234XXXXXXXXXX or 0XXXXXXXXXX'
+            });
+        }
+
+        // Normalize to international format
+        let normalizedPhone = formattedPhone;
+        if (formattedPhone.startsWith('0')) {
+            normalizedPhone = '234' + formattedPhone.substring(1);
+        } else if (!formattedPhone.startsWith('234')) {
+            normalizedPhone = '234' + formattedPhone;
+        }
+
+        console.log('📱 MOBILE: Formatted phone number:', normalizedPhone);
+
+        // Check subscription limits
+        const user = await User.findById(req.user.id);
+        const userSessions = await Session.find({ 
+            userId: req.user.id, 
+            status: { $in: ['connected', 'waiting_qr', 'connecting'] } 
+        });
+        
+        const maxSessions = subscriptionPlans[user.subscription]?.maxSessions || 1;
+        
+        if (maxSessions !== -1 && userSessions.length >= maxSessions) {
+            return res.status(403).json({
+                success: false,
+                message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions. Please upgrade your plan.`
+            });
+        }
+
+        const sessionId = `session-${req.user.id}-${Date.now()}`;
+
+        // Create session record in database
+        const session = new Session({
+            userId: req.user.id,
+            sessionId,
+            phone: normalizedPhone,
+            status: 'waiting_qr',
+            subscriptionAtTime: user.subscription,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+        await session.save();
+        
+        console.log('✅ MOBILE: Session record created in database');
+
+        // Create WhatsApp session
+        await createWhatsAppSession(req.user.id, sessionId);
+        
+        console.log('✅ MOBILE: WhatsApp session initialized');
+
+        res.json({
+            success: true,
+            data: { 
+                sessionId, 
+                phoneNumber: normalizedPhone,
+                status: 'waiting_qr',
+                message: 'Session created successfully'
+            },
+            message: 'WhatsApp session created. Please scan the QR code that will appear, or wait for a pairing code on your WhatsApp.'
+        });
+
+    } catch (error) {
+        console.error('❌ MOBILE: Phone session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to create session'
+        });
+    }
+});
+
+// ============================================
+// 📱 MOBILE APP: Check Session Status
+// ============================================
+app.get('/api/sessions/status/:sessionId', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        const session = await Session.findOne({ 
+            sessionId, 
+            userId: req.user.id 
+        });
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                sessionId: session.sessionId,
+                status: session.status,
+                phone: session.phone,
+                connectedAt: session.connectedAt,
+                updatedAt: session.updatedAt
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ MOBILE: Session status check error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error checking session status'
+        });
+    }
+});
+
+app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
+    try {
+        console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
+        const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
+
+        await createWhatsAppSession(req.user.id, sessionId);
+        
+        res.json({
+            success: true,
+            data: { sessionId },
+            message: 'Admin session created successfully'
+        });
+    } catch (error) {
+        console.error('❌ ADMIN: Session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
 
 app.use('/api/sessions', require('./routes/sessions'));
-
-// Static file serving
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Page routes
 app.get('/', (req, res) => {
@@ -474,9 +781,6 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// app.get('/admin-dashboard', (req, res) => {
-//     res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
-// });
 
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
@@ -610,16 +914,38 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
 app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
+        
+        // Calculate real days remaining
+        let daysRemaining = 0;
+        let paymentStatus = user.paymentStatus || 'trial';
+        
+        if (user.subscriptionExpiry) {
+            const now = new Date();
+            const expiry = new Date(user.subscriptionExpiry);
+            const diffTime = expiry - now;
+            daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            
+            // Auto-update status if trial expired
+            if (daysRemaining === 0 && user.paymentStatus === 'trial') {
+                user.paymentStatus = 'expired';
+                await user.save();
+                paymentStatus = 'expired';
+            }
+        }
+        
         res.json({
             success: true,
             data: {
                 subscription: user.subscription,
-                paymentStatus: 'active',
-                daysRemaining: 30,
-                limits: subscriptionPlans[user.subscription]
+                paymentStatus: paymentStatus,
+                daysRemaining: daysRemaining,
+                subscriptionExpiry: user.subscriptionExpiry,
+                limits: subscriptionPlans[user.subscription],
+                isExpired: paymentStatus === 'expired'
             }
         });
     } catch (error) {
+        console.error('Subscription status error:', error);
         res.status(500).json({ success: false, message: 'Error fetching subscription status' });
     }
 });
@@ -703,7 +1029,7 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
             console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
             
             // 🔑 KEY ADDITION: Try to resume suspended sessions
-            const { resumeUserSession } = require('./bot');
+            const { resumeUserSession } = require('./bot.js');
             const Session = require('./models/Session');
             
             // Find suspended sessions for this user
@@ -860,16 +1186,6 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
     }
 });
 
-// Email marketing and other routes (optional)
-try {
-    const { emailMarketing, trackEmailTriggers } = require('./Public/util/emailMarketing');
-    const abTestRoutes = require('./routes/ab-tests');
-
-    app.use('/api/ab-tests', abTestRoutes);
-    app.use('/api/analytics', abTestRoutes);
-} catch (error) {
-    console.log('Email marketing routes not available:', error.message);
-}
 
 // Public stats API
 app.get('/api/public/stats', async (req, res) => {
@@ -900,6 +1216,24 @@ app.get('/api/public/recent-activity', async (req, res) => {
     }
 });
 
+// Serve robots.txt
+app.get('/robots.txt', (req, res) => {
+    res.sendFile(path.join(__dirname, 'Public', 'robots.txt'));
+});
+
+// Serve sitemap.xml
+app.get('/sitemap.xml', (req, res) => {
+    res.sendFile(path.join(__dirname, 'Public', 'sitemap.xml'));
+});
+
+// Add security headers for SEO
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+});
+
 // Usage API for dashboard
 app.get('/api/user/usage', authenticate, async (req, res) => {
     try {
@@ -923,12 +1257,7 @@ app.get('/api/user/usage', authenticate, async (req, res) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 WhatsApp Bot Server running on port ${PORT}`);
-    console.log(`📱 Home Page: http://localhost:${PORT}`);
-    console.log(`👤 User Dashboard: http://localhost:${PORT}/dashboard`);
-    console.log(`👨‍💼 Admin Dashboard: http://localhost:${PORT}/admin-dashboard`);
-    console.log(`💳 Payment Page: http://localhost:${PORT}/payment`);
-
-    
+    console.log(`🌍 Running on Render deployment`);
 });
 
 
