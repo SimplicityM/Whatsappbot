@@ -67,13 +67,14 @@ app.use((req, res, next) => {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-        "connect-src 'self' https://whatsappbot-tsya.onrender.com https://whatsappbot-u5yq.onrender.com ws://whatsappbot-tsya.onrender.com wss://whatsappbot-tsya.onrender.com; " +
+        "connect-src 'self' https://whatsappbot-u5yq.onrender.com https://cdn.socket.io ws: wss:; " +
         "img-src 'self' data: https: blob:; " +
         "object-src 'none'; " +
         "base-uri 'self';"
     );
     next();
 });
+
 
 
 
