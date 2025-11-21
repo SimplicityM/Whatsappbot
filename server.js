@@ -75,10 +75,6 @@ app.use((req, res, next) => {
     next();
 });
 
-
-
-
-
 // Database connection
 const connectDB = async (io) => {
     try {
@@ -615,6 +611,140 @@ app.post('/api/sessions/create', authenticate, async (req, res) => {
         res.status(400).json({
             success: false,
             message: error.message
+        });
+    }
+});
+
+// ============================================
+// 📱 MOBILE APP: Create Session with Phone Number
+// ============================================
+app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
+    try {
+        console.log('📱 MOBILE: Creating session with phone number for user:', req.user.id);
+        
+        const { phoneNumber } = req.body;
+        
+        // Validate phone number
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number is required'
+            });
+        }
+
+        // Format and validate phone number
+        const formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
+        
+        // Check if phone number is valid (Nigerian format)
+        if (formattedPhone.length < 10 || formattedPhone.length > 13) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid phone number format. Use format: +234XXXXXXXXXX or 0XXXXXXXXXX'
+            });
+        }
+
+        // Normalize to international format
+        let normalizedPhone = formattedPhone;
+        if (formattedPhone.startsWith('0')) {
+            normalizedPhone = '234' + formattedPhone.substring(1);
+        } else if (!formattedPhone.startsWith('234')) {
+            normalizedPhone = '234' + formattedPhone;
+        }
+
+        console.log('📱 MOBILE: Formatted phone number:', normalizedPhone);
+
+        // Check subscription limits
+        const user = await User.findById(req.user.id);
+        const userSessions = await Session.find({ 
+            userId: req.user.id, 
+            status: { $in: ['connected', 'waiting_qr', 'connecting'] } 
+        });
+        
+        const maxSessions = subscriptionPlans[user.subscription]?.maxSessions || 1;
+        
+        if (maxSessions !== -1 && userSessions.length >= maxSessions) {
+            return res.status(403).json({
+                success: false,
+                message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions. Please upgrade your plan.`
+            });
+        }
+
+        const sessionId = `session-${req.user.id}-${Date.now()}`;
+
+        // Create session record in database
+        const session = new Session({
+            userId: req.user.id,
+            sessionId,
+            phone: normalizedPhone,
+            status: 'waiting_qr',
+            subscriptionAtTime: user.subscription,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+        await session.save();
+        
+        console.log('✅ MOBILE: Session record created in database');
+
+        // Create WhatsApp session
+        await createWhatsAppSession(req.user.id, sessionId);
+        
+        console.log('✅ MOBILE: WhatsApp session initialized');
+
+        res.json({
+            success: true,
+            data: { 
+                sessionId, 
+                phoneNumber: normalizedPhone,
+                status: 'waiting_qr',
+                message: 'Session created successfully'
+            },
+            message: 'WhatsApp session created. Please scan the QR code that will appear, or wait for a pairing code on your WhatsApp.'
+        });
+
+    } catch (error) {
+        console.error('❌ MOBILE: Phone session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to create session'
+        });
+    }
+});
+
+// ============================================
+// 📱 MOBILE APP: Check Session Status
+// ============================================
+app.get('/api/sessions/status/:sessionId', authenticate, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        const session = await Session.findOne({ 
+            sessionId, 
+            userId: req.user.id 
+        });
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                message: 'Session not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                sessionId: session.sessionId,
+                status: session.status,
+                phone: session.phone,
+                connectedAt: session.connectedAt,
+                updatedAt: session.updatedAt
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ MOBILE: Session status check error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error checking session status'
         });
     }
 });
