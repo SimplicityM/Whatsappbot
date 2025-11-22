@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libxtst6 \
     libdrm2 \
+    libgbm1 \
     ca-certificates \
     fonts-liberation \
     libappindicator1 \
@@ -42,8 +43,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     xdg-utils \
     wget \
-    gnome-keyring && \
-    rm -rf /var/lib/apt/lists/*
+    gnome-keyring \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
@@ -69,6 +70,5 @@ ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 # Expose port if server or webhook uses it
 EXPOSE 3000
 
-# DEFAULT START COMMAND
-# ⚠ Render overrides this using "Start Command"
+# DEFAULT START COMMAND (Render overrides this)
 CMD ["node", "bot.js"]
