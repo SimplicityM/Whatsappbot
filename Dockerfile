@@ -1,5 +1,5 @@
 # Correct, stable base image for Puppeteer + WhatsApp Web
-FROM node:18-bullseye-slim
+FROM node:20-bullseye-slim
 
 # Install required system dependencies for Chromium (Puppeteer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
