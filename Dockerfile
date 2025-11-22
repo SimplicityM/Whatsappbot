@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxss1 \
     libxtst6 \
+    libdrm2 \
     ca-certificates \
     fonts-liberation \
     libappindicator1 \
@@ -69,8 +70,5 @@ ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 EXPOSE 3000
 
 # DEFAULT START COMMAND
-# ⚠ You MUST override this in Render depending on service type
-# Worker: node worker.js
-# Web service: node server.js
-# Bot only: node bot.js
+# ⚠ Render overrides this using "Start Command"
 CMD ["node", "bot.js"]
