@@ -71,4 +71,4 @@ ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 EXPOSE 3000
 
 # DEFAULT START COMMAND (Render overrides this)
-CMD ["node", "bot.js"]
+CMD ["node", "worker.js"]
