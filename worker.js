@@ -36,9 +36,11 @@ const io = socketIo(server, {
     }
 });
 
-server.listen(5001, () =>
-    console.log("🔥 WhatsApp Worker running on port 5001")
-);
+const PORT = process.env.PORT || 5001;
+
+server.listen(PORT, () => {
+    console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
+});
 
 /* =====================================================
    CONNECT TO DATABASE

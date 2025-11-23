@@ -244,7 +244,7 @@ async function createWhatsAppSession(userId, sessionId) {
     const ack = await new Promise((resolve, reject) => {
       // use socket.timeout if available on client
       try {
-        workerSocket.timeout(20000).emit('create_session', { userId, sessionId }, (err, result) => {
+        workerSocket.timeout(20000).emit('worker:create_session', { userId, sessionId }, (err, result) => {
           if (err) return reject(new Error(String(err)));
           return resolve(result);
         });
