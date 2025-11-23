@@ -66,6 +66,9 @@ workerEventNames.forEach(evt => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.use("/api/auth", require("./routes/auth"));
+
+
 // CORS — keep as you had it or add worker origin if needed
 const cors = require('cors');
 app.use(cors({

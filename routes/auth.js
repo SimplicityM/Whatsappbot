@@ -143,6 +143,13 @@ router.post('/login', async (req, res) => {
     }
 });
 
+router.post("/google-login", async (req, res) => {
+    return res.status(400).json({
+        success: false,
+        message: "Google login not implemented yet."
+    });
+});
+
 // Admin Login Route
 router.post('/admin-login', async (req, res) => {
     try {
