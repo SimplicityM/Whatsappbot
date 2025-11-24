@@ -286,7 +286,7 @@ async function createWhatsAppSession(userId, sessionId) {
 }
 
 // Replace any route that previously called createBotSession directly
-app.post('/api/sessions/create', require('./middleware/auth').authenticate, async (req, res) => {
+app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
     const sessionId = `session-${userId}-${Date.now()}`;
