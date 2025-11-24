@@ -7,9 +7,9 @@ const { io: socketIoClient } = require('socket.io-client'); // client to worker
 const mongoose = require('mongoose');
 const path = require('path');
 
-const User = require('../models/User');
-const Session = require('../models/Session');
-const { authenticate, authenticateAdmin } = require('../middleware/auth');
+const User = require('../../models/User');
+const Session = require('../../models/Session');
+const { authenticate, authenticateAdmin } = require('../../middleware/auth');
 
 const app = express();
 const server = http.createServer(app);
