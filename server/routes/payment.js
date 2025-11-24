@@ -1,8 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
-const User = require('../models/User');
-const { authenticate } = require('../middleware/auth');
+const User = require('../../models/User');
+const { authenticate } = require('../../middleware/auth');
 const router = express.Router();
 
 // Flutterwave configuration

@@ -1,7 +1,7 @@
 const express = require('express');
-const User = require('../models/User');
-const Session = require('../models/Session');
-const { authenticateAdmin } = require('../middleware/auth');
+const User = require('../../models/User');
+const Session = require('../../models/Session');
+const { authenticateAdmin } = require('../../middleware/auth');
 const router = express.Router();
 
 // Get admin dashboard stats
