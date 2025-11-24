@@ -18,7 +18,7 @@ const socketIo = require("socket.io");
 const mongoose = require("mongoose");
 
 const Session = require("./models/Session");
-const User = require("./models/user.js");
+const User = require("./models/user");
 const {
     createBotSession,
     restoreAllSessions,
