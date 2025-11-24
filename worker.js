@@ -36,6 +36,17 @@ const io = socketIo(server, {
     }
 });
 
+/* =====================================================
+   KEEP-ALIVE / HEALTH CHECK ENDPOINT
+   ===================================================== */
+server.on("request", (req, res) => {
+    if (req.url === "/ping") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        return res.end("OK");
+    }
+});
+
+
 const PORT = process.env.PORT || 5001;
 
 server.listen(PORT, () => {
