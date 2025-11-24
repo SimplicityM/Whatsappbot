@@ -2,6 +2,9 @@
   "name": "whatsapp-web-worker",
   "version": "1.0.0",
   "main": "worker.js",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "start": "node worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
