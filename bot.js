@@ -1,19 +1,3 @@
-// =============================
-// WORKER SOCKET.IO SERVER (Render Worker)
-// =============================
-const http = require("http");
-const workerServer = http.createServer();
-const workerIO = require("socket.io")(workerServer, {
-    cors: { origin: "*" }
-});
-
-workerServer.listen(5001, () => {
-    console.log("Worker socket running on port 5001");
-});
-
-// This IO instance will be passed to createBotSession()
-
-
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -262,7 +246,7 @@ function normalizeJid(jid) {
     logger.info(`[${sessionName}] QR generated`);
     qrcode.generate(qr, { small: true });
 
-    if (io) {
+   if (workerIO) {
       // attempt to find userId portion from sessionId if following format session-<userId>-<ts>
       const userMatch = sessionId.match(/^session-([^-]+)-/);
       const userId = userMatch ? userMatch[1] : null;
