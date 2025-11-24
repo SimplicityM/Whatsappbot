@@ -1,7 +1,7 @@
-# Correct, stable base image for Puppeteer + WhatsApp Web
+# Puppeteer-compatible Node image
 FROM node:20-bullseye-slim
 
-# Install required system dependencies for Chromium (Puppeteer)
+# Install Chromium dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libatk1.0-0 \
@@ -25,40 +25,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-xcb1 \
     libxcb1 \
     libxcomposite1 \
-    libxcursor1 \
     libxdamage1 \
     libxext6 \
     libxfixes3 \
-    libxi6 \
     libxrandr2 \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    libdrm2 \
-    libgbm1 \
     ca-certificates \
     fonts-liberation \
-    libappindicator1 \
+    libappindicator3-1 \
     libnss3 \
-    lsb-release \
     xdg-utils \
-    wget \
-    gnome-keyring \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Working directory
 WORKDIR /app
 
-# Copy package manifests first for caching
+# Copy package files
 COPY package*.json ./
 
-# Install Node dependencies
-RUN npm install
+# Install dependencies
+RUN npm install --omit=dev
 
-# Copy entire project
+# Copy entire source
 COPY . .
 
-# Create directories required by the bot
+# Restore required bot directories
 RUN mkdir -p ./sessions ./media ./auth
 
 # Environment variables
@@ -67,8 +60,5 @@ ENV COMMAND_PREFIX=!
 ENV MAX_SESSIONS=1000
 ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 
-# Render will assign PORT automatically (e.g., 10000)
-ENV PORT=$PORT
-
-# DEFAULT START COMMAND (Render overrides this)
+# Render auto-assigns PORT so we DO NOT EXPOSE OR FORCE ANY PORT
 CMD ["node", "worker.js"]
