@@ -67,8 +67,8 @@ ENV COMMAND_PREFIX=!
 ENV MAX_SESSIONS=1000
 ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 
-# Expose port if server or webhook uses it
-EXPOSE 3000
+# Render will assign PORT automatically (e.g., 10000)
+ENV PORT=$PORT
 
 # DEFAULT START COMMAND (Render overrides this)
 CMD ["node", "worker.js"]
