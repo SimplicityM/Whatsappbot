@@ -40,16 +40,22 @@ const io = socketIo(server, {
    KEEP-ALIVE / HEALTH CHECK ENDPOINT
    ===================================================== */
 server.on("request", (req, res) => {
-    if (req.url === "/ping") {
+    console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
+    
+    if (req.url === "/ping" || req.url === "/") {
         res.writeHead(200, { "Content-Type": "text/plain" });
         return res.end("OK");
     }
+    
+    // Handle other requests
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
 });
 
 
 const PORT = process.env.PORT || 5001;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
 });
 
