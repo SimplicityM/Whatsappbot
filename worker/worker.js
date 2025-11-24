@@ -39,7 +39,29 @@ const io = socketIo(server, {
 /* =====================================================
    KEEP-ALIVE / HEALTH CHECK ENDPOINT
    ===================================================== */
-server.on("request", (req, res) => {
+// server.on("request", (req, res) => {
+//     console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
+    
+//     if (req.url === "/ping" || req.url === "/") {
+//         res.writeHead(200, { "Content-Type": "text/plain" });
+//         return res.end("OK");
+//     }
+    
+//     // Handle other requests
+//     res.writeHead(404, { "Content-Type": "text/plain" });
+//     res.end("Not Found");
+// });
+
+/* =====================================================
+   WORKER SOCKET.IO SERVER
+   ===================================================== */
+const server = http.createServer((req, res) => {
+    // ONLY handle non-Socket.IO requests
+    if (req.url.startsWith('/socket.io/')) {
+        // Let Socket.IO middleware handle this
+        return;
+    }
+    
     console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
     
     if (req.url === "/ping" || req.url === "/") {
@@ -52,6 +74,11 @@ server.on("request", (req, res) => {
     res.end("Not Found");
 });
 
+const io = socketIo(server, {
+    cors: {
+        origin: "*"
+    }
+});
 
 const PORT = process.env.PORT || 5001;
 
