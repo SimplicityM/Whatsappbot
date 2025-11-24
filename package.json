@@ -1,0 +1,12 @@
+{
+  "name": "whatsappbot",
+  "version": "1.0.0",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "start": "echo 'Please specify server or worker'",
+    "start:server": "cd server && npm start",
+    "start:worker": "cd worker && npm start"
+  }
+}
