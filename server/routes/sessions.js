@@ -1,7 +1,7 @@
 const express = require('express');
 const User = require('../../models/User');
 const Session = require('../../models/Session');
-const { authenticate, checkSubscription } = require('../middleware/auth');
+const { authenticate, checkSubscription } = require('../../middleware/auth');
 const router = express.Router();
 
 // Get user's sessions
