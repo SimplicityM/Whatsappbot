@@ -8,5 +8,10 @@
     "start": "echo 'Please specify server or worker'",
     "start:server": "cd server && npm start",
     "start:worker": "cd worker && npm start"
+  },
+  "dependencies": {
+    "mongoose": "^8.20.0",
+    "bcryptjs": "^2.4.3",
+    "crypto": "^1.0.1"
   }
 }
