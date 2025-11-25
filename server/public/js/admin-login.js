@@ -100,12 +100,12 @@ document.addEventListener('DOMContentLoaded', function() {
             showLoadingOverlay(true);
             
             const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/admin/verify-token', {
-    method: 'GET',
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    }
-});
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {

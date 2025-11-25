@@ -71,7 +71,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// app.use("/api/auth", require("./routes/auth"));
 
 // // DB connection
 // const connectDB = async () => {
@@ -93,6 +92,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 //     Session = require('../models/Session');
 //     console.log('✅ Models loaded');
     
+//     // ✅ Register auth routes AFTER models are loaded
+//     app.use("/api/auth", require("./routes/auth"));
+//     console.log('✅ Auth routes registered');
+    
 //   } catch (err) {
 //     console.error('❌ Server DB error', err);
 //     process.exit(1);
@@ -110,11 +113,18 @@ const connectDB = async () => {
     await mongoose.connect(mongoURI, {
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      bufferCommands: false, // ✅ Disable buffering
+      maxPoolSize: 10,
+      minPoolSize: 2,
     });
     
     console.log('✅ Server: Connected to MongoDB');
     
-    // Load models AFTER connection
+    // Wait for connection to be ready
+    await mongoose.connection.db.admin().ping();
+    console.log('✅ MongoDB ping successful');
+    
+    // Load models AFTER connection is verified
     User = require('../models/User');
     Session = require('../models/Session');
     console.log('✅ Models loaded');
@@ -128,7 +138,6 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
-
 
 // Global variables
 const activeClients = new Map();
