@@ -98,71 +98,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 // //   credentials: true
 // // }));
 
-// // // DB connection
-// // const connectDB = async () => {
-// //   try {
-// //     const mongoURI = process.env.MONGODB_URI;
-// //     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-// //     await mongoose.connect(mongoURI, {
-// //       useNewUrlParser: true,
-// //       useUnifiedTopology: true
-// //     });
-// //     console.log('✅ Server: Connected to MongoDB');
-// //     // do NOT call restoreAllSessions here — worker is responsible for restoration
-// //   } catch (err) {
-// //     console.error('❌ Server DB error', err);
-// //     process.exit(1);
-// //   }
-// // };
-// // connectDB();
-
-// // // DB connection
-// // const connectDB = async () => {
-// //   try {
-// //     const mongoURI = process.env.MONGODB_URI;
-// //     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-    
-// //     console.log('🔄 Connecting to MongoDB...');
-    
-// //     await mongoose.connect(mongoURI, {
-// //       useNewUrlParser: true,
-// //       useUnifiedTopology: true,
-// //       serverSelectionTimeoutMS: 30000,
-// //       socketTimeoutMS: 45000,
-// //     });
-    
-// //     console.log('✅ Server: Connected to MongoDB');
-// //   } catch (err) {
-// //     console.error('❌ Server DB error', err);
-// //     process.exit(1);
-// //   }
-// // };
-
-// // DB connection
-// const connectDB = async () => {
-//   try {
-//     const mongoURI = process.env.MONGODB_URI;
-//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-    
-//     console.log('🔄 Connecting to MongoDB...');
-    
-//     await mongoose.connect(mongoURI, {
-//       serverSelectionTimeoutMS: 30000,
-//       socketTimeoutMS: 45000,
-//     });
-    
-//     console.log('✅ Server: Connected to MongoDB');
-    
-//     // ✅ Import models AFTER connection is established
-//     User = require('../models/User');
-//     Session = require('../models/Session');
-//     console.log('✅ Models loaded');
-    
-//   } catch (err) {
-//     console.error('❌ Server DB error', err);
-//     process.exit(1);
-//   }
-// };
 
 const app = express();
 const server = http.createServer(app);
@@ -234,11 +169,18 @@ const connectDB = async () => {
     
     console.log('🔄 Connecting to MongoDB...');
     
-    await mongoose.connect(mongoURI, {
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-    });
     
+    
+await mongoose.connect(mongoURI, {
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  bufferCommands: false,  // ✅ Disable command buffering
+  maxPoolSize: 10,        // ✅ Connection pool size
+  minPoolSize: 2,         // ✅ Minimum connections
+  retryWrites: true,      // ✅ Retry failed writes
+  w: 'majority'           // ✅ Write concern
+});
+
     console.log('✅ Server: Connected to MongoDB');
     
     // Load models AFTER connection
@@ -251,6 +193,34 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
+
+await mongoose.connect(mongoURI, {
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  bufferCommands: false,
+  maxPoolSize: 10,
+  minPoolSize: 2
+});
+
+// ✅ Verify connection state
+if (mongoose.connection.readyState !== 1) {
+  throw new Error('MongoDB connection not ready');
+}
+
+console.log('✅ Server: Connected to MongoDB');
+console.log(`📊 Connection state: ${mongoose.connection.readyState}`);
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
 
 // Global variables
 const activeClients = new Map();

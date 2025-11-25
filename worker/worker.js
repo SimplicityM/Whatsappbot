@@ -84,6 +84,14 @@ server.listen(PORT, '0.0.0.0', () => {
     }
 })();
 
+await mongoose.connect(mongoURI, {
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  bufferCommands: false,
+  maxPoolSize: 10,
+  minPoolSize: 2
+});
+
 /* =====================================================
    WORKER JOB HANDLERS
    ===================================================== */

@@ -4,7 +4,7 @@ const sessionSchema = new mongoose.Schema({
     sessionId: {
         type: String,
         required: true,
-        unique: true
+        // unique: true
     },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -76,7 +76,8 @@ const sessionSchema = new mongoose.Schema({
 
 // Index for faster queries
 sessionSchema.index({ userId: 1, status: 1 });
-sessionSchema.index({ sessionId: 1 });
+// sessionSchema.index({ sessionId: 1 });
+sessionSchema.index({ sessionId: 1 }, { unique: true }); // ✅ Explicit unique index
 sessionSchema.index({ whatsappNumber: 1 });
 
 // Check if QR code is expired
