@@ -99,14 +99,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             showLoadingOverlay(true);
             
-            const response = await fetch('https://whatsappbot-tsya.onrender.com/api/admin/verify-token', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
+            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/admin/verify-token', {
+    method: 'GET',
+    headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    }
+});
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
