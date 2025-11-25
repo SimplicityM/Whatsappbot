@@ -26,14 +26,48 @@ const {
     clients
 } = require("./bot.js");
 
+// /* =====================================================
+//    WORKER SOCKET.IO SERVER
+//    ===================================================== */
+// const server = http.createServer();
+// const io = socketIo(server, {
+//     cors: {
+//         origin: "*"
+//     }
+// });
+
 /* =====================================================
    WORKER SOCKET.IO SERVER
    ===================================================== */
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+    // Skip Socket.IO requests - let Socket.IO handle them
+    if (req.url.startsWith('/socket.io/')) {
+        return;
+    }
+    
+    console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
+    
+    // Health check endpoint
+    if (req.url === "/ping" || req.url === "/") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        return res.end("OK");
+    }
+    
+    // 404 for other routes
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
+});
+
 const io = socketIo(server, {
     cors: {
         origin: "*"
     }
+});
+
+const PORT = process.env.PORT || 5001;
+
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
 });
 
 /* =====================================================
