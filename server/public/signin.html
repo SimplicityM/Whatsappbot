@@ -304,6 +304,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             const data = await response.json();
+console.log('Login response:', data); // Add this line
+console.log('Response status:', response.status); // Add this too
 
             if (data.success) {
                 const userSession = {
