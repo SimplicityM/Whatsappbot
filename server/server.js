@@ -85,23 +85,45 @@ app.use("/api/auth", require("./routes/auth"));
 //   credentials: true
 // }));
 
+// // DB connection
+// const connectDB = async () => {
+//   try {
+//     const mongoURI = process.env.MONGODB_URI;
+//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+//     await mongoose.connect(mongoURI, {
+//       useNewUrlParser: true,
+//       useUnifiedTopology: true
+//     });
+//     console.log('✅ Server: Connected to MongoDB');
+//     // do NOT call restoreAllSessions here — worker is responsible for restoration
+//   } catch (err) {
+//     console.error('❌ Server DB error', err);
+//     process.exit(1);
+//   }
+// };
+// connectDB();
+
 // DB connection
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+    
+    console.log('🔄 Connecting to MongoDB...');
+    
     await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
     });
+    
     console.log('✅ Server: Connected to MongoDB');
-    // do NOT call restoreAllSessions here — worker is responsible for restoration
   } catch (err) {
     console.error('❌ Server DB error', err);
     process.exit(1);
   }
 };
-connectDB();
 
 // Global variables
 const activeClients = new Map();
@@ -1021,8 +1043,26 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+// // Start server
+// const PORT = process.env.PORT || 3000;
+// server.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+// });
+
+// Start server ONLY after MongoDB is connected
+const startServer = async () => {
+  try {
+    await connectDB();
+    
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log('✅ All systems ready!');
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
