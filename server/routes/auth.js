@@ -83,13 +83,76 @@ router.post('/register', async (req, res) => {
     }
 });
 
+// // Login user
+// router.post('/login', async (req, res) => {
+//     try {
+//         const { email, password } = req.body;
+
+//         // Validation
+//         if (!email || !password) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: 'Email and password are required.'
+//             });
+//         }
+
+//         // Find user
+//         const user = await User.findOne({ email: email.toLowerCase() });
+//         if (!user) {
+//             return res.status(401).json({
+//                 success: false,
+//                 message: 'Invalid email or password.'
+//             });
+//         }
+
+//         // Check password
+//         const isPasswordValid = await user.comparePassword(password);
+//         if (!isPasswordValid) {
+//             return res.status(401).json({
+//                 success: false,
+//                 message: 'Invalid email or password.'
+//             });
+//         }
+
+//         // Update last login
+//         user.lastLogin = new Date();
+//         await user.save();
+
+//         // Generate token
+//         const token = generateToken(user._id);
+
+//         // Remove password from response
+//         const userResponse = user.toObject();
+//         delete userResponse.password;
+
+//         res.json({
+//             success: true,
+//             message: 'Login successful!',
+//             data: {
+//                 user: userResponse,
+//                 token
+//             }
+//         });
+
+//     } catch (error) {
+//         console.error('Login error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error logging in. Please try again.'
+//         });
+//     }
+// });
+
 // Login user
 router.post('/login', async (req, res) => {
     try {
+        console.log('🔐 Login attempt:', req.body.email); // Add this
+        
         const { email, password } = req.body;
 
         // Validation
         if (!email || !password) {
+            console.log('❌ Missing credentials'); // Add this
             return res.status(400).json({
                 success: false,
                 message: 'Email and password are required.'
@@ -97,22 +160,30 @@ router.post('/login', async (req, res) => {
         }
 
         // Find user
+        console.log('🔍 Looking for user:', email.toLowerCase()); // Add this
         const user = await User.findOne({ email: email.toLowerCase() });
+        
         if (!user) {
+            console.log('❌ User not found'); // Add this
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password.'
             });
         }
 
+        console.log('✅ User found, checking password'); // Add this
+        
         // Check password
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) {
+            console.log('❌ Invalid password'); // Add this
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password.'
             });
         }
+
+        console.log('✅ Password valid, generating token'); // Add this
 
         // Update last login
         user.lastLogin = new Date();
@@ -125,6 +196,8 @@ router.post('/login', async (req, res) => {
         const userResponse = user.toObject();
         delete userResponse.password;
 
+        console.log('✅ Login successful for:', email); // Add this
+
         res.json({
             success: true,
             message: 'Login successful!',
@@ -135,7 +208,8 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error); // This already exists but make sure it's there
+        console.error('Error stack:', error.stack); // Add this for more detail
         res.status(500).json({
             success: false,
             message: 'Error logging in. Please try again.'

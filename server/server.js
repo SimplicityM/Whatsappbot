@@ -62,6 +62,12 @@ workerEventNames.forEach(evt => {
   });
 });
 
+const cors = require('cors');
+app.use(cors({
+  origin: "*",  // Allow all origins for now to test
+  credentials: true
+}));
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -69,15 +75,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use("/api/auth", require("./routes/auth"));
 
 
-// CORS — keep as you had it or add worker origin if needed
-const cors = require('cors');
-app.use(cors({
-  origin: [
-    "https://whatsappbot-u5yq.onrender.com",
-    "https://whatsappbot-tsya.onrender.com"
-  ],
-  credentials: true
-}));
+// // CORS — keep as you had it or add worker origin if needed
+// const cors = require('cors');
+// app.use(cors({
+//   origin: [
+//     "https://whatsappbot-u5yq.onrender.com",
+//     "https://whatsappbot-tsya.onrender.com"
+//   ],
+//   credentials: true
+// }));
 
 // DB connection
 const connectDB = async () => {
