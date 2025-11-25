@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showNotification('Login successful! Redirecting to dashboard...', 'success');
 
                 setTimeout(() => {
-                    window.location.href = '/dashboard';
+                    window.location.href = '/dashboard.html';
                 }, 1500);
             } else {
                 showNotification(data.message || 'Invalid email or password. Please try again.', 'error');
