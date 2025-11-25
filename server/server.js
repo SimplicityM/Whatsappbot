@@ -24,6 +24,146 @@ const path = require('path');
 let User, Session;
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
+// const app = express();
+// const server = http.createServer(app);
+
+// // Server io - front-end connects here
+// const io = socketIo(server, {
+//   cors: {
+//     origin: "*",
+//     methods: ["GET", "POST"]
+//   }
+// });
+// app.set('io', io);
+
+// // Worker socket client
+// const WORKER_URL = process.env.WORKER_URL || (process.env.WORKER_HOST ? `http://${process.env.WORKER_HOST}:5001` : 'http://localhost:5001');
+// const workerSocket = require('socket.io-client')(WORKER_URL, {
+//   reconnection: true,
+//   reconnectionAttempts: Infinity,
+//   timeout: 20000
+// });
+
+// workerSocket.on('connect', () => {
+//   console.log('🔌 Server: connected to worker at', WORKER_URL);
+// });
+
+// workerSocket.on('connect_error', (err) => {
+//   console.error('❌ Server: worker connect_error', err.message);
+// });
+
+// workerSocket.on('disconnect', (reason) => {
+//   console.warn('⚠ Server: disconnected from worker:', reason);
+// });
+
+// // Forward worker events to frontend sockets (when worker emits qrCode/sessionReady/authFailure/disconnected)
+// const workerEventNames = ['qrCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
+// workerEventNames.forEach(evt => {
+//   workerSocket.on(evt, (payload) => {
+//     try {
+//       console.log(`🔁 Server: forwarding worker event ${evt}`, payload && payload.sessionId ? payload.sessionId : '');
+//       // If payload contains userId, emit to that user's room
+//       if (payload && payload.userId) {
+//         io.to(`user-${payload.userId}`).emit(evt, payload);
+//       } else {
+//         // broadcast as fallback
+//         io.emit(evt, payload);
+//       }
+//     } catch (e) {
+//       console.error('Error forwarding worker event', e);
+//     }
+//   });
+// });
+
+// const cors = require('cors');
+// app.use(cors({
+//   origin: "*",  // Allow all origins for now to test
+//   credentials: true
+// }));
+
+// // Middleware
+// app.use(express.json());
+// app.use(express.static(path.join(__dirname, 'public')));
+
+// app.use("/api/auth", require("./routes/auth"));
+
+
+// // // CORS — keep as you had it or add worker origin if needed
+// // const cors = require('cors');
+// // app.use(cors({
+// //   origin: [
+// //     "https://whatsappbot-u5yq.onrender.com",
+// //     "https://whatsappbot-tsya.onrender.com"
+// //   ],
+// //   credentials: true
+// // }));
+
+// // // DB connection
+// // const connectDB = async () => {
+// //   try {
+// //     const mongoURI = process.env.MONGODB_URI;
+// //     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+// //     await mongoose.connect(mongoURI, {
+// //       useNewUrlParser: true,
+// //       useUnifiedTopology: true
+// //     });
+// //     console.log('✅ Server: Connected to MongoDB');
+// //     // do NOT call restoreAllSessions here — worker is responsible for restoration
+// //   } catch (err) {
+// //     console.error('❌ Server DB error', err);
+// //     process.exit(1);
+// //   }
+// // };
+// // connectDB();
+
+// // // DB connection
+// // const connectDB = async () => {
+// //   try {
+// //     const mongoURI = process.env.MONGODB_URI;
+// //     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+    
+// //     console.log('🔄 Connecting to MongoDB...');
+    
+// //     await mongoose.connect(mongoURI, {
+// //       useNewUrlParser: true,
+// //       useUnifiedTopology: true,
+// //       serverSelectionTimeoutMS: 30000,
+// //       socketTimeoutMS: 45000,
+// //     });
+    
+// //     console.log('✅ Server: Connected to MongoDB');
+// //   } catch (err) {
+// //     console.error('❌ Server DB error', err);
+// //     process.exit(1);
+// //   }
+// // };
+
+// // DB connection
+// const connectDB = async () => {
+//   try {
+//     const mongoURI = process.env.MONGODB_URI;
+//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+    
+//     console.log('🔄 Connecting to MongoDB...');
+    
+//     await mongoose.connect(mongoURI, {
+//       serverSelectionTimeoutMS: 30000,
+//       socketTimeoutMS: 45000,
+//     });
+    
+//     console.log('✅ Server: Connected to MongoDB');
+    
+//     // ✅ Import models AFTER connection is established
+//     User = require('../models/User');
+//     Session = require('../models/Session');
+//     console.log('✅ Models loaded');
+    
+//   } catch (err) {
+//     console.error('❌ Server DB error', err);
+//     process.exit(1);
+//   }
+// };
+
 const app = express();
 const server = http.createServer(app);
 
@@ -56,17 +196,15 @@ workerSocket.on('disconnect', (reason) => {
   console.warn('⚠ Server: disconnected from worker:', reason);
 });
 
-// Forward worker events to frontend sockets (when worker emits qrCode/sessionReady/authFailure/disconnected)
+// Forward worker events to frontend sockets
 const workerEventNames = ['qrCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
 workerEventNames.forEach(evt => {
   workerSocket.on(evt, (payload) => {
     try {
       console.log(`🔁 Server: forwarding worker event ${evt}`, payload && payload.sessionId ? payload.sessionId : '');
-      // If payload contains userId, emit to that user's room
       if (payload && payload.userId) {
         io.to(`user-${payload.userId}`).emit(evt, payload);
       } else {
-        // broadcast as fallback
         io.emit(evt, payload);
       }
     } catch (e) {
@@ -75,9 +213,10 @@ workerEventNames.forEach(evt => {
   });
 });
 
+// CORS - BEFORE routes
 const cors = require('cors');
 app.use(cors({
-  origin: "*",  // Allow all origins for now to test
+  origin: "*",
   credentials: true
 }));
 
@@ -86,35 +225,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use("/api/auth", require("./routes/auth"));
-
-
-// // CORS — keep as you had it or add worker origin if needed
-// const cors = require('cors');
-// app.use(cors({
-//   origin: [
-//     "https://whatsappbot-u5yq.onrender.com",
-//     "https://whatsappbot-tsya.onrender.com"
-//   ],
-//   credentials: true
-// }));
-
-// // DB connection
-// const connectDB = async () => {
-//   try {
-//     const mongoURI = process.env.MONGODB_URI;
-//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-//     await mongoose.connect(mongoURI, {
-//       useNewUrlParser: true,
-//       useUnifiedTopology: true
-//     });
-//     console.log('✅ Server: Connected to MongoDB');
-//     // do NOT call restoreAllSessions here — worker is responsible for restoration
-//   } catch (err) {
-//     console.error('❌ Server DB error', err);
-//     process.exit(1);
-//   }
-// };
-// connectDB();
 
 // DB connection
 const connectDB = async () => {
@@ -125,13 +235,17 @@ const connectDB = async () => {
     console.log('🔄 Connecting to MongoDB...');
     
     await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
     });
     
     console.log('✅ Server: Connected to MongoDB');
+    
+    // Load models AFTER connection
+    User = require('../models/User');
+    Session = require('../models/Session');
+    console.log('✅ Models loaded');
+    
   } catch (err) {
     console.error('❌ Server DB error', err);
     process.exit(1);
