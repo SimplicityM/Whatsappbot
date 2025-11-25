@@ -169,18 +169,11 @@ const connectDB = async () => {
     
     console.log('🔄 Connecting to MongoDB...');
     
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+    });
     
-    
-await mongoose.connect(mongoURI, {
-  serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  bufferCommands: false,  // ✅ Disable command buffering
-  maxPoolSize: 10,        // ✅ Connection pool size
-  minPoolSize: 2,         // ✅ Minimum connections
-  retryWrites: true,      // ✅ Retry failed writes
-  w: 'majority'           // ✅ Write concern
-});
-
     console.log('✅ Server: Connected to MongoDB');
     
     // Load models AFTER connection
@@ -193,34 +186,6 @@ await mongoose.connect(mongoURI, {
     process.exit(1);
   }
 };
-
-await mongoose.connect(mongoURI, {
-  serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  bufferCommands: false,
-  maxPoolSize: 10,
-  minPoolSize: 2
-});
-
-// ✅ Verify connection state
-if (mongoose.connection.readyState !== 1) {
-  throw new Error('MongoDB connection not ready');
-}
-
-console.log('✅ Server: Connected to MongoDB');
-console.log(`📊 Connection state: ${mongoose.connection.readyState}`);
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️ MongoDB disconnected');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB reconnected');
-});
 
 // Global variables
 const activeClients = new Map();
