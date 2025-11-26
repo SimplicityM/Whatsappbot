@@ -1,5 +1,18 @@
 const jwt = require('jsonwebtoken');
-const User = require('../server/models/User');
+
+// Don't load User model at the top - get it dynamically
+const getUserModel = () => {
+    // Try to get from global first (if set by server.js)
+    if (global.User) return global.User;
+    
+    // Otherwise require it (for cases where it's already loaded)
+    try {
+        return require('../server/models/User');
+    } catch (err) {
+        console.error('❌ Failed to load User model:', err.message);
+        return null;
+    }
+};
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -27,6 +40,15 @@ const authenticate = async (req, res, next) => {
         }
 
         const decoded = verifyToken(token);
+        const User = getUserModel();
+        
+        if (!User) {
+            return res.status(500).json({
+                success: false,
+                message: 'Server error: User model not loaded'
+            });
+        }
+        
         const user = await User.findById(decoded.userId).select('-password');
 
         if (!user) {
@@ -68,6 +90,15 @@ const authenticateAdmin = async (req, res, next) => {
         }
 
         const decoded = verifyToken(token);
+        const User = getUserModel();
+        
+        if (!User) {
+            return res.status(500).json({
+                success: false,
+                message: 'Server error: User model not loaded'
+            });
+        }
+        
         const user = await User.findById(decoded.userId).select('-password');
 
         if (!user) {
