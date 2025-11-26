@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const User = require('../models/User');
-const { generateToken, authenticate, verifyToken } = require('../middleware/auth');
+const { generateToken, authenticate, verifyToken } = require('../../middleware/auth');
 const { Resend } = require('resend');  // ✅ Only need Resend
 const router = express.Router();
 
