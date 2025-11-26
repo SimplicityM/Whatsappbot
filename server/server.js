@@ -154,9 +154,9 @@ const connectDB = async () => {
         const UserModel = require('./models/User');
         const SessionModel = require('./models/Session');
 
-        // // Assign globally if needed
-        // global.User = UserModel;
-        // global.Session = SessionModel;
+        // Assign globally if needed
+        global.User = UserModel;
+        global.Session = SessionModel;
 
         console.log('✅ Models loaded');
 
