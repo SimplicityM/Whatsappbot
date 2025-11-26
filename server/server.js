@@ -71,8 +71,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-
-// // DB connection
+// DB connection
 // const connectDB = async () => {
 //   try {
 //     const mongoURI = process.env.MONGODB_URI;
@@ -83,11 +82,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 //     await mongoose.connect(mongoURI, {
 //       serverSelectionTimeoutMS: 30000,
 //       socketTimeoutMS: 45000,
+//       bufferCommands: false, // ✅ Disable buffering
+//       maxPoolSize: 10,
+//       minPoolSize: 2,
 //     });
     
 //     console.log('✅ Server: Connected to MongoDB');
     
-//     // Load models AFTER connection
+//     // Wait for connection to be ready
+//     await mongoose.connection.db.admin().ping();
+//     console.log('✅ MongoDB ping successful');
+    
+//     // Load models AFTER connection is verified
 //     User = require('../models/User');
 //     Session = require('../models/Session');
 //     console.log('✅ Models loaded');
@@ -102,42 +108,68 @@ app.use(express.static(path.join(__dirname, 'public')));
 //   }
 // };
 
-// DB connection
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-    
+
     console.log('🔄 Connecting to MongoDB...');
-    
+
     await mongoose.connect(mongoURI, {
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
-      bufferCommands: false, // ✅ Disable buffering
+      bufferCommands: false,   // Disable buffering to prevent “buffering timed out”
       maxPoolSize: 10,
       minPoolSize: 2,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     });
-    
-    console.log('✅ Server: Connected to MongoDB');
-    
-    // Wait for connection to be ready
+
+    console.log('🟢 Initial MongoDB connection established');
+
+    // ----- MongoDB Connection Debugging -----
+    mongoose.connection.on('connected', () => {
+      console.log("🟢 MongoDB connected.");
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error("❌ MongoDB connection error:", err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn("⚠️ MongoDB disconnected.");
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log("🔄 MongoDB reconnected.");
+    });
+
+    // -----------------------------------------
+
+    // Verify DB connection with ping
     await mongoose.connection.db.admin().ping();
     console.log('✅ MongoDB ping successful');
-    
-    // Load models AFTER connection is verified
-    User = require('../models/User');
-    Session = require('../models/Session');
+
+    // Load models AFTER confirmed connection
+    const UserModel = require('./models/User');
+    const SessionModel = require('./models/Session');
+
+    // Assign globally if needed
+    global.User = UserModel;
+    global.Session = SessionModel;
+
     console.log('✅ Models loaded');
-    
-    // ✅ Register auth routes AFTER models are loaded
+
+    // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
     console.log('✅ Auth routes registered');
-    
+
   } catch (err) {
-    console.error('❌ Server DB error', err);
+    console.error('❌ Server DB error:', err);
     process.exit(1);
   }
 };
+
 
 // Global variables
 const activeClients = new Map();
