@@ -72,42 +72,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // DB connection
-// const connectDB = async () => {
-//   try {
-//     const mongoURI = process.env.MONGODB_URI;
-//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
-    
-//     console.log('🔄 Connecting to MongoDB...');
-    
-//     await mongoose.connect(mongoURI, {
-//       serverSelectionTimeoutMS: 30000,
-//       socketTimeoutMS: 45000,
-//       bufferCommands: false, // ✅ Disable buffering
-//       maxPoolSize: 10,
-//       minPoolSize: 2,
-//     });
-    
-//     console.log('✅ Server: Connected to MongoDB');
-    
-//     // Wait for connection to be ready
-//     await mongoose.connection.db.admin().ping();
-//     console.log('✅ MongoDB ping successful');
-    
-//     // Load models AFTER connection is verified
-//     User = require('../models/User');
-//     Session = require('../models/Session');
-//     console.log('✅ Models loaded');
-    
-//     // ✅ Register auth routes AFTER models are loaded
-//     app.use("/api/auth", require("./routes/auth"));
-//     console.log('✅ Auth routes registered');
-    
-//   } catch (err) {
-//     console.error('❌ Server DB error', err);
-//     process.exit(1);
-//   }
-// };
-
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
@@ -293,66 +257,6 @@ function checkUsageLimit(subscription, limitType, currentUsage) {
 
 
 // ------------------ session creation: ask worker to create ------------------
-// async function createWhatsAppSession(userId, sessionId) {
-//   try {
-//     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
-
-//     // Store initial session record BEFORE asking worker (helps UI show a waiting state)
-//     const session = new Session({
-//       userId,
-//       sessionId,
-//       status: 'waiting_qr',
-//       subscriptionAtTime: (await User.findById(userId)).subscription,
-//       createdAt: new Date(),
-//       updatedAt: new Date()
-//     });
-//     await session.save();
-
-//     // Emit to worker and wait for response via ack callback with timeout
-//     const ack = await new Promise((resolve, reject) => {
-//       // use socket.timeout if available on client
-//       try {
-//         workerSocket.timeout(20000).emit('worker:create_session', { userId, sessionId }, (err, result) => {
-//           if (err) return reject(new Error(String(err)));
-//           return resolve(result);
-//         });
-//       } catch (e) {
-//         // fallback
-//         let called = false;
-//         workerSocket.emit('create_session', { userId, sessionId }, (err, result) => {
-//           if (called) return;
-//           called = true;
-//           if (err) return reject(new Error(String(err)));
-//           resolve(result);
-//         });
-//         // safety timeout
-//         setTimeout(() => {
-//           if (!called) {
-//             called = true;
-//             reject(new Error('Worker did not respond in time'));
-//           }
-//         }, 20000);
-//       }
-//     });
-
-//     console.log('✅ SERVER: Worker acked create_session:', ack);
-//     return sessionId;
-//   } catch (error) {
-//     console.error('❌ SERVER: createWhatsAppSession error:', error);
-//     // mark session failed in DB
-//     try {
-//       await Session.findOneAndUpdate({ sessionId }, {
-//         status: 'failed',
-//         errorMessage: error.message,
-//         updatedAt: new Date()
-//       });
-//     } catch (dbErr) {
-//       console.error('❌ SERVER: failed to update session status after worker error', dbErr);
-//     }
-//     throw error;
-//   }
-// }
-
 async function createWhatsAppSession(userId, sessionId) {
   try {
     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
@@ -405,30 +309,6 @@ async function createWhatsAppSession(userId, sessionId) {
   }
 }
 
-// async function createWhatsAppSession(userId, sessionId) {
-//   try {
-//     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
-//     // ... rest of the function
-//   } catch (error) {
-//     // ... error handling
-//     throw error;
-//   }
-// }
-
-// // ✅ Export createWhatsAppSession separately
-// module.exports.createWhatsAppSession = createWhatsAppSession;
-
-// Replace any route that previously called createBotSession directly
-// app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const sessionId = `session-${userId}-${Date.now()}`;
-//     await createWhatsAppSession(userId, sessionId);
-//     res.json({ success: true, data: { sessionId }, message: 'Session creation requested' });
-//   } catch (e) {
-//     res.status(500).json({ success: false, message: e.message || 'failed' });
-//   }
-// });
 
 // ============================================
 // 📱 MOBILE APP: Create Session with Phone Number
@@ -826,58 +706,6 @@ app.get('/api/payments/history', authenticate, async (req, res) => {
 });
 
 // Add this route to server.js
-// app.post('/api/webhooks/payment-success', async (req, res) => {
-//     try {
-//         const { userId, planType, transactionId, expiresAt } = req.body;
-        
-//         // Update user subscription
-//         const user = await User.findByIdAndUpdate(userId, {
-//             'subscription.status': 'active',
-//             'subscription.planType': planType,
-//             'subscription.paymentStatus': 'paid',
-//             'subscription.expiresAt': new Date(expiresAt),
-//             'subscription.lastPaymentDate': new Date(),
-//             'subscription.nextBillingDate': new Date(expiresAt)
-//         }, { new: true });
-
-//         if (user) {
-//             console.log(`✅ Payment confirmed for user ${userId}, plan: ${planType}`);
-            
-//             // 🔑 KEY ADDITION: Try to resume suspended sessions
-//             const { resumeUserSession } = require('./bot.js');
-//             const Session = require('./models/Session');
-            
-//             // Find suspended sessions for this user
-//             const suspendedSessions = await Session.find({ 
-//                 userId: userId, 
-//                 status: 'suspended' 
-//             });
-
-//             let resumedCount = 0;
-//             for (const session of suspendedSessions) {
-//                 const resumed = await resumeUserSession(userId, session.sessionId, io);
-//                 if (resumed) {
-//                     resumedCount++;
-//                 }
-//             }
-
-//             console.log(`✅ Resumed ${resumedCount} suspended sessions for user ${userId}`);
-            
-//             res.json({ 
-//                 success: true, 
-//                 message: 'Payment processed successfully',
-//                 resumedSessions: resumedCount
-//             });
-//         } else {
-//             res.status(404).json({ success: false, message: 'User not found' });
-//         }
-        
-//     } catch (error) {
-//         console.error('❌ Payment webhook error:', error);
-//         res.status(500).json({ success: false, message: 'Internal server error' });
-//     }
-// });
-
 app.post('/api/webhooks/payment-success', async (req, res) => {
     try {
         const { userId, planType, transactionId, expiresAt } = req.body;
@@ -1149,11 +977,6 @@ io.on('connection', (socket) => {
 });
 
 // // Start server
-// const PORT = process.env.PORT || 3000;
-// server.listen(PORT, () => {
-//   console.log(`🚀 Server running on port ${PORT}`);
-// });
-
 // Start server ONLY after MongoDB is connected
 const startServer = async () => {
   try {

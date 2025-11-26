@@ -1,8 +1,10 @@
 # Puppeteer-compatible Node image
 FROM node:20-bullseye-slim
 
-# Install Chromium dependencies
+# Install Chromium and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-sandbox \
     libasound2 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -59,6 +61,8 @@ ENV NODE_ENV=production
 ENV COMMAND_PREFIX=!
 ENV MAX_SESSIONS=1000
 ENV WHATSAPP_SESSION_DATA_PATH=./sessions
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Render auto-assigns PORT so we DO NOT EXPOSE OR FORCE ANY PORT
 CMD ["node", "worker.js"]

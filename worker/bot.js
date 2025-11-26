@@ -605,8 +605,6 @@ client.on('group_participants_changed', async (notification) => {
     }
 });
 
-
-
   // Get saved group entry by sessionId and 1-based index
 async function getGroupFromIndex(sessionId, index) {
   if (!index || isNaN(index)) return null;
@@ -643,10 +641,6 @@ async function getActiveGroup(sessionId) {
     name: doc.groupName
   };
 }
-
-
-
-
 
 async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
   const chunkSize = 50; // safe default, tune as needed
@@ -2761,21 +2755,6 @@ function createSession(sessionId) {
 }
 
 // createBotSession exposed for dashboard integration
-// async function createBotSession(userId, sessionId, workerIO) {
-//   try {
-//     // allow passing io (socket server) so we can emit QR updates to dashboard
-//     if (io && !global.io) global.io = io;
-
-//     // ensure sessionId unique
-//     const created = createSession(sessionId);
-//     logger.info(`createBotSession: created session ${sessionId} for user ${userId}`);
-//     return created;
-//   } catch (e) {
-//     logger.error('createBotSession error', e);
-//     throw e;
-//   }
-// }
-
 async function createBotSession(userId, sessionId, workerIO) {
   try {
     // Store workerIO globally so createClient can access it
@@ -2792,7 +2771,6 @@ async function createBotSession(userId, sessionId, workerIO) {
     throw e;
   }
 }
-
 
 // =========================================
 // RESTORE ALL SESSIONS ON SERVER STARTUP
