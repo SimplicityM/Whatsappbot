@@ -1176,7 +1176,6 @@ module.exports = {
     isCommandAllowed,
     hasFeature,
     getPlanDetails,
-    checkUsageLimit,
-    // createWhatsAppSession 
-};
+    checkUsageLimit
+    };
 startServer();
