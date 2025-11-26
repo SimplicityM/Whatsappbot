@@ -405,14 +405,14 @@ async function createWhatsAppSession(userId, sessionId) {
   }
 }
 
-async function createWhatsAppSession(userId, sessionId) {
-  try {
-    console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
-    // ... rest of the function
-  } catch (error) {
-    // ... error handling
-    throw error;
-  }
+// async function createWhatsAppSession(userId, sessionId) {
+//   try {
+//     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
+//     // ... rest of the function
+//   } catch (error) {
+//     // ... error handling
+//     throw error;
+//   }
 }
 
 // ✅ Export createWhatsAppSession separately
