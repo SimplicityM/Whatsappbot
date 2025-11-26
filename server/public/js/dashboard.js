@@ -1353,7 +1353,7 @@ function showTrialExpiringBanner(daysLeft) {
     banner.innerHTML = `
         <div class="banner-content">
             <i class="fas fa-exclamation-triangle"></i>
-            <span><strong>Warning!</strong> Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using AutoPay.</span>
+            <span><strong>Warning!</strong> Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using the Service.</span>
             <button onclick="window.location.href='pricing.html'" class="btn-upgrade">
                 <i class="fas fa-crown"></i> Upgrade Now
             </button>
@@ -1377,7 +1377,7 @@ function showTrialExpiredBanner() {
     banner.innerHTML = `
         <div class="banner-content">
             <i class="fas fa-times-circle"></i>
-            <span><strong>Trial Expired!</strong> Your free trial has ended. Subscribe now to continue using AutoPay.</span>
+            <span><strong>Trial Expired!</strong> Your free trial has ended. Subscribe now to continue using the Service.</span>
             <button onclick="window.location.href='pricing.html'" class="btn-subscribe">
                 <i class="fas fa-rocket"></i> Subscribe Now
             </button>
@@ -1487,7 +1487,7 @@ function showTrialExpiringBanner(daysLeft) {
     banner.innerHTML = `
         <div class="banner-content">
             <i class="fas fa-exclamation-triangle"></i>
-            <span>Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using AutoPay.</span>
+            <span>Your trial expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}! Upgrade now to keep using the Service.</span>
             <button onclick="window.location.href='pricing.html'" class="btn-upgrade">
                 <i class="fas fa-crown"></i> Upgrade Now
             </button>
