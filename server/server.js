@@ -415,8 +415,8 @@ async function createWhatsAppSession(userId, sessionId) {
 //   }
 // }
 
-// ✅ Export createWhatsAppSession separately
-module.exports.createWhatsAppSession = createWhatsAppSession;
+// // ✅ Export createWhatsAppSession separately
+// module.exports.createWhatsAppSession = createWhatsAppSession;
 
 // Replace any route that previously called createBotSession directly
 // app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
@@ -1176,6 +1176,7 @@ module.exports = {
     isCommandAllowed,
     hasFeature,
     getPlanDetails,
-    checkUsageLimit
+    checkUsageLimit,
+     createWhatsAppSession 
     };
 startServer();
