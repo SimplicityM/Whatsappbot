@@ -297,6 +297,7 @@ module.exports = {
     hasFeature,
     getPlanDetails,
     checkUsageLimit
+    createWhatsAppSession 
 };
 
 // ------------------ session creation: ask worker to create ------------------
@@ -413,16 +414,16 @@ async function createWhatsAppSession(userId, sessionId) {
 }
 
 // Replace any route that previously called createBotSession directly
-app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const sessionId = `session-${userId}-${Date.now()}`;
-    await createWhatsAppSession(userId, sessionId);
-    res.json({ success: true, data: { sessionId }, message: 'Session creation requested' });
-  } catch (e) {
-    res.status(500).json({ success: false, message: e.message || 'failed' });
-  }
-});
+// app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const sessionId = `session-${userId}-${Date.now()}`;
+//     await createWhatsAppSession(userId, sessionId);
+//     res.json({ success: true, data: { sessionId }, message: 'Session creation requested' });
+//   } catch (e) {
+//     res.status(500).json({ success: false, message: e.message || 'failed' });
+//   }
+// });
 
 // ============================================
 // 📱 MOBILE APP: Create Session with Phone Number
