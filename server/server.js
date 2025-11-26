@@ -121,8 +121,8 @@ const connectDB = async () => {
       bufferCommands: false,   // Disable buffering to prevent “buffering timed out”
       maxPoolSize: 10,
       minPoolSize: 2,
-      useNewUrlParser: true,
-      useUnifiedTopology: true
+    //   useNewUrlParser: true,
+    //   useUnifiedTopology: true
     });
 
     console.log('🟢 Initial MongoDB connection established');
