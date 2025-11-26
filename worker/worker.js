@@ -84,13 +84,6 @@ server.listen(PORT, '0.0.0.0', () => {
     }
 })();
 
-// await mongoose.connect(mongoURI, {
-//   serverSelectionTimeoutMS: 30000,
-//   socketTimeoutMS: 45000,
-//   bufferCommands: false,
-//   maxPoolSize: 10,
-//   minPoolSize: 2
-// });
 
 /* =====================================================
    WORKER JOB HANDLERS
@@ -102,22 +95,45 @@ io.on("connection", (socket) => {
      *  CREATE NEW SESSION
      *  From server: io.emit("worker:create_session", {...})
      * ========================================= */
-    socket.on("worker:create_session", async ({ userId, sessionId }) => {
-        console.log("🟢 Worker: create session request:", sessionId);
+    // socket.on("worker:create_session", async ({ userId, sessionId }) => {
+    //     console.log("🟢 Worker: create session request:", sessionId);
 
-        try {
-            await createBotSession(userId, sessionId, io);
+    //     try {
+    //         await createBotSession(userId, sessionId, io);
 
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { status: "waiting_qr", updatedAt: new Date() }
-            );
+    //         await Session.findOneAndUpdate(
+    //             { sessionId },
+    //             { status: "waiting_qr", updatedAt: new Date() }
+    //         );
 
-            console.log(`✅ Worker: session ${sessionId} created`);
-        } catch (err) {
-            console.error("❌ Worker create session error:", err);
-        }
-    });
+    //         console.log(`✅ Worker: session ${sessionId} created`);
+    //     } catch (err) {
+    //         console.error("❌ Worker create session error:", err);
+    //     }
+    // });
+
+    socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
+    console.log("🟢 Worker: create session request:", sessionId);
+
+    try {
+        await createBotSession(userId, sessionId, io);
+
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { status: "waiting_qr", updatedAt: new Date() }
+        );
+
+        console.log(`✅ Worker: session ${sessionId} created`);
+        
+        // Send acknowledgment back to server
+        if (callback) callback(null, { success: true, sessionId });
+    } catch (err) {
+        console.error("❌ Worker create session error:", err);
+        
+        // Send error back to server
+        if (callback) callback(err.message, null);
+    }
+});
 
     /** =========================================
      *  RESUME SUSPENDED SESSION
