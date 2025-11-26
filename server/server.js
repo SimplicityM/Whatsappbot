@@ -413,7 +413,7 @@ async function createWhatsAppSession(userId, sessionId) {
 //     // ... error handling
 //     throw error;
 //   }
-}
+// }
 
 // ✅ Export createWhatsAppSession separately
 module.exports.createWhatsAppSession = createWhatsAppSession;
