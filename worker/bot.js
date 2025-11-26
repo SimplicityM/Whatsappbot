@@ -2761,10 +2761,27 @@ function createSession(sessionId) {
 }
 
 // createBotSession exposed for dashboard integration
+// async function createBotSession(userId, sessionId, workerIO) {
+//   try {
+//     // allow passing io (socket server) so we can emit QR updates to dashboard
+//     if (io && !global.io) global.io = io;
+
+//     // ensure sessionId unique
+//     const created = createSession(sessionId);
+//     logger.info(`createBotSession: created session ${sessionId} for user ${userId}`);
+//     return created;
+//   } catch (e) {
+//     logger.error('createBotSession error', e);
+//     throw e;
+//   }
+// }
+
 async function createBotSession(userId, sessionId, workerIO) {
   try {
-    // allow passing io (socket server) so we can emit QR updates to dashboard
-    if (io && !global.io) global.io = io;
+    // Store workerIO globally so createClient can access it
+    if (workerIO && !global.io) {
+      global.io = workerIO;
+    }
 
     // ensure sessionId unique
     const created = createSession(sessionId);
