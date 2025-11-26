@@ -151,8 +151,8 @@ const connectDB = async () => {
     console.log('✅ MongoDB ping successful');
 
     // Load models AFTER confirmed connection
-        const UserModel = require('../models/User');
-        const SessionModel = require('../models/Session');
+        const UserModel = require('./models/User');
+        const SessionModel = require('./models/Session');
 
         // Assign globally if needed
         global.User = UserModel;
