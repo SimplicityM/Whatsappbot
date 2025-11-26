@@ -290,15 +290,7 @@ function checkUsageLimit(subscription, limitType, currentUsage) {
     return { allowed, remaining, limit };
 }
 
-// Export for use in other modules
-module.exports = {
-    subscriptionPlans,
-    isCommandAllowed,
-    hasFeature,
-    getPlanDetails,
-    checkUsageLimit
-    createWhatsAppSession 
-};
+
 
 // ------------------ session creation: ask worker to create ------------------
 // async function createWhatsAppSession(userId, sessionId) {
@@ -412,6 +404,19 @@ async function createWhatsAppSession(userId, sessionId) {
     throw error;
   }
 }
+
+async function createWhatsAppSession(userId, sessionId) {
+  try {
+    console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
+    // ... rest of the function
+  } catch (error) {
+    // ... error handling
+    throw error;
+  }
+}
+
+// ✅ Export createWhatsAppSession separately
+module.exports.createWhatsAppSession = createWhatsAppSession;
 
 // Replace any route that previously called createBotSession directly
 // app.post('/api/sessions/create', require('../middleware/auth').authenticate, async (req, res) => {
@@ -1165,4 +1170,13 @@ const startServer = async () => {
   }
 };
 
+// Export for use in other modules
+module.exports = {
+    subscriptionPlans,
+    isCommandAllowed,
+    hasFeature,
+    getPlanDetails,
+    checkUsageLimit,
+    // createWhatsAppSession 
+};
 startServer();
