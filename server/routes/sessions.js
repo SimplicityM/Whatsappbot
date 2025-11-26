@@ -72,13 +72,21 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
             message: 'Session created successfully'
         });
 
+    // } catch (error) {
+    //     console.error('❌ Create session error:', error);
+    //     res.json({
+    //         success: false,
+    //         message: 'Failed to create session'
+    //     });
+    // }
+
     } catch (error) {
-        console.error('❌ Create session error:', error);
-        res.json({
-            success: false,
-            message: 'Failed to create session'
-        });
-    }
+    console.error('❌ Create session error:', error);
+    res.json({
+        success: false,
+        message: error.message || 'Failed to create session'  // ✅ Return actual error message
+    });
+}
 });
 
 // Restart session
