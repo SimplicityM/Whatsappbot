@@ -300,11 +300,71 @@ module.exports = {
 };
 
 // ------------------ session creation: ask worker to create ------------------
+// async function createWhatsAppSession(userId, sessionId) {
+//   try {
+//     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
+
+//     // Store initial session record BEFORE asking worker (helps UI show a waiting state)
+//     const session = new Session({
+//       userId,
+//       sessionId,
+//       status: 'waiting_qr',
+//       subscriptionAtTime: (await User.findById(userId)).subscription,
+//       createdAt: new Date(),
+//       updatedAt: new Date()
+//     });
+//     await session.save();
+
+//     // Emit to worker and wait for response via ack callback with timeout
+//     const ack = await new Promise((resolve, reject) => {
+//       // use socket.timeout if available on client
+//       try {
+//         workerSocket.timeout(20000).emit('worker:create_session', { userId, sessionId }, (err, result) => {
+//           if (err) return reject(new Error(String(err)));
+//           return resolve(result);
+//         });
+//       } catch (e) {
+//         // fallback
+//         let called = false;
+//         workerSocket.emit('create_session', { userId, sessionId }, (err, result) => {
+//           if (called) return;
+//           called = true;
+//           if (err) return reject(new Error(String(err)));
+//           resolve(result);
+//         });
+//         // safety timeout
+//         setTimeout(() => {
+//           if (!called) {
+//             called = true;
+//             reject(new Error('Worker did not respond in time'));
+//           }
+//         }, 20000);
+//       }
+//     });
+
+//     console.log('✅ SERVER: Worker acked create_session:', ack);
+//     return sessionId;
+//   } catch (error) {
+//     console.error('❌ SERVER: createWhatsAppSession error:', error);
+//     // mark session failed in DB
+//     try {
+//       await Session.findOneAndUpdate({ sessionId }, {
+//         status: 'failed',
+//         errorMessage: error.message,
+//         updatedAt: new Date()
+//       });
+//     } catch (dbErr) {
+//       console.error('❌ SERVER: failed to update session status after worker error', dbErr);
+//     }
+//     throw error;
+//   }
+// }
+
 async function createWhatsAppSession(userId, sessionId) {
   try {
     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
 
-    // Store initial session record BEFORE asking worker (helps UI show a waiting state)
+    // Store initial session record BEFORE asking worker
     const session = new Session({
       userId,
       sessionId,
@@ -315,38 +375,30 @@ async function createWhatsAppSession(userId, sessionId) {
     });
     await session.save();
 
-    // Emit to worker and wait for response via ack callback with timeout
+    // Check if worker is connected
+    if (!workerSocket.connected) {
+      throw new Error('Worker service is not connected. Please try again later.');
+    }
+
+    // Emit to worker and wait for response
     const ack = await new Promise((resolve, reject) => {
-      // use socket.timeout if available on client
-      try {
-        workerSocket.timeout(20000).emit('worker:create_session', { userId, sessionId }, (err, result) => {
-          if (err) return reject(new Error(String(err)));
-          return resolve(result);
-        });
-      } catch (e) {
-        // fallback
-        let called = false;
-        workerSocket.emit('create_session', { userId, sessionId }, (err, result) => {
-          if (called) return;
-          called = true;
-          if (err) return reject(new Error(String(err)));
-          resolve(result);
-        });
-        // safety timeout
-        setTimeout(() => {
-          if (!called) {
-            called = true;
-            reject(new Error('Worker did not respond in time'));
-          }
-        }, 20000);
-      }
+      const timeout = setTimeout(() => {
+        reject(new Error('Worker did not respond in time'));
+      }, 20000);
+
+      workerSocket.emit('worker:create_session', { userId, sessionId }, (err, result) => {
+        clearTimeout(timeout);
+        if (err) return reject(new Error(String(err)));
+        resolve(result);
+      });
     });
 
     console.log('✅ SERVER: Worker acked create_session:', ack);
     return sessionId;
   } catch (error) {
     console.error('❌ SERVER: createWhatsAppSession error:', error);
-    // mark session failed in DB
+    
+    // Mark session as failed
     try {
       await Session.findOneAndUpdate({ sessionId }, {
         status: 'failed',
@@ -354,7 +406,7 @@ async function createWhatsAppSession(userId, sessionId) {
         updatedAt: new Date()
       });
     } catch (dbErr) {
-      console.error('❌ SERVER: failed to update session status after worker error', dbErr);
+      console.error('❌ SERVER: failed to update session status', dbErr);
     }
     throw error;
   }

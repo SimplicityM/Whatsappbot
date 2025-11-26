@@ -95,24 +95,32 @@ io.on("connection", (socket) => {
      *  CREATE NEW SESSION
      *  From server: io.emit("worker:create_session", {...})
      * ========================================= */
-    // socket.on("worker:create_session", async ({ userId, sessionId }) => {
-    //     console.log("🟢 Worker: create session request:", sessionId);
+   
 
-    //     try {
-    //         await createBotSession(userId, sessionId, io);
+//     socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
+//     console.log("🟢 Worker: create session request:", sessionId);
 
-    //         await Session.findOneAndUpdate(
-    //             { sessionId },
-    //             { status: "waiting_qr", updatedAt: new Date() }
-    //         );
+//     try {
+//         await createBotSession(userId, sessionId, io);
 
-    //         console.log(`✅ Worker: session ${sessionId} created`);
-    //     } catch (err) {
-    //         console.error("❌ Worker create session error:", err);
-    //     }
-    // });
+//         await Session.findOneAndUpdate(
+//             { sessionId },
+//             { status: "waiting_qr", updatedAt: new Date() }
+//         );
 
-    socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
+//         console.log(`✅ Worker: session ${sessionId} created`);
+        
+//         // Send acknowledgment back to server
+//         if (callback) callback(null, { success: true, sessionId });
+//     } catch (err) {
+//         console.error("❌ Worker create session error:", err);
+        
+//         // Send error back to server
+//         if (callback) callback(err.message, null);
+//     }
+// });
+
+socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
     console.log("🟢 Worker: create session request:", sessionId);
 
     try {
@@ -125,13 +133,17 @@ io.on("connection", (socket) => {
 
         console.log(`✅ Worker: session ${sessionId} created`);
         
-        // Send acknowledgment back to server
-        if (callback) callback(null, { success: true, sessionId });
+        // Send acknowledgment
+        if (typeof callback === 'function') {
+            callback(null, { success: true, sessionId });
+        }
     } catch (err) {
         console.error("❌ Worker create session error:", err);
         
-        // Send error back to server
-        if (callback) callback(err.message, null);
+        // Send error acknowledgment
+        if (typeof callback === 'function') {
+            callback(err.message, null);
+        }
     }
 });
 
