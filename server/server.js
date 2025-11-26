@@ -151,14 +151,15 @@ const connectDB = async () => {
     console.log('✅ MongoDB ping successful');
 
     // Load models AFTER confirmed connection
-    const UserModel = require('./models/User');
-    const SessionModel = require('./models/Session');
+        const UserModel = require('./models/User');
+        const SessionModel = require('./models/Session');
 
-    // Assign globally if needed
-    global.User = UserModel;
-    global.Session = SessionModel;
+        // Assign globally if needed
+        global.User = UserModel;
+        global.Session = SessionModel;
 
-    console.log('✅ Models loaded');
+        console.log('✅ Models loaded');
+
 
     // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
