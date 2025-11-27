@@ -58,7 +58,6 @@ async function checkExpiredTrials() {
 // Run every hour
 setInterval(checkExpiredTrials, 60 * 60 * 1000);
 
-// Run immediately on startup
-checkExpiredTrials();
+
 
 module.exports = { checkExpiredTrials };

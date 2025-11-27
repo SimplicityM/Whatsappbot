@@ -45,8 +45,7 @@ workerSocket.on('disconnect', (reason) => {
 });
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
-// After DB connection
-const { checkExpiredTrials } = require('./utils/trialMonitor');
+
 
 // Start after DB connection
 workerSocket.on('connect', () => {
@@ -125,13 +124,13 @@ const connectDB = async () => {
     await mongoose.connection.db.admin().ping();
     console.log('✅ MongoDB ping successful');
 
-    // Load models AFTER confirmed connection
-User = require('./models/User');
-Session = require('./models/Session');
+        // Load models AFTER confirmed connection
+    User = require('./models/User');
+    Session = require('./models/Session');
 
-// Assign globally if needed
-global.User = User;
-global.Session = Session;
+    // Assign globally if needed
+    global.User = User;
+    global.Session = Session;
 
         console.log('✅ Models loaded');
 
@@ -140,24 +139,29 @@ global.Session = Session;
     app.use("/api/auth", require("./routes/auth"));
     console.log('✅ Auth routes registered');
 
-    app.use("/api/user", require("./routes/user"));
-console.log('✅ User routes registered');
+        app.use("/api/user", require("./routes/user"));
+    console.log('✅ User routes registered');
 
-app.use("/api/admin", require("./routes/admin"));
-console.log('✅ Admin routes registered');
+    app.use("/api/admin", require("./routes/admin"));
+    console.log('✅ Admin routes registered');
 
-  } catch (err) {
-    console.error('❌ Server DB error:', err);
-    process.exit(1);
-  }
-};
+    // ADD THIS: Start trial monitoring AFTER DB is connected
+        const { checkExpiredTrials } = require('./utils/trialMonitor');
+        checkExpiredTrials(); // Now it's safe to run
+        console.log('✅ Trial monitoring started');
+
+    } catch (err) {
+        console.error('❌ Server DB error:', err);
+        process.exit(1);
+    }
+    };
 
 
-// Global variables
-const activeClients = new Map();
+    // Global variables
+    const activeClients = new Map();
 
-// Subscription tiers and their features
-const subscriptionPlans = {
+    // Subscription tiers and their features
+    const subscriptionPlans = {
     free: {
         name: 'Free Plan',
         maxSessions: 1,
