@@ -419,7 +419,11 @@ client.on('ready', async () => {
         const BlacklistedNumber = require('./models/BlacklistedNumber');
         const User = require('./models/User');
         const Session = require('./models/Session');
-
+try {
+             // Check if number is blacklisted
+             const blacklisted = await BlacklistedNumber.findOne({ 
+                 whatsappNumber: whatsappNumber 
+             });
          if (blacklisted && !blacklisted.canReactivate) {
                 logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
                 
