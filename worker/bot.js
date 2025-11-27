@@ -423,10 +423,52 @@ client.on('ready', async () => {
                 whatsappNumber: whatsappNumber 
             });
 
-            if (blacklisted && !blacklisted.canReactivate) {
-                logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
-                
-                await safeSend(selfId, `⛔ *ACCESS DENIED*\n\nThis WhatsApp number has been used with a previous account.\n\nOriginal account: ${blacklisted.originalEmail}\nReason: ${blacklisted.reason}\n\nTo continue using our service, please:\n1. Log in to your original account (${blacklisted.originalEmail})\n2. Or contact support if you believe this is an error\n\nWebsite: https://yourwebsite.com`);
+            // In worker/bot.js, after detecting blacklisted number (around line 428)
+if (blacklisted && !blacklisted.canReactivate) {
+    logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
+    
+    // Send notification to original account owner
+    try {
+        const originalUser = await User.findById(blacklisted.originalUserId);
+        if (originalUser && originalUser.email) {
+            // Send email notification
+            const emailService = require('./utils/emailService'); // Your email service
+            await emailService.sendEmail({
+                to: originalUser.email,
+                subject: 'Someone tried to use your WhatsApp number',
+                body: `
+                    Someone attempted to connect your WhatsApp number (${whatsappNumber}) 
+                    to a new account. If this was you, please log in to your original 
+                    account or upgrade to continue using our service.
+                    
+                    If this wasn't you, your account is secure - we blocked the attempt.
+                `
+            });
+        }
+    } catch (emailError) {
+        logger.error('Failed to send notification email:', emailError);
+    }
+                await safeSend(selfId, `⛔ *ACCESS DENIED*
+
+This WhatsApp number was previously used with: ${blacklisted.originalEmail}
+
+Your trial expired on: ${new Date(blacklisted.trialUsedAt).toLocaleDateString()}
+
+✅ *TO CONTINUE USING OUR SERVICE:*
+
+Option 1: Log in to your original account
+→ Email: ${blacklisted.originalEmail}
+→ Reset password if needed: https://tagthemall.com.ng/reset-password
+
+Option 2: Upgrade to a paid plan
+→ Visit: https://tagthemall.com.ng
+→ After payment, you can use this number again
+
+Option 3: Contact support
+→ Email: support@yourwebsite.com
+→ Include this reference: ${blacklisted._id}
+
+This policy prevents trial abuse and ensures fair access for all users.`);
                 
                 // Disconnect the session
                 await client.destroy();
@@ -472,7 +514,20 @@ client.on('ready', async () => {
 
                 return;
             }
-
+        // After all security checks pass, save the whatsappNumber to User model
+        try {
+            const currentSession = await Session.findOne({ sessionId });
+            if (currentSession && currentSession.userId) {
+                await User.findByIdAndUpdate(
+                    currentSession.userId,
+                    { whatsappNumber: whatsappNumber },
+                    { new: true }
+                );
+                logger.info(`[${sessionName}] ✅ Saved whatsappNumber to User model: ${whatsappNumber}`);
+            }
+        } catch (error) {
+            logger.error(`[${sessionName}] Error saving whatsappNumber to User:`, error);
+        }
         } catch (error) {
             logger.error(`[${sessionName}] Error checking blacklist:`, error);
             // Continue anyway if there's an error

@@ -7,6 +7,8 @@ const router = express.Router();
 
 // Flutterwave configuration
 const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
+// After successful payment
+const BlacklistedNumber = require('../models/BlacklistedNumber');
 
 // Subscription plans
 const SUBSCRIPTION_PLANS = {
@@ -232,7 +234,38 @@ router.post('/flutterwave-webhook', async (req, res) => {
                 user.status = 'approved';
                 await user.save();
 
+                  // In payment.js, after successful payment (around line 233)
+        const user = await User.findById(userId);
+        if (user) {
+            user.subscription = subscription;
+            user.paymentStatus = 'paid';
+            user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
+            user.status = 'approved';
+            await user.save();
+
+            // NEW: Remove from blacklist and free up the number
+            if (user.whatsappNumber) {
+                await BlacklistedNumber.findOneAndDelete({
+                    whatsappNumber: user.whatsappNumber
+                });
+                
+                // Remove whatsappNumber from any old expired accounts
+                await User.updateMany(
+                    { 
+                        whatsappNumber: user.whatsappNumber,
+                        _id: { $ne: user._id },
+                        paymentStatus: { $ne: 'paid' }
+                    },
+                    { 
+                        $unset: { whatsappNumber: "" } 
+                    }
+                );
+            }
+        }
+
                 console.log(`✅ Payment successful for user ${user.email}: ${tx_ref}`);
+
+                      
 
                 // Restore bot session
                 try {
@@ -489,8 +522,6 @@ router.get('/transaction/:transactionId', authenticate, async (req, res) => {
     }
 });
 
-// After successful payment
-const BlacklistedNumber = require('../models/BlacklistedNumber');
 
 // Remove from blacklist if they pay
 if (user.whatsappNumber) {
