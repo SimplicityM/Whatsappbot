@@ -219,6 +219,7 @@ const clients = new Map();        // sessionId -> client instance
 const sessionWorkers = new Map(); // sessionId -> { schedulerInterval, ... }
 const logger = {
   info: (m) => console.log(`[${new Date().toISOString()}] INFO: ${m}`),
+  warn: (m) => console.warn(`[${new Date().toISOString()}] WARN: ${m}`),
   error: (m, e) => console.error(`[${new Date().toISOString()}] ERROR: ${m}`, e || '')
 };
 
