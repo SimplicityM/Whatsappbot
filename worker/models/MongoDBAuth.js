@@ -1,5 +1,5 @@
 const { AuthStrategy } = require('whatsapp-web.js');
-const SessionAuth = require('../models/SessionAuth');
+const SessionAuth = require('./models/SessionAuth');
 
 class MongoDBAuth extends AuthStrategy {
     constructor(sessionId) {
