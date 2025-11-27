@@ -399,6 +399,8 @@ client.on('ready', async () => {
 
         // 🔹 Wait until client.info is available
         let attempts = 0;
+        let state = null;
+        
         while ((!client.info || !client.info.wid) && attempts < 60) {
             await new Promise(r => setTimeout(r, 100));
             attempts++;
@@ -523,7 +525,7 @@ This policy prevents trial abuse and ensures fair access for all users.`);
         // Continue with normal flow...
         // 🔹 Wait for full WhatsApp connection
         attempts = 0;
-        let state = null;
+        state = null;
         while (attempts < 50) {
             try { state = await client.getState(); } catch {}
             if (state === 'CONNECTED' || state === 'OPEN') break;
