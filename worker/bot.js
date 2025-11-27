@@ -418,16 +418,12 @@ client.on('ready', async () => {
         const User = require('./models/User');
         const Session = require('./models/Session');
 
-         try {
-            // Check if number is blacklisted
-            const blacklisted = await BlacklistedNumber.findOne({ 
-                whatsappNumber: whatsappNumber 
-            });
-
-            if (blacklisted && !blacklisted.canReactivate) {
+         if (blacklisted && !blacklisted.canReactivate) {
                 logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
                 
-                await safeSend(selfId, `⛔ *ACCESS DENIED*
+                logger.info(`[${sessionName}] Attempting to send blacklist notification to ${selfId}`);
+                
+                const messageSent = await safeSend(selfId, `⛔ *ACCESS DENIED*
 
 This WhatsApp number was previously used with: ${blacklisted.originalEmail}
 
@@ -449,8 +445,22 @@ Option 3: Contact support
 
 This policy prevents trial abuse and ensures fair access for all users.`);
                 
+                if (messageSent) {
+                    logger.info(`[${sessionName}] ✅ Blacklist notification sent successfully`);
+                    // Wait 10 seconds to ensure message is delivered
+                    await new Promise(r => setTimeout(r, 10000));
+                } else {
+                    logger.error(`[${sessionName}] ❌ Failed to send blacklist notification`);
+                    // Still wait a bit before destroying, just in case
+                    await new Promise(r => setTimeout(r, 3000));
+                }
+                
+                logger.info(`[${sessionName}] Destroying client for blacklisted number`);
+                
                 // Disconnect the session
                 await client.destroy();
+                
+                logger.info(`[${sessionName}] Updating session status to blocked`);
                 
                 // Update session status in database
                 await Session.findOneAndUpdate(
@@ -462,6 +472,7 @@ This policy prevents trial abuse and ensures fair access for all users.`);
                     }
                 );
 
+                logger.info(`[${sessionName}] Blacklist handling complete`);
                 return; // Stop further execution
             }
 
@@ -3495,10 +3506,25 @@ async function restoreAllSessions(io) {
 
         logger.info("♻ Starting WhatsApp session restoration...");
 
-        const sessions = await Session.find({
-            status: { $in: ["connected", "authenticated", "ready"] }
-        });
+        // const sessions = await Session.find({
+        //     status: { $in: ["connected", "authenticated", "ready"] }
+        // });
 
+        // Find all active sessions (not disconnected, failed, or errored)
+        const sessions = await Session.find({
+            status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
+        });
+        
+        logger.info(`🔍 Found ${sessions.length} sessions in database`);
+        
+        // Log session statuses for debugging
+        if (sessions.length > 0) {
+            const statusCounts = sessions.reduce((acc, s) => {
+                acc[s.status] = (acc[s.status] || 0) + 1;
+                return acc;
+            }, {});
+            logger.info(`📊 Session statuses: ${JSON.stringify(statusCounts)}`);
+        }
         if (!sessions.length) {
             logger.info("📭 No sessions found to restore.");
             return;
