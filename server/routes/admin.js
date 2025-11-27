@@ -607,6 +607,49 @@ router.put('/users/:userId/status', authenticateAdmin, async (req, res) => {
     }
 });
 
+// Get blacklisted numbers
+router.get('/blacklisted-numbers', authenticateAdmin, async (req, res) => {
+    try {
+        const BlacklistedNumber = require('../../models/BlacklistedNumber');
+        
+        const blacklisted = await BlacklistedNumber.find()
+            .populate('originalUserId', 'fullName email')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            blacklisted
+        });
+    } catch (error) {
+        console.error('Error fetching blacklisted numbers:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching blacklisted numbers'
+        });
+    }
+});
+
+// Remove from blacklist (allow reactivation)
+router.delete('/blacklisted-numbers/:number', authenticateAdmin, async (req, res) => {
+    try {
+        const BlacklistedNumber = require('../../models/BlacklistedNumber');
+        
+        await BlacklistedNumber.findOneAndDelete({
+            whatsappNumber: req.params.number
+        });
+
+        res.json({
+            success: true,
+            message: 'Number removed from blacklist'
+        });
+    } catch (error) {
+        console.error('Error removing from blacklist:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error removing from blacklist'
+        });
+    }
+});
 
 // Send broadcast message
 router.post('/broadcast', authenticateAdmin, async (req, res) => {

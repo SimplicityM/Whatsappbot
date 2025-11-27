@@ -45,6 +45,8 @@ workerSocket.on('disconnect', (reason) => {
 });
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
+// After DB connection
+const { checkExpiredTrials } = require('./utils/trialMonitor');
 
 // Start after DB connection
 workerSocket.on('connect', () => {

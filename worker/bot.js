@@ -410,6 +410,79 @@ client.on('ready', async () => {
         selfId = client.info.wid._serialized;
         logger.info(`[${sessionName}] selfId set to ${selfId}`);
 
+        
+        // 🔒 SECURITY: Check if this WhatsApp number is blacklisted
+        const whatsappNumber = selfId.split('@')[0]; // Extract number from JID
+        const BlacklistedNumber = require('./models/BlacklistedNumber');
+        const User = require('./models/User');
+        const Session = require('./models/Session');
+
+        try {
+            // Check if number is blacklisted
+            const blacklisted = await BlacklistedNumber.findOne({ 
+                whatsappNumber: whatsappNumber 
+            });
+
+            if (blacklisted && !blacklisted.canReactivate) {
+                logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
+                
+                await safeSend(selfId, `⛔ *ACCESS DENIED*\n\nThis WhatsApp number has been used with a previous account.\n\nOriginal account: ${blacklisted.originalEmail}\nReason: ${blacklisted.reason}\n\nTo continue using our service, please:\n1. Log in to your original account (${blacklisted.originalEmail})\n2. Or contact support if you believe this is an error\n\nWebsite: https://yourwebsite.com`);
+                
+                // Disconnect the session
+                await client.destroy();
+                
+                // Update session status in database
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'blocked',
+                        errorMessage: 'WhatsApp number blacklisted - trial abuse detected',
+                        updatedAt: new Date()
+                    }
+                );
+
+                return; // Stop further execution
+            }
+
+            // Check if this number is already connected to another active account
+            const existingUser = await User.findOne({ 
+                whatsappNumber: whatsappNumber,
+                status: { $in: ['active', 'approved'] }
+            });
+
+            // Get current session's userId
+            const currentSession = await Session.findOne({ sessionId });
+            const currentUserId = currentSession?.userId?.toString();
+
+            if (existingUser && existingUser._id.toString() !== currentUserId) {
+                logger.warn(`[${sessionName}] ⚠️ Number already connected to another account: ${whatsappNumber}`);
+                
+                await safeSend(selfId, `⚠️ *DUPLICATE ACCOUNT DETECTED*\n\nThis WhatsApp number is already connected to another account:\n\nEmail: ${existingUser.email}\nSubscription: ${existingUser.subscription}\n\nYou cannot use the same WhatsApp number on multiple accounts.\n\nPlease:\n1. Log in to your original account (${existingUser.email})\n2. Or disconnect from the other account first\n\nContact support if you need help.`);
+                
+                await client.destroy();
+                
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'blocked',
+                        errorMessage: 'WhatsApp number already in use by another account',
+                        updatedAt: new Date()
+                    }
+                );
+
+                return;
+            }
+
+        } catch (error) {
+            logger.error(`[${sessionName}] Error checking blacklist:`, error);
+            // Continue anyway if there's an error
+        }
+
+        // Continue with normal flow...
+        // 🔹 Wait for full WhatsApp connection
+        attempts = 0;
+        let state = null;
+
         // 🔹 Wait for full WhatsApp connection
         attempts = 0;
         let state = null;

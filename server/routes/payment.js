@@ -489,6 +489,20 @@ router.get('/transaction/:transactionId', authenticate, async (req, res) => {
     }
 });
 
+// After successful payment
+const BlacklistedNumber = require('../models/BlacklistedNumber');
+
+// Remove from blacklist if they pay
+if (user.whatsappNumber) {
+    await BlacklistedNumber.findOneAndUpdate(
+        { whatsappNumber: user.whatsappNumber },
+        { 
+            canReactivate: true,
+            reason: 'paid_subscription',
+            notes: `Subscription renewed on ${new Date()}`
+        }
+    );
+
 module.exports = router;
 
 
