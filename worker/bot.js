@@ -1860,357 +1860,160 @@ case 'mygroups': {
 }
 
 
-
 // case 'tag': {
-//   if (!isSelfChat) return;
+//     if (!isSelfChat) return;
 
-//   const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-//   const resolved = await resolveTargetGroupArg(providedIdx);
-
-//   if (!resolved.group) {
-//     await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
-//     break;
-//   }
-
-//   const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-//   if (!chat) {
-//     await safeSend(message.from, '❌ Could not fetch group chat.');
-//     break;
-//   }
-
-//   // participants resolver (DB -> official -> chat.participants)
-//   let participants = [];
-//   try {
-//     const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
-//     if (Array.isArray(dbList) && dbList.length) {
-//       participants = dbList.map(j => ({ id: { _serialized: j } }));
-//     } else if (typeof chat.getParticipants === 'function') {
-//       const fetched = await chat.getParticipants().catch(()=>[]);
-//       if (fetched && fetched.length) {
-//         participants = fetched;
-//         await setMembersForGroup(sessionId, resolved.group.groupId, fetched.map(p => p.id?._serialized || p));
-//       }
-//     } else if (Array.isArray(chat.participants) && chat.participants.length) {
-//       participants = chat.participants;
-//       await setMembersForGroup(sessionId, resolved.group.groupId, participants.map(p => p.id && p.id._serialized ? p.id._serialized : (typeof p === 'string' ? p : null)).filter(Boolean));
+//     // Rate limit check (per user)
+//     const rl = checkRateLimit(message.from);
+//     if (!rl.allowed) {
+//         await safeSend(message.from, `⚠ Rate limit: try again in ${Math.ceil(rl.retryAfter/1000)}s`);
+//         break;
 //     }
-//   } catch (e) {
-//     participants = [];
-//   }
 
-//   if (!participants.length) {
-//     await safeSend(message.from,
-//       `⚠ Could not determine members for ${resolved.group.name}.\n` +
-//       `This is likely a Community-subgroup or restricted group. Use !syncmembers after promoting the bot to admin, or ask members to send messages so I can collect them.`);
-//     break;
-//   }
+//     // Parse command
+//     let raw = message.body.trim().replace(/^!tag\s*/i, '').trim();
+//     const parts = raw.split(/\s+/);
+//     const firstPart = parts[0] || '';
 
-//   const mentions = [];
-//   for (const p of participants) {
-//     const jid = (p && p.id && p.id._serialized) ? p.id._serialized : (typeof p === 'string' ? p : null);
-//     if (!jid) continue;
-//     const contact = await client.getContactById(jid).catch(()=>null);
-//     if (contact) mentions.push(contact.id._serialized);
-//   }
+//     // Multi-group support
+//     let groupIndexes = [];
+//     let messageText = '';
 
-//     //   const msgAfterIndex = (providedIdx ? args.slice(1) : args).join(' ').trim();
-//     //   const text = msgAfterIndex || '*🔔 Attention everyone!*';
-
-//     // extract full message but remove the command part only
-//     let raw = message.body.trim();
-
-//     // remove the command + index
-//     if (providedIdx) {
-//     raw = raw.replace(/^!tag\s+\d+\s*/i, '');
+//     if (/^[0-9, ]+$/.test(firstPart) && firstPart.trim().length) {
+//         groupIndexes = firstPart.split(/[, ]+/).map(n => parseInt(n)).filter(n => !isNaN(n));
+//         messageText = parts.slice(1).join(' ').trim();
 //     } else {
-//     raw = raw.replace(/^!tag\s*/i, '');
+//         groupIndexes = [null]; // default group
+//         messageText = raw.trim();
 //     }
 
-//     const text = raw.trim() || '*🔔 Attention everyone!*';
+//     if (!messageText) messageText = "*🔔 Attention everyone!*";
 
-
-//   await client.sendMessage(resolved.group.groupId, text, { mentions });
-//   await safeSend(message.from, `✅ Tag executed in *${resolved.group.name}*.`);
-//   break;
-// }
-
-// case 'tag': {
-//   if (!isSelfChat) return;
-
-//   // Extract full raw command
-//   let raw = message.body.trim();
-
-//   // Remove the "!tag" command
-//   raw = raw.replace(/^!tag\s*/i, "").trim();
-
-//   // Split indexes & message
-//   const parts = raw.split(/\s+/);
-//   const firstPart = parts[0];
-
-//   // Detect multiple indexes: "1,2,3" or "1 2 3"
-//   let groupIndexes = [];
-//   let messageText = "";
-
-//   if (/^[0-9, ]+$/.test(firstPart)) {
-//     // Parse list like: 1,2,3 OR 1 2 3
-//     groupIndexes = firstPart
-//       .split(/[, ]+/)
-//       .map(n => parseInt(n))
-//       .filter(n => !isNaN(n));
-
-//     // Remaining text after indexes
-//     messageText = parts.slice(1).join(" ").trim();
-//   } else {
-//     // No indexes → use default group
-//     groupIndexes = [null];
-//     messageText = raw.trim();
-//   }
-
-//   // Default message
-//   if (!messageText) {
-//     messageText = "*🔔 Attention everyone!*";
-//   }
-
-//   if (!groupIndexes.length) {
-//     await safeSend(message.from, "❌ Invalid group indexes.");
-//     break;
-//   }
-
-//   const successfulGroups = [];
-
-//   for (const idx of groupIndexes) {
-//     const resolved = await resolveTargetGroupArg(idx);
-
-//     if (!resolved.group) {
-//       await safeSend(message.from, `❌ No group found for index: ${idx}`);
-//       continue;
+//     if (!groupIndexes.length) {
+//         await safeSend(message.from, "❌ Invalid group indexes.");
+//         break;
 //     }
 
-//     const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-//     if (!chat) {
-//       await safeSend(message.from, `❌ Cannot fetch chat for: ${resolved.group.name}`);
-//       continue;
+//     // Contact cache per invocation
+//     const contactCache = new Map();
+
+//     // Fetch contacts in parallel (bounded)
+//     async function fetchContactsMerged(jids, concurrency = 30) {
+//         const missing = jids.filter(j => !contactCache.has(j));
+//         if (!missing.length) return;
+
+//         let i = 0;
+//         const workers = new Array(Math.min(concurrency, missing.length)).fill(0).map(async () => {
+//             while (true) {
+//                 const idx = i++;
+//                 if (idx >= missing.length) break;
+
+//                 const jid = missing[idx];
+//                 try {
+//                     const c = await client.getContactById(jid).catch(() => null);
+//                     contactCache.set(jid, c || { id: { _serialized: jid } });
+//                 } catch (e) {
+//                     contactCache.set(jid, { id: { _serialized: jid } });
+//                 }
+//             }
+//         });
+
+//         await Promise.all(workers);
 //     }
 
-//     // Resolve participants
-//     let participants = [];
-//     try {
-//       const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
-//       if (Array.isArray(dbList) && dbList.length) {
-//         participants = dbList.map(j => ({ id: { _serialized: j } }));
-//       } else if (typeof chat.getParticipants === 'function') {
-//         const fetched = await chat.getParticipants().catch(()=>[]);
-//         if (fetched && fetched.length) {
-//           participants = fetched;
-//           await setMembersForGroup(
-//             sessionId,
-//             resolved.group.groupId,
-//             fetched.map(p => p.id?._serialized || p)
-//           );
+//     const successfulGroups = [];
+
+//     for (const idx of groupIndexes) {
+//         const resolved = await resolveTargetGroupArg(idx);
+//         if (!resolved.group) {
+//             await safeSend(message.from, `❌ No group found for index: ${idx}`);
+//             continue;
 //         }
-//       } else if (Array.isArray(chat.participants) && chat.participants.length) {
-//         participants = chat.participants;
-//         await setMembersForGroup(
-//           sessionId,
-//           resolved.group.groupId,
-//           participants.map(p =>
-//             p.id && p.id._serialized
-//               ? p.id._serialized
-//               : (typeof p === 'string' ? p : null)
-//           ).filter(Boolean)
-//         );
-//       }
-//     } catch (e) {
-//       participants = [];
-//     }
 
-//     if (!participants.length) {
-//       await safeSend(
-//         message.from,
-//         `⚠ Cannot find members for ${resolved.group.name}. Try !syncmembers`
-//       );
-//       continue;
-//     }
+//         const groupId = resolved.group.groupId;
+//         const chat = await client.getChatById(groupId).catch(() => null);
 
-//     // Build mentions
-//     const mentions = [];
-//     for (const p of participants) {
-//       const jid = p.id?._serialized || (typeof p === "string" ? p : null);
-//       if (!jid) continue;
-//       const contact = await client.getContactById(jid).catch(() => null);
-//       if (contact) mentions.push(contact.id._serialized);
-//     }
-
-//     await client.sendMessage(resolved.group.groupId, messageText, { mentions });
-//     successfulGroups.push(resolved.group.name);
-//   }
-
-//   if (!successfulGroups.length) {
-//     await safeSend(message.from, "❌ No groups tagged.");
-//   } else {
-//     await safeSend(
-//       message.from,
-//       `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`
-//     );
-//   }
-
-//   break;
-// }
-
-// case 'tag': {
-//   if (!isSelfChat) return;
-
-//   // Rate limit check (per user)
-//   const rl = checkRateLimit(message.from);
-//   if (!rl.allowed) {
-//     await safeSend(message.from, `⚠ Rate limit: try again in ${Math.ceil(rl.retryAfter/1000)}s`);
-//     break;
-//   }
-
-//   // parse command
-//   let raw = message.body.trim().replace(/^!tag\s*/i, '').trim();
-//   const parts = raw.split(/\s+/);
-//   const firstPart = parts[0] || '';
-
-//   // supports multi-index: "1,2,3" or "1 2 3" OR no index -> default
-//   let groupIndexes = [];
-//   let messageText = '';
-
-//   if (/^[0-9, ]+$/.test(firstPart) && firstPart.trim().length) {
-//     groupIndexes = firstPart.split(/[, ]+/).map(n => parseInt(n)).filter(n => !isNaN(n));
-//     messageText = parts.slice(1).join(' ').trim();
-//   } else {
-//     groupIndexes = [null]; // use active group
-//     messageText = raw.trim();
-//   }
-
-//   if (!messageText) messageText = '*🔔 Attention everyone!*';
-
-//   if (!groupIndexes.length) {
-//     await safeSend(message.from, "❌ Invalid group indexes.");
-//     break;
-//   }
-
-//   // contact info cache local to this invocation (avoids repeated client calls)
-//   const contactCache = new Map(); // jid -> { id: { _serialized }, pushname, name, number }
-
-//   // helper: fetch contacts in parallel with bounded concurrency
-//   async function fetchContactsMerged(jids, concurrency = 20) {
-//     const missing = jids.filter(j => !contactCache.has(j));
-//     if (!missing.length) return;
-
-//     let i = 0;
-//     const workers = new Array(Math.min(concurrency, missing.length)).fill(0).map(async () => {
-//       while (true) {
-//         const idx = i++;
-//         if (idx >= missing.length) break;
-//         const jid = missing[idx];
-//         try {
-//           const contact = await client.getContactById(jid).catch(() => null);
-//           if (contact) contactCache.set(jid, contact);
-//           else contactCache.set(jid, { id: { _serialized: jid }, pushname: null, name: null, number: jid.split('@')[0] });
-//         } catch (e) {
-//           contactCache.set(jid, { id: { _serialized: jid }, pushname: null, name: null, number: jid.split('@')[0] });
+//         if (!chat) {
+//             await safeSend(message.from, `❌ Could not fetch group: ${resolved.group.name}`);
+//             continue;
 //         }
-//       }
-//     });
-//     await Promise.all(workers);
-//   }
 
-//   const successfulGroups = [];
+//         // Cached member list
+//         const memberJIDs = await getCachedMembers(sessionId, groupId, chat);
+//         if (!Array.isArray(memberJIDs) || !memberJIDs.length) {
+//             await safeSend(message.from,
+//                 `⚠ Could not determine members for *${resolved.group.name}*.\nTry !syncmembers.`);
+//             continue;
+//         }
 
-//   for (const idx of groupIndexes) {
-//     const resolved = await resolveTargetGroupArg(idx);
-//     if (!resolved.group) {
-//       await safeSend(message.from, `❌ No group found for index: ${idx}`);
-//       continue;
+//         // Exclude bot itself
+//         const filteredJIDs = memberJIDs.filter(j => j !== mySelf);
+//         if (!filteredJIDs.length) {
+//             await safeSend(message.from, `⚠ No members to tag in ${resolved.group.name}.`);
+//             continue;
+//         }
+
+//         // Parallel contact fetch
+//         await fetchContactsMerged(filteredJIDs, 30);
+
+//         // Chunked sending
+//         const chunkSize = CHUNK_SIZE || 100;
+//         const chunks = [];
+//         for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
+//             chunks.push(filteredJIDs.slice(i, i + chunkSize));
+//         }
+
+//         let totalSent = 0;
+//         let totalChunks = 0;
+
+//         for (const chunk of chunks) {
+//             const mentions = [];
+
+//             for (const jid of chunk) {
+//                 const c = contactCache.get(jid);
+//                 if (!c) continue;
+//                 const jidSerialized = c.id?._serialized || jid;
+//                 mentions.push(jidSerialized);
+//             }
+
+//             if (!mentions.length) continue;
+
+//             // THE FIX: SEND ONLY MESSAGE TEXT – NO @names
+//             const chunkMessage = messageText;
+
+//             try {
+//                 await client.sendMessage(groupId, chunkMessage, { mentions });
+//                 totalSent += mentions.length;
+//                 totalChunks++;
+//             } catch (err) {
+//                 logger.error(`[${sessionName}] tag chunk failed`, err);
+
+//                 // retry once
+//                 try {
+//                     await new Promise(r => setTimeout(r, 500));
+//                     await client.sendMessage(groupId, chunkMessage, { mentions });
+//                     totalSent += mentions.length;
+//                     totalChunks++;
+//                 } catch (e) {
+//                     logger.error(`[${sessionName}] retry failed`, e);
+//                 }
+//             }
+
+//             await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
+//         }
+
+//         successfulGroups.push(`${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`);
+
+//         await new Promise(r => setTimeout(r, 600));
 //     }
 
-//     const groupId = resolved.group.groupId;
-//     const chat = await client.getChatById(groupId).catch(() => null);
-//     if (!chat) {
-//       await safeSend(message.from, `❌ Could not fetch group: ${resolved.group.name}`);
-//       continue;
+//     if (!successfulGroups.length) {
+//         await safeSend(message.from, "❌ No groups tagged.");
+//     } else {
+//         await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
 //     }
 
-//     // Get member JIDs using cache-aware helper (fast)
-//     const memberJIDs = await getCachedMembers(sessionId, groupId, chat);
-//     if (!Array.isArray(memberJIDs) || !memberJIDs.length) {
-//       await safeSend(message.from,
-//         `⚠ Could not determine members for *${resolved.group.name}*.\nTry promoting the bot to admin and run !syncmembers, or wait until members send messages.`);
-//       continue;
-//     }
-
-//     // Exclude bot itself
-//     const filteredJIDs = memberJIDs.filter(j => j !== mySelf);
-
-//     if (!filteredJIDs.length) {
-//       await safeSend(message.from, `⚠ No members to tag in ${resolved.group.name}.`);
-//       continue;
-//     }
-
-//     // Fetch contact info for all JIDs in merged parallel batches (speeds up >2x vs serial)
-//     await fetchContactsMerged(filteredJIDs, 30); // concurrency 30 - tune if needed
-
-//     // Build mention chunks (we'll chunk and send per-chunk with visible @names)
-//     // We'll reuse sendMentionsInChunks for concurrency & retries, but we need per-chunk visible names
-//     const chunkSize = CHUNK_SIZE || 100; // fallback if not defined
-//     const chunks = [];
-//     for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
-//       chunks.push(filteredJIDs.slice(i, i + chunkSize));
-//     }
-
-//     let totalSent = 0;
-//     let totalChunks = 0;
-
-//     for (const chunk of chunks) {
-//       // prepare mentions and visible names for this chunk only
-//       const mentions = [];
-//       const visibleNames = [];
-//       for (const jid of chunk) {
-//         const c = contactCache.get(jid);
-//         if (!c) continue;
-//         const jidSerialized = (c.id && c.id._serialized) ? c.id._serialized : jid;
-//         mentions.push(jidSerialized);
-//         const display = (c.pushname || c.name || c.number || jidSerialized.split('@')[0]).replace(/\n/g,' ').trim();
-//         visibleNames.push(`@${display}`);
-//       }
-
-//       if (!mentions.length) continue;
-
-//       const chunkMessage = `${visibleNames.join(' ')}\n\n${messageText}`;
-
-//       // Send this chunk, use retries/backoff in sendMentionsInChunks or do one-off send per chunk
-//       try {
-//         // We use client.sendMessage directly here so we can pass mentions specific to this chunk.
-//         // The helper sendMentionsInChunks is more for single-call jids splitting;
-//         // here we've manually chunked to include per-chunk visible names.
-//         await client.sendMessage(groupId, chunkMessage, { mentions });
-//         totalSent += mentions.length;
-//         totalChunks++;
-//       } catch (e) {
-//         logger.error(`[${sessionName}] tag chunk send failed for ${resolved.group.name}`, e);
-//         // apply small backoff and retry once
-//         try { await new Promise(r => setTimeout(r, 500)); await client.sendMessage(groupId, chunkMessage, { mentions }); totalSent += mentions.length; totalChunks++; }
-//         catch (err) { logger.error(`[${sessionName}] retry failed for tag chunk`, err); }
-//       }
-
-//       // polite delay between chunk sends (to avoid throttle)
-//       await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
-//     }
-
-//     successfulGroups.push(`${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`);
-//     // small pause between groups to prevent burst
-//     await new Promise(r => setTimeout(r, 600));
-//   }
-
-//   if (!successfulGroups.length) {
-//     await safeSend(message.from, "❌ No groups tagged.");
-//   } else {
-//     await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
-//   }
-
-//   break;
+//     break;
 // }
 
 case 'tag': {
@@ -2219,28 +2022,42 @@ case 'tag': {
     // Rate limit check (per user)
     const rl = checkRateLimit(message.from);
     if (!rl.allowed) {
-        await safeSend(message.from, `⚠ Rate limit: try again in ${Math.ceil(rl.retryAfter/1000)}s`);
+        await safeSend(message.from, `⚠ Rate limit: try again in ${Math.ceil(rl.retryAfter / 1000)}s`);
         break;
     }
 
     // Parse command
     let raw = message.body.trim().replace(/^!tag\s*/i, '').trim();
     const parts = raw.split(/\s+/);
-    const firstPart = parts[0] || '';
 
-    // Multi-group support
+    // ------- FIXED MULTI-GROUP PARSER -------
+    // Extract ALL leading numeric parts until the first non-number
+    let idxParts = [];
+    let msgStartIndex = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+        if (/^\d+$/.test(parts[i])) {
+            idxParts.push(parseInt(parts[i]));
+            msgStartIndex = i + 1;
+        } else {
+            break;
+        }
+    }
+
     let groupIndexes = [];
-    let messageText = '';
+    let messageText = "";
 
-    if (/^[0-9, ]+$/.test(firstPart) && firstPart.trim().length) {
-        groupIndexes = firstPart.split(/[, ]+/).map(n => parseInt(n)).filter(n => !isNaN(n));
-        messageText = parts.slice(1).join(' ').trim();
+    if (idxParts.length > 0) {
+        groupIndexes = idxParts;
+        messageText = parts.slice(msgStartIndex).join(" ").trim();
     } else {
         groupIndexes = [null]; // default group
         messageText = raw.trim();
     }
 
     if (!messageText) messageText = "*🔔 Attention everyone!*";
+
+    // ----------------------------------------
 
     if (!groupIndexes.length) {
         await safeSend(message.from, "❌ Invalid group indexes.");
@@ -2256,20 +2073,22 @@ case 'tag': {
         if (!missing.length) return;
 
         let i = 0;
-        const workers = new Array(Math.min(concurrency, missing.length)).fill(0).map(async () => {
-            while (true) {
-                const idx = i++;
-                if (idx >= missing.length) break;
+        const workers = new Array(Math.min(concurrency, missing.length))
+            .fill(0)
+            .map(async () => {
+                while (true) {
+                    const idx = i++;
+                    if (idx >= missing.length) break;
 
-                const jid = missing[idx];
-                try {
-                    const c = await client.getContactById(jid).catch(() => null);
-                    contactCache.set(jid, c || { id: { _serialized: jid } });
-                } catch (e) {
-                    contactCache.set(jid, { id: { _serialized: jid } });
+                    const jid = missing[idx];
+                    try {
+                        const c = await client.getContactById(jid).catch(() => null);
+                        contactCache.set(jid, c || { id: { _serialized: jid } });
+                    } catch {
+                        contactCache.set(jid, { id: { _serialized: jid } });
+                    }
                 }
-            }
-        });
+            });
 
         await Promise.all(workers);
     }
@@ -2294,8 +2113,10 @@ case 'tag': {
         // Cached member list
         const memberJIDs = await getCachedMembers(sessionId, groupId, chat);
         if (!Array.isArray(memberJIDs) || !memberJIDs.length) {
-            await safeSend(message.from,
-                `⚠ Could not determine members for *${resolved.group.name}*.\nTry !syncmembers.`);
+            await safeSend(
+                message.from,
+                `⚠ Could not determine members for *${resolved.group.name}*.\nTry !syncmembers.`
+            );
             continue;
         }
 
@@ -2331,7 +2152,7 @@ case 'tag': {
 
             if (!mentions.length) continue;
 
-            // THE FIX: SEND ONLY MESSAGE TEXT – NO @names
+            // SEND ONLY MESSAGE TEXT – NO visible @names
             const chunkMessage = messageText;
 
             try {
@@ -2341,7 +2162,7 @@ case 'tag': {
             } catch (err) {
                 logger.error(`[${sessionName}] tag chunk failed`, err);
 
-                // retry once
+                // Retry once
                 try {
                     await new Promise(r => setTimeout(r, 500));
                     await client.sendMessage(groupId, chunkMessage, { mentions });
@@ -2355,7 +2176,9 @@ case 'tag': {
             await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
         }
 
-        successfulGroups.push(`${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`);
+        successfulGroups.push(
+            `${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`
+        );
 
         await new Promise(r => setTimeout(r, 600));
     }
