@@ -482,10 +482,6 @@ client.on('ready', async () => {
         // 🔹 Wait for full WhatsApp connection
         attempts = 0;
         let state = null;
-
-        // 🔹 Wait for full WhatsApp connection
-        attempts = 0;
-        let state = null;
         while (attempts < 50) {
             try { state = await client.getState(); } catch {}
             if (state === 'CONNECTED' || state === 'OPEN') break;
