@@ -922,13 +922,166 @@ function viewSession(sessionId) {
 //     `).join('');
 // }
 
-async function loadUsers() {
+// async function loadUsers() {
+//     const usersTableBody = document.getElementById('usersTableBody');
+//     if (!usersTableBody) return;
+
+//     try {
+//         const token = localStorage.getItem('adminToken');
+//         const response = await fetch('/api/admin/users', {
+//             headers: {
+//                 'Authorization': `Bearer ${token}`
+//             }
+//         });
+
+//         const data = await response.json();
+
+//         if (!data.success) {
+//             usersTableBody.innerHTML = `
+//                 <tr>
+//                     <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+//                         <i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i>
+//                         Failed to load users
+//                     </td>
+//                 </tr>
+//             `;
+//             return;
+//         }
+
+//         const users = data.users;
+
+//         if (users.length === 0) {
+//             usersTableBody.innerHTML = `
+//                 <tr>
+//                     <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+//                         <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+//                         No users found
+//                     </td>
+//                 </tr>
+//             `;
+//             return;
+//         }
+
+//         usersTableBody.innerHTML = users.map(user => {
+//             const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase();
+//             const statusColor = user.status === 'active' ? '#48bb78' : '#9ca3af';
+//             const subscriptionBadgeColor = {
+//                 'starter': '#3b82f6',
+//                 'professional': '#8b5cf6',
+//                 'business': '#f59e0b',
+//                 'enterprise': '#ef4444'
+//             }[user.subscription] || '#6b7280';
+
+//             return `
+//                 <tr>
+//                     <td>
+//                         <div style="display: flex; align-items: center; gap: 8px;">
+//                             <div style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;">
+//                                 ${initials}
+//                             </div>
+//                             <div>
+//                                 <div style="font-weight: 600;">${user.name}</div>
+//                                 <div style="font-size: 12px; color: #6b7280;">${user.email}</div>
+//                             </div>
+//                         </div>
+//                     </td>
+//                     <td>${user.phone}</td>
+//                     <td>
+//                         <span style="padding: 4px 8px; background: ${subscriptionBadgeColor}; color: white; border-radius: 4px; font-size: 12px; text-transform: capitalize;">
+//                             ${user.subscription}
+//                         </span>
+//                     </td>
+//                     <td>
+//                         <span style="color: ${statusColor}; font-weight: 600;">
+//                             <i class="fas fa-circle" style="font-size: 8px; margin-right: 4px;"></i>
+//                             ${user.status === 'active' ? 'Active' : 'Inactive'}
+//                         </span>
+//                         ${user.status === 'inactive' && user.subscriptionExpiry ? 
+//                             `<div style="font-size: 11px; color: #ef4444;">Expired: ${new Date(user.subscriptionExpiry).toLocaleDateString()}</div>` 
+//                             : ''}
+//                     </td>
+//                     <td>${new Date(user.lastActive).toLocaleString()}</td>
+//                     <td>
+//                         <button class="action-btn" style="border: none; background: none; padding: 4px; cursor: pointer;" onclick="editUser('${user.id}')" title="Edit User">
+//                             <i class="fas fa-edit"></i>
+//                         </button>
+//                         <button class="action-btn" style="border: none; background: none; padding: 4px; cursor: pointer;" onclick="manageUserCommands('${user.id}')" title="Manage Commands">
+//                             <i class="fas fa-terminal"></i>
+//                         </button>
+//                         <button class="action-btn danger" style="border: none; background: none; padding: 4px; cursor: pointer; color: #ef4444;" onclick="deleteUser('${user.id}')" title="Delete User">
+//                             <i class="fas fa-trash"></i>
+//                         </button>
+//                     </td>
+//                 </tr>
+//             `;
+//         }).join('');
+//     } catch (error) {
+//         console.error('Error loading users:', error);
+//         usersTableBody.innerHTML = `
+//             <tr>
+//                 <td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">
+//                     <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+//                     Error loading users
+//                 </td>
+//             </tr>
+//         `;
+//     }
+// }
+
+// Search and filter users
+function searchUsers() {
+    const searchInput = document.getElementById('userSearch');
+    const statusFilter = document.getElementById('statusFilter');
+    const subscriptionFilter = document.getElementById('subscriptionFilter');
+    
+    const search = searchInput?.value || '';
+    const status = statusFilter?.value || '';
+    const subscription = subscriptionFilter?.value || '';
+    
+    loadUsersWithFilters(1, search, status, subscription);
+}
+
+async function loadUsersWithFilters(page = 1, search = '', status = '', subscription = '') {
     const usersTableBody = document.getElementById('usersTableBody');
     if (!usersTableBody) return;
 
     try {
         const token = localStorage.getItem('adminToken');
-        const response = await fetch('/api/admin/users', {
+        const limit = 20;
+        
+        let url = `/api/admin/users?page=${page}&limit=${limit}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (status) url += `&status=${status}`;
+        if (subscription) url += `&subscription=${subscription}`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+        
+        // ... rest of the loadUsers logic ...
+        // (same as the loadUsers function above)
+        
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+let currentPage = 1;
+let totalPages = 1;
+
+async function loadUsers(page = 1) {
+    const usersTableBody = document.getElementById('usersTableBody');
+    if (!usersTableBody) return;
+
+    try {
+        const token = localStorage.getItem('adminToken');
+        const limit = 20; // Users per page
+        
+        const response = await fetch(`/api/admin/users?page=${page}&limit=${limit}`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -949,6 +1102,8 @@ async function loadUsers() {
         }
 
         const users = data.users;
+        currentPage = data.pagination.currentPage;
+        totalPages = data.pagination.totalPages;
 
         if (users.length === 0) {
             usersTableBody.innerHTML = `
@@ -959,6 +1114,7 @@ async function loadUsers() {
                     </td>
                 </tr>
             `;
+            updatePagination(data.pagination);
             return;
         }
 
@@ -1015,6 +1171,10 @@ async function loadUsers() {
                 </tr>
             `;
         }).join('');
+
+        // Update pagination controls
+        updatePagination(data.pagination);
+
     } catch (error) {
         console.error('Error loading users:', error);
         usersTableBody.innerHTML = `
@@ -1026,6 +1186,64 @@ async function loadUsers() {
             </tr>
         `;
     }
+}
+
+// Update pagination controls
+function updatePagination(pagination) {
+    let paginationContainer = document.getElementById('usersPagination');
+    
+    // Create pagination container if it doesn't exist
+    if (!paginationContainer) {
+        const tableContainer = document.querySelector('.users-table-container');
+        if (tableContainer) {
+            paginationContainer = document.createElement('div');
+            paginationContainer.id = 'usersPagination';
+            paginationContainer.style.cssText = 'display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 15px;';
+            tableContainer.appendChild(paginationContainer);
+        } else {
+            return;
+        }
+    }
+
+    const { currentPage, totalPages, totalUsers, hasPrevPage, hasNextPage } = pagination;
+
+    paginationContainer.innerHTML = `
+        <button 
+            onclick="loadUsers(1)" 
+            ${currentPage === 1 ? 'disabled' : ''}
+            style="padding: 8px 12px; border: 1px solid #e5e7eb; background: white; border-radius: 4px; cursor: ${currentPage === 1 ? 'not-allowed' : 'pointer'}; opacity: ${currentPage === 1 ? '0.5' : '1'};"
+            title="First Page">
+            <i class="fas fa-angle-double-left"></i>
+        </button>
+        
+        <button 
+            onclick="loadUsers(${currentPage - 1})" 
+            ${!hasPrevPage ? 'disabled' : ''}
+            style="padding: 8px 12px; border: 1px solid #e5e7eb; background: white; border-radius: 4px; cursor: ${!hasPrevPage ? 'not-allowed' : 'pointer'}; opacity: ${!hasPrevPage ? '0.5' : '1'};"
+            title="Previous Page">
+            <i class="fas fa-angle-left"></i>
+        </button>
+        
+        <span style="padding: 8px 16px; color: #374151; font-weight: 500;">
+            Page ${currentPage} of ${totalPages} (${totalUsers} total users)
+        </span>
+        
+        <button 
+            onclick="loadUsers(${currentPage + 1})" 
+            ${!hasNextPage ? 'disabled' : ''}
+            style="padding: 8px 12px; border: 1px solid #e5e7eb; background: white; border-radius: 4px; cursor: ${!hasNextPage ? 'not-allowed' : 'pointer'}; opacity: ${!hasNextPage ? '0.5' : '1'};"
+            title="Next Page">
+            <i class="fas fa-angle-right"></i>
+        </button>
+        
+        <button 
+            onclick="loadUsers(${totalPages})" 
+            ${currentPage === totalPages ? 'disabled' : ''}
+            style="padding: 8px 12px; border: 1px solid #e5e7eb; background: white; border-radius: 4px; cursor: ${currentPage === totalPages ? 'not-allowed' : 'pointer'}; opacity: ${currentPage === totalPages ? '0.5' : '1'};"
+            title="Last Page">
+            <i class="fas fa-angle-double-right"></i>
+        </button>
+    `;
 }
 
 // Edit user basic info

@@ -79,56 +79,56 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Get all users with pagination
-router.get('/users', authenticateAdmin, async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const status = req.query.status;
-        const subscription = req.query.subscription;
-        const search = req.query.search;
+// // Get all users with pagination
+// router.get('/users', authenticateAdmin, async (req, res) => {
+//     try {
+//         const page = parseInt(req.query.page) || 1;
+//         const limit = parseInt(req.query.limit) || 20;
+//         const status = req.query.status;
+//         const subscription = req.query.subscription;
+//         const search = req.query.search;
 
-        // Build filter
-        const filter = {};
-        if (status) filter.status = status;
-        if (subscription) filter.subscription = subscription;
-        if (search) {
-            filter.$or = [
-                { fullName: { $regex: search, $options: 'i' } },
-                { email: { $regex: search, $options: 'i' } }
-            ];
-        }
+//         // Build filter
+//         const filter = {};
+//         if (status) filter.status = status;
+//         if (subscription) filter.subscription = subscription;
+//         if (search) {
+//             filter.$or = [
+//                 { fullName: { $regex: search, $options: 'i' } },
+//                 { email: { $regex: search, $options: 'i' } }
+//             ];
+//         }
 
-        const users = await User.find(filter)
-            .select('-password')
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .skip((page - 1) * limit);
+//         const users = await User.find(filter)
+//             .select('-password')
+//             .sort({ createdAt: -1 })
+//             .limit(limit)
+//             .skip((page - 1) * limit);
 
-        const totalUsers = await User.countDocuments(filter);
+//         const totalUsers = await User.countDocuments(filter);
 
-        res.json({
-            success: true,
-            data: {
-                users,
-                pagination: {
-                    currentPage: page,
-                    totalPages: Math.ceil(totalUsers / limit),
-                    totalUsers,
-                    hasNextPage: page < Math.ceil(totalUsers / limit),
-                    hasPrevPage: page > 1
-                }
-            }
-        });
+//         res.json({
+//             success: true,
+//             data: {
+//                 users,
+//                 pagination: {
+//                     currentPage: page,
+//                     totalPages: Math.ceil(totalUsers / limit),
+//                     totalUsers,
+//                     hasNextPage: page < Math.ceil(totalUsers / limit),
+//                     hasPrevPage: page > 1
+//                 }
+//             }
+//         });
 
-    } catch (error) {
-        console.error('Get users error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching users.'
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Get users error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error fetching users.'
+//         });
+//     }
+// });
 
 // Get user details
 router.get('/users/:userId', authenticateAdmin, async (req, res) => {
@@ -462,12 +462,35 @@ router.put('/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res
     }
 });
 
-// Get all users with their sessions and payment status
+// Get all users with their sessions and payment status (with pagination)
 router.get('/users', authenticateAdmin, async (req, res) => {
     try {
-        const users = await User.find({})
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const status = req.query.status;
+        const subscription = req.query.subscription;
+        const search = req.query.search;
+
+        // Build filter
+        const filter = {};
+        if (status) filter.status = status;
+        if (subscription) filter.subscription = subscription;
+        if (search) {
+            filter.$or = [
+                { fullName: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Get users with pagination
+        const users = await User.find(filter)
             .select('fullName email whatsappNumber phone subscription subscriptionExpiry paymentStatus status lastLogin createdAt customCommands')
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .skip((page - 1) * limit)
             .lean();
+
+        const totalUsers = await User.countDocuments(filter);
 
         // Get sessions for each user
         const usersWithSessions = await Promise.all(users.map(async (user) => {
@@ -497,7 +520,15 @@ router.get('/users', authenticateAdmin, async (req, res) => {
 
         res.json({
             success: true,
-            users: usersWithSessions
+            users: usersWithSessions,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(totalUsers / limit),
+                totalUsers,
+                hasNextPage: page < Math.ceil(totalUsers / limit),
+                hasPrevPage: page > 1,
+                limit
+            }
         });
     } catch (error) {
         console.error('Error fetching users:', error);
