@@ -140,6 +140,12 @@ global.Session = Session;
     app.use("/api/auth", require("./routes/auth"));
     console.log('✅ Auth routes registered');
 
+    app.use("/api/user", require("./routes/user"));
+console.log('✅ User routes registered');
+
+app.use("/api/admin", require("./routes/admin"));
+console.log('✅ Admin routes registered');
+
   } catch (err) {
     console.error('❌ Server DB error:', err);
     process.exit(1);
