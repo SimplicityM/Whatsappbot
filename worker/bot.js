@@ -418,37 +418,15 @@ client.on('ready', async () => {
         const User = require('./models/User');
         const Session = require('./models/Session');
 
-        try {
+         try {
             // Check if number is blacklisted
             const blacklisted = await BlacklistedNumber.findOne({ 
                 whatsappNumber: whatsappNumber 
             });
 
-            // In worker/bot.js, after detecting blacklisted number (around line 428)
-if (blacklisted && !blacklisted.canReactivate) {
-    logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
-    
-    // Send notification to original account owner
-    try {
-        const originalUser = await User.findById(blacklisted.originalUserId);
-        if (originalUser && originalUser.email) {
-            // Send email notification
-            const emailService = require('./utils/emailService'); // Your email service
-            await emailService.sendEmail({
-                to: originalUser.email,
-                subject: 'Someone tried to use your WhatsApp number',
-                body: `
-                    Someone attempted to connect your WhatsApp number (${whatsappNumber}) 
-                    to a new account. If this was you, please log in to your original 
-                    account or upgrade to continue using our service.
-                    
-                    If this wasn't you, your account is secure - we blocked the attempt.
-                `
-            });
-        }
-    } catch (emailError) {
-        logger.error('Failed to send notification email:', emailError);
-    }
+            if (blacklisted && !blacklisted.canReactivate) {
+                logger.warn(`[${sessionName}] ⛔ Blacklisted number attempted connection: ${whatsappNumber}`);
+                
                 await safeSend(selfId, `⛔ *ACCESS DENIED*
 
 This WhatsApp number was previously used with: ${blacklisted.originalEmail}
@@ -466,7 +444,7 @@ Option 2: Upgrade to a paid plan
 → After payment, you can use this number again
 
 Option 3: Contact support
-→ Email: support@yourwebsite.com
+→ Email: support@tagthemall.com
 → Include this reference: ${blacklisted._id}
 
 This policy prevents trial abuse and ensures fair access for all users.`);
@@ -515,9 +493,8 @@ This policy prevents trial abuse and ensures fair access for all users.`);
 
                 return;
             }
-        // After all security checks pass, save the whatsappNumber to User model
-        try {
-            const currentSession = await Session.findOne({ sessionId });
+
+            // After all security checks pass, save the whatsappNumber to User model
             if (currentSession && currentSession.userId) {
                 await User.findByIdAndUpdate(
                     currentSession.userId,
@@ -526,9 +503,7 @@ This policy prevents trial abuse and ensures fair access for all users.`);
                 );
                 logger.info(`[${sessionName}] ✅ Saved whatsappNumber to User model: ${whatsappNumber}`);
             }
-        } catch (error) {
-            logger.error(`[${sessionName}] Error saving whatsappNumber to User:`, error);
-        }
+
         } catch (error) {
             logger.error(`[${sessionName}] Error checking blacklist:`, error);
             // Continue anyway if there's an error
