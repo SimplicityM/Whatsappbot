@@ -2,8 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const qrcode = require('qrcode-terminal');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+// const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const mongoose = require('mongoose');
+const MongoDBAuth = require('./MongoDBAuth');
+const SessionAuth = require('./models/SessionAuth');
 const Contact = require('./models/Contact');
 // const User = require('./models/User');
 const PhoneRecord = require('./models/PhoneRecord');
@@ -224,9 +226,54 @@ const logger = {
 };
 
 
+// function createClientOptions(sessionId) {
+//   return {
+//     authStrategy: new LocalAuth({ clientId: sessionId }),
+
+//     puppeteer: {
+//       headless: true,
+//       handleSIGINT: false,
+//       handleSIGTERM: false,
+//       handleSIGHUP: false,
+//       defaultViewport: null,   // better rendering stability
+//       args: [
+//         '--no-sandbox',
+//         '--disable-setuid-sandbox',
+//         '--disable-dev-shm-usage',
+//         '--disable-gpu',
+//         '--disable-software-rasterizer',
+//         '--disable-extensions',
+//         '--disable-background-timer-throttling',
+//         '--disable-backgrounding-occluded-windows',
+//         '--disable-renderer-backgrounding',
+//         '--disable-infobars',
+//         '--no-first-run',
+//         '--no-zygote',
+//         '--enable-features=NetworkService',
+//         '--ignore-certificate-errors'
+//       ]
+//     },
+
+//     // Automatically restore session
+//     restartOnAuthFail: true,
+
+//     // If WhatsApp detects duplicate login, bot takes control
+//     takeoverOnConflict: true,
+//     takeoverTimeoutMs: 0,
+
+//     // Enables quicker start-up for heavy chats
+//     qrMaxRetries: 3,
+
+//     // Prevents “Session closed” error
+//     webVersionCache: {
+//       type: "local"
+//     }
+//   };
+// }
+
 function createClientOptions(sessionId) {
   return {
-    authStrategy: new LocalAuth({ clientId: sessionId }),
+    authStrategy: new MongoDBAuth(sessionId), // 🔥 CHANGED: MongoDB instead of LocalAuth
 
     puppeteer: {
       headless: true,
@@ -262,7 +309,7 @@ function createClientOptions(sessionId) {
     // Enables quicker start-up for heavy chats
     qrMaxRetries: 3,
 
-    // Prevents “Session closed” error
+    // Prevents "Session closed" error
     webVersionCache: {
       type: "local"
     }
@@ -3070,6 +3117,61 @@ async function createBotSession(userId, sessionId, workerIO) {
   }
 }
 
+// // =========================================
+// // RESTORE ALL SESSIONS ON SERVER STARTUP
+// // =========================================
+// async function restoreAllSessions(io) {
+//     try {
+//         if (mongoose.connection.readyState !== 1) {
+//             logger.info("⛔ Mongoose not connected - skipping session restore");
+//             return;
+//         }
+
+//         logger.info("♻ Starting WhatsApp session restoration...");
+
+//         const sessions = await Session.find({
+//             status: { $in: ["connected", "authenticated", "ready"] }
+//         });
+
+//         if (!sessions.length) {
+//             logger.info("📭 No sessions found to restore.");
+//             return;
+//         }
+
+//         logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
+
+//         const fs = require("fs");
+
+//         for (const s of sessions) {
+//             const sessionId = s.sessionId;
+//             const userId = s.userId;
+
+//             const authFolderPath = `./sessions/${sessionId}`;
+
+//             // Check if LocalAuth folder exists
+//             if (!fs.existsSync(authFolderPath)) {
+//                 logger.info(`⚠ LocalAuth missing for ${sessionId}. Skipping restore.`);
+//                 continue;
+//             }
+
+//             logger.info(`♻ Restoring WhatsApp session: ${sessionId} for user ${userId}`);
+
+//             try {
+//                 await createBotSession(userId, sessionId, io);
+//                 logger.info(`✅ Successfully restored session: ${sessionId}`);
+//             } catch (err) {
+//                 logger.error(`❌ Failed to restore session ${sessionId}: ${err.message}`);
+//             }
+//         }
+
+//         logger.info("🎉 Session restoration completed!");
+
+//     } catch (err) {
+//         logger.error("❌ restoreAllSessions error:", err);
+//     }
+// }
+
+
 // =========================================
 // RESTORE ALL SESSIONS ON SERVER STARTUP
 // =========================================
@@ -3093,17 +3195,26 @@ async function restoreAllSessions(io) {
 
         logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
 
-        const fs = require("fs");
-
         for (const s of sessions) {
             const sessionId = s.sessionId;
             const userId = s.userId;
 
-            const authFolderPath = `./sessions/${sessionId}`;
+            // 🔥 CHANGED: Check MongoDB instead of file system
+            const authData = await SessionAuth.findOne({ sessionId });
 
-            // Check if LocalAuth folder exists
-            if (!fs.existsSync(authFolderPath)) {
-                logger.info(`⚠ LocalAuth missing for ${sessionId}. Skipping restore.`);
+            if (!authData) {
+                logger.info(`⚠ No auth data in MongoDB for ${sessionId}. Skipping restore.`);
+                
+                // Mark session as disconnected
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'disconnected',
+                        errorMessage: 'Session data lost. Please reconnect.',
+                        disconnectedAt: new Date()
+                    }
+                );
+                
                 continue;
             }
 
@@ -3123,7 +3234,6 @@ async function restoreAllSessions(io) {
         logger.error("❌ restoreAllSessions error:", err);
     }
 }
-
 
 
 // tiny start helper for local dev

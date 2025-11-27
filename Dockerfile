@@ -53,14 +53,13 @@ RUN npm install --omit=dev
 # Copy entire source
 COPY . .
 
-# Restore required bot directories
-RUN mkdir -p ./sessions ./media ./auth
+# 🔥 CHANGED: Only create media folder (sessions now stored in MongoDB, auth not needed)
+RUN mkdir -p ./media
 
 # Environment variables
 ENV NODE_ENV=production
 ENV COMMAND_PREFIX=!
 ENV MAX_SESSIONS=1000
-ENV WHATSAPP_SESSION_DATA_PATH=./sessions
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
