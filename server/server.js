@@ -30,6 +30,7 @@ const workerSocket = require('socket.io-client')(WORKER_URL, {
   reconnectionAttempts: Infinity,
   timeout: 20000
 });
+app.set('workerSocket', workerSocket);
 
 workerSocket.on('connect', () => {
   console.log('🔌 Server: connected to worker at', WORKER_URL);
@@ -41,6 +42,14 @@ workerSocket.on('connect_error', (err) => {
 
 workerSocket.on('disconnect', (reason) => {
   console.warn('⚠ Server: disconnected from worker:', reason);
+});
+
+const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
+
+// Start after DB connection
+workerSocket.on('connect', () => {
+    console.log('🔌 Server: connected to worker at', WORKER_URL);
+    startBroadcastScheduler(workerSocket);
 });
 
 // Forward worker events to frontend sockets

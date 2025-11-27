@@ -212,6 +212,39 @@ socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
     });
 });
 
+// Handle broadcast message sending
+socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callback) => {
+    try {
+        console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
+        
+        // Get the client for this session
+        const clientData = activeSessions.get(sessionId);
+        
+        if (!clientData || !clientData.client) {
+            return callback('Session not found or not connected');
+        }
+
+        const client = clientData.client;
+        
+        // Get the user's own WhatsApp number to send to themselves
+        const info = client.info;
+        if (!info || !info.wid) {
+            return callback('Could not get user WhatsApp info');
+        }
+
+        // Send message to user's own number
+        const userJid = info.wid._serialized;
+        await client.sendMessage(userJid, message);
+        
+        console.log(`✅ WORKER: Broadcast sent to ${sessionId}`);
+        callback(null, { success: true, sessionId });
+        
+    } catch (error) {
+        console.error(`❌ WORKER: Broadcast error for ${sessionId}:`, error);
+        callback(error.message || 'Failed to send broadcast');
+    }
+});
+
 /* =====================================================
    GRACEFUL SHUTDOWN
    ===================================================== */

@@ -1250,7 +1250,58 @@ function systemRestart() {
     }
 }
 
-function sendBroadcast() {
+// function sendBroadcast() {
+//     const message = document.getElementById('broadcastMessage')?.value;
+//     const target = document.getElementById('broadcastTarget')?.value;
+//     const scheduleMessage = document.getElementById('scheduleMessage')?.checked;
+//     const scheduleTime = document.getElementById('scheduleTime')?.value;
+    
+//     if (!message || !message.trim()) {
+//         showNotification('Please enter a message', 'error');
+//         return;
+//     }
+
+//     if (scheduleMessage && !scheduleTime) {
+//         showNotification('Please select a schedule time', 'error');
+//         return;
+//     }
+
+//     // Simulate broadcast sending
+//     showNotification('Sending broadcast...', 'info');
+    
+//     setTimeout(() => {
+//         const targetText = target === 'all' ? 'all users' : 
+//                           target === 'groups' ? 'all groups' : 
+//                           target === 'individuals' ? 'all individuals' : 'selected users';
+        
+//         if (scheduleMessage) {
+//             showNotification(`Broadcast scheduled successfully for ${new Date(scheduleTime).toLocaleString()}!`, 'success');
+//         } else {
+//             showNotification(`Broadcast sent successfully to ${targetText}!`, 'success');
+//         }
+        
+//         closeBroadcastModal();
+        
+//         // Add to recent activity
+//         const activityList = document.getElementById('activityList');
+//         if (activityList && activityList.children.length > 0) {
+//             const newActivity = document.createElement('div');
+//             newActivity.className = 'activity-item success';
+//             newActivity.innerHTML = `
+//                 <div class="activity-icon">
+//                     <i class="fas fa-bullhorn"></i>
+//                 </div>
+//                 <div class="activity-content">
+//                     <p>Broadcast sent to ${targetText}</p>
+//                     <span class="activity-time">Just now</span>
+//                 </div>
+//             `;
+//             activityList.insertBefore(newActivity, activityList.firstChild);
+//         }
+//     }, 1500);
+// }
+
+async function sendBroadcast() {
     const message = document.getElementById('broadcastMessage')?.value;
     const target = document.getElementById('broadcastTarget')?.value;
     const scheduleMessage = document.getElementById('scheduleMessage')?.checked;
@@ -1266,39 +1317,63 @@ function sendBroadcast() {
         return;
     }
 
-    // Simulate broadcast sending
+    // Show loading state
     showNotification('Sending broadcast...', 'info');
     
-    setTimeout(() => {
-        const targetText = target === 'all' ? 'all users' : 
-                          target === 'groups' ? 'all groups' : 
-                          target === 'individuals' ? 'all individuals' : 'selected users';
-        
-        if (scheduleMessage) {
-            showNotification(`Broadcast scheduled successfully for ${new Date(scheduleTime).toLocaleString()}!`, 'success');
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/broadcast', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                message: message.trim(),
+                target,
+                scheduleTime: scheduleMessage ? scheduleTime : null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            const targetText = target === 'all' ? 'all users' : 
+                              target === 'groups' ? 'all groups' : 
+                              target === 'individuals' ? 'all individuals' :
+                              target === 'active' ? 'active users' : 'selected users';
+            
+            if (scheduleMessage) {
+                showNotification(`Broadcast scheduled successfully for ${new Date(scheduleTime).toLocaleString()}!`, 'success');
+            } else {
+                showNotification(`Broadcast sent to ${data.data.sent}/${data.data.totalTargets} users successfully!`, 'success');
+            }
+            
+            closeBroadcastModal();
+            
+            // Add to recent activity
+            const activityList = document.getElementById('activityList');
+            if (activityList && activityList.children.length > 0) {
+                const newActivity = document.createElement('div');
+                newActivity.className = 'activity-item success';
+                newActivity.innerHTML = `
+                    <div class="activity-icon">
+                        <i class="fas fa-bullhorn"></i>
+                    </div>
+                    <div class="activity-content">
+                        <p>Broadcast sent to ${targetText} (${data.data.sent} successful, ${data.data.failed} failed)</p>
+                        <span class="activity-time">Just now</span>
+                    </div>
+                `;
+                activityList.insertBefore(newActivity, activityList.firstChild);
+            }
         } else {
-            showNotification(`Broadcast sent successfully to ${targetText}!`, 'success');
+            showNotification(data.message || 'Failed to send broadcast', 'error');
         }
-        
-        closeBroadcastModal();
-        
-        // Add to recent activity
-        const activityList = document.getElementById('activityList');
-        if (activityList && activityList.children.length > 0) {
-            const newActivity = document.createElement('div');
-            newActivity.className = 'activity-item success';
-            newActivity.innerHTML = `
-                <div class="activity-icon">
-                    <i class="fas fa-bullhorn"></i>
-                </div>
-                <div class="activity-content">
-                    <p>Broadcast sent to ${targetText}</p>
-                    <span class="activity-time">Just now</span>
-                </div>
-            `;
-            activityList.insertBefore(newActivity, activityList.firstChild);
-        }
-    }, 1500);
+    } catch (error) {
+        console.error('Broadcast error:', error);
+        showNotification('Error sending broadcast. Please try again.', 'error');
+    }
 }
 
 // ==================== SESSION ACTION FUNCTIONS ====================

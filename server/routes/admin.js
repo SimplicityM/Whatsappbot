@@ -2,6 +2,7 @@ const express = require('express');
 const User = require('../../models/User');
 const Session = require('../../models/Session');
 const { authenticateAdmin } = require('../../middleware/auth');
+const Contact = require('../models/Contact');
 const router = express.Router();
 
 // Get admin dashboard stats
@@ -461,6 +462,77 @@ router.put('/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res
     }
 });
 
+// // Send broadcast message
+// router.post('/broadcast', authenticateAdmin, async (req, res) => {
+//     try {
+//         const { message, target, userIds, scheduleTime } = req.body;
+
+//         if (!message) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: 'Message is required.'
+//             });
+//         }
+
+//         let targetUsers = [];
+
+//         switch (target) {
+//             case 'all':
+//                 targetUsers = await User.find({ status: 'approved' });
+//                 break;
+//             case 'active':
+//                 const activeSessions = await Session.find({ status: 'connected' });
+//                 const activeUserIds = [...new Set(activeSessions.map(s => s.userId.toString()))];
+//                 targetUsers = await User.find({ _id: { $in: activeUserIds } });
+//                 break;
+//             case 'subscription':
+//                 const { subscription } = req.body;
+//                 targetUsers = await User.find({ subscription, status: 'approved' });
+//                 break;
+//             case 'custom':
+//                 targetUsers = await User.find({ _id: { $in: userIds } });
+//                 break;
+//             default:
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: 'Invalid target type.'
+//                 });
+//         }
+
+//         // Here you would integrate with your bot system to send broadcast
+//         // For now, we'll simulate it
+//         const broadcastResult = {
+//             totalTargets: targetUsers.length,
+//             sent: 0,
+//             failed: 0,
+//             scheduled: !!scheduleTime
+//         };
+
+//         // Simulate sending (replace with actual bot integration)
+//         for (const user of targetUsers) {
+//             try {
+//                 // await sendBroadcastMessage(user.sessionId, message);
+//                 broadcastResult.sent++;
+//             } catch (error) {
+//                 broadcastResult.failed++;
+//             }
+//         }
+
+//         res.json({
+//             success: true,
+//             message: scheduleTime ? 'Broadcast scheduled successfully.' : 'Broadcast sent successfully.',
+//             data: broadcastResult
+//         });
+
+//     } catch (error) {
+//         console.error('Broadcast error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error sending broadcast.'
+//         });
+//     }
+// });
+
 // Send broadcast message
 router.post('/broadcast', authenticateAdmin, async (req, res) => {
     try {
@@ -491,6 +563,16 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
             case 'custom':
                 targetUsers = await User.find({ _id: { $in: userIds } });
                 break;
+            case 'groups':
+                // Get users who have groups in their contacts
+                const groupContacts = await Contact.find({ isGroup: true }).distinct('userId');
+                targetUsers = await User.find({ _id: { $in: groupContacts }, status: 'approved' });
+                break;
+            case 'individuals':
+                // Get users who have individual contacts
+                const individualContacts = await Contact.find({ isGroup: false }).distinct('userId');
+                targetUsers = await User.find({ _id: { $in: individualContacts }, status: 'approved' });
+                break;
             default:
                 return res.status(400).json({
                     success: false,
@@ -498,8 +580,6 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
                 });
         }
 
-        // Here you would integrate with your bot system to send broadcast
-        // For now, we'll simulate it
         const broadcastResult = {
             totalTargets: targetUsers.length,
             sent: 0,
@@ -507,19 +587,107 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
             scheduled: !!scheduleTime
         };
 
-        // Simulate sending (replace with actual bot integration)
+        if (targetUsers.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No users found matching the target criteria.'
+            });
+        }
+
+        // If scheduled, save to database for later processing
+        if (scheduleTime) {
+            const Broadcast = require('../models/Broadcast');
+            const broadcast = new Broadcast({
+                adminId: req.user.id,
+                message,
+                target,
+                targetUserIds: targetUsers.map(u => u._id),
+                scheduleTime: new Date(scheduleTime),
+                status: 'scheduled'
+            });
+            await broadcast.save();
+
+            return res.json({
+                success: true,
+                message: 'Broadcast scheduled successfully.',
+                data: {
+                    ...broadcastResult,
+                    broadcastId: broadcast._id,
+                    scheduledFor: scheduleTime
+                }
+            });
+        }
+
+        // Send immediately
+        const workerSocket = req.app.get('workerSocket');
+        
+        if (!workerSocket || !workerSocket.connected) {
+            return res.status(503).json({
+                success: false,
+                message: 'Worker service is not available. Please try again later.'
+            });
+        }
+
+        // Send broadcast to each user's active sessions
         for (const user of targetUsers) {
             try {
-                // await sendBroadcastMessage(user.sessionId, message);
+                // Get user's active sessions
+                const userSessions = await Session.find({ 
+                    userId: user._id, 
+                    status: 'connected' 
+                });
+
+                if (userSessions.length === 0) {
+                    broadcastResult.failed++;
+                    continue;
+                }
+
+                // Send to the first active session (or you can send to all)
+                const session = userSessions[0];
+                
+                // Emit to worker to send the message
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Timeout'));
+                    }, 10000);
+
+                    workerSocket.emit('worker:send_broadcast', {
+                        sessionId: session.sessionId,
+                        message: message,
+                        userId: user._id.toString()
+                    }, (err, result) => {
+                        clearTimeout(timeout);
+                        if (err) {
+                            console.error(`Failed to send broadcast to ${session.sessionId}:`, err);
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+
                 broadcastResult.sent++;
             } catch (error) {
+                console.error(`Error sending to user ${user._id}:`, error);
                 broadcastResult.failed++;
             }
         }
 
+        // Log broadcast activity
+        const BroadcastLog = require('../models/BroadcastLog');
+        await BroadcastLog.create({
+            adminId: req.user.id,
+            message,
+            target,
+            totalTargets: broadcastResult.totalTargets,
+            sent: broadcastResult.sent,
+            failed: broadcastResult.failed,
+            sentAt: new Date()
+        });
+
         res.json({
             success: true,
-            message: scheduleTime ? 'Broadcast scheduled successfully.' : 'Broadcast sent successfully.',
+            message: 'Broadcast sent successfully.',
             data: broadcastResult
         });
 
@@ -527,7 +695,8 @@ router.post('/broadcast', authenticateAdmin, async (req, res) => {
         console.error('Broadcast error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error sending broadcast.'
+            message: 'Error sending broadcast.',
+            error: error.message
         });
     }
 });
