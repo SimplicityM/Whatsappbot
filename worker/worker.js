@@ -210,9 +210,7 @@ socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
             console.error("❌ Worker delete error:", err);
         }
     });
-});
-
-// Handle broadcast message sending
+    // Handle broadcast message sending
 socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callback) => {
     try {
         console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
@@ -244,6 +242,9 @@ socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callba
         callback(error.message || 'Failed to send broadcast');
     }
 });
+});
+
+
 
 /* =====================================================
    GRACEFUL SHUTDOWN
