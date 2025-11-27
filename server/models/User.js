@@ -123,6 +123,11 @@ const userSchema = new mongoose.Schema({
         enum: ['none', 'secondary', 'primary', 'owner'],
         default: 'none'
     },
+    
+    customCommands: {
+    type: [String],
+    default: []
+},
 
     // EMAIL PREFERENCES
     emailPreferences: {

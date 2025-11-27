@@ -462,76 +462,120 @@ router.put('/sessions/:sessionId/disconnect', authenticateAdmin, async (req, res
     }
 });
 
-// // Send broadcast message
-// router.post('/broadcast', authenticateAdmin, async (req, res) => {
-//     try {
-//         const { message, target, userIds, scheduleTime } = req.body;
+// Get all users with their sessions and payment status
+router.get('/users', authenticateAdmin, async (req, res) => {
+    try {
+        const users = await User.find({})
+            .select('fullName email whatsappNumber phone subscription subscriptionExpiry paymentStatus status lastLogin createdAt customCommands')
+            .lean();
 
-//         if (!message) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: 'Message is required.'
-//             });
-//         }
+        // Get sessions for each user
+        const usersWithSessions = await Promise.all(users.map(async (user) => {
+            const sessions = await Session.find({ userId: user._id })
+                .select('sessionId whatsappNumber status lastActive')
+                .lean();
 
-//         let targetUsers = [];
+            // Determine if subscription is active
+            const now = new Date();
+            const isSubscriptionActive = user.subscriptionExpiry && new Date(user.subscriptionExpiry) > now;
+            const actualStatus = isSubscriptionActive && user.paymentStatus === 'paid' ? 'active' : 'inactive';
 
-//         switch (target) {
-//             case 'all':
-//                 targetUsers = await User.find({ status: 'approved' });
-//                 break;
-//             case 'active':
-//                 const activeSessions = await Session.find({ status: 'connected' });
-//                 const activeUserIds = [...new Set(activeSessions.map(s => s.userId.toString()))];
-//                 targetUsers = await User.find({ _id: { $in: activeUserIds } });
-//                 break;
-//             case 'subscription':
-//                 const { subscription } = req.body;
-//                 targetUsers = await User.find({ subscription, status: 'approved' });
-//                 break;
-//             case 'custom':
-//                 targetUsers = await User.find({ _id: { $in: userIds } });
-//                 break;
-//             default:
-//                 return res.status(400).json({
-//                     success: false,
-//                     message: 'Invalid target type.'
-//                 });
-//         }
+            return {
+                id: user._id,
+                name: user.fullName,
+                email: user.email,
+                phone: user.whatsappNumber || sessions[0]?.whatsappNumber || user.phone || 'N/A',
+                subscription: user.subscription,
+                subscriptionExpiry: user.subscriptionExpiry,
+                paymentStatus: user.paymentStatus,
+                status: actualStatus,
+                lastActive: user.lastLogin || user.createdAt,
+                sessions: sessions,
+                customCommands: user.customCommands || []
+            };
+        }));
 
-//         // Here you would integrate with your bot system to send broadcast
-//         // For now, we'll simulate it
-//         const broadcastResult = {
-//             totalTargets: targetUsers.length,
-//             sent: 0,
-//             failed: 0,
-//             scheduled: !!scheduleTime
-//         };
+        res.json({
+            success: true,
+            users: usersWithSessions
+        });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching users'
+        });
+    }
+});
 
-//         // Simulate sending (replace with actual bot integration)
-//         for (const user of targetUsers) {
-//             try {
-//                 // await sendBroadcastMessage(user.sessionId, message);
-//                 broadcastResult.sent++;
-//             } catch (error) {
-//                 broadcastResult.failed++;
-//             }
-//         }
+// Update user custom commands
+router.put('/users/:userId/commands', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { customCommands } = req.body;
 
-//         res.json({
-//             success: true,
-//             message: scheduleTime ? 'Broadcast scheduled successfully.' : 'Broadcast sent successfully.',
-//             data: broadcastResult
-//         });
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { $set: { customCommands } },
+            { new: true }
+        );
 
-//     } catch (error) {
-//         console.error('Broadcast error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: 'Error sending broadcast.'
-//         });
-//     }
-// });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Custom commands updated successfully',
+            user: {
+                id: user._id,
+                customCommands: user.customCommands
+            }
+        });
+    } catch (error) {
+        console.error('Error updating custom commands:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating custom commands'
+        });
+    }
+});
+
+// Update user status
+router.put('/users/:userId/status', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { status } = req.body;
+
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { $set: { status } },
+            { new: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User status updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating user status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating user status'
+        });
+    }
+});
+
 
 // Send broadcast message
 router.post('/broadcast', authenticateAdmin, async (req, res) => {

@@ -882,44 +882,343 @@ function viewSession(sessionId) {
 
 // ==================== USER MANAGEMENT ====================
 
-function loadUsers() {
+// function loadUsers() {
+//     const usersTableBody = document.getElementById('usersTableBody');
+//     if (!usersTableBody) return;
+
+//     usersTableBody.innerHTML = users.map(user => `
+//         <tr>
+//             <td>
+//                 <div style="display: flex; align-items: center; gap: 8px;">
+//                     <div style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">
+//                         ${user.name.split(' ').map(n => n[0]).join('')}
+//                     </div>
+//                     <div>
+//                         <div style="font-weight: 600;">${user.name}</div>
+//                     </div>
+//                 </div>
+//             </td>
+//             <td>${user.phone}</td>
+//             <td>
+//                 <span style="padding: 4px 8px; background: ${user.type === 'Admin' ? '#667eea' : '#e5e7eb'}; color: ${user.type === 'Admin' ? 'white' : '#374151'}; border-radius: 4px; font-size: 12px;">
+//                     ${user.type}
+//                 </span>
+//             </td>
+//             <td>
+//                 <span style="color: ${user.status === 'active' ? '#48bb78' : '#9ca3af'};">
+//                     ${user.status === 'active' ? 'Active' : 'Inactive'}
+//                 </span>
+//             </td>
+//             <td>${user.lastActive}</td>
+//             <td>
+//                 <button class="action-btn" style="border: none; background: none; padding: 4px;" onclick="editUser(${user.id})">
+//                     <i class="fas fa-edit"></i>
+//                 </button>
+//                 <button class="action-btn danger" style="border: none; background: none; padding: 4px;" onclick="deleteUser(${user.id})">
+//                     <i class="fas fa-trash"></i>
+//                 </button>
+//             </td>
+//         </tr>
+//     `).join('');
+// }
+
+async function loadUsers() {
     const usersTableBody = document.getElementById('usersTableBody');
     if (!usersTableBody) return;
 
-    usersTableBody.innerHTML = users.map(user => `
-        <tr>
-            <td>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">
-                        ${user.name.split(' ').map(n => n[0]).join('')}
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/users', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            usersTableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+                        <i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i>
+                        Failed to load users
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        const users = data.users;
+
+        if (users.length === 0) {
+            usersTableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+                        <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+                        No users found
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        usersTableBody.innerHTML = users.map(user => {
+            const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase();
+            const statusColor = user.status === 'active' ? '#48bb78' : '#9ca3af';
+            const subscriptionBadgeColor = {
+                'starter': '#3b82f6',
+                'professional': '#8b5cf6',
+                'business': '#f59e0b',
+                'enterprise': '#ef4444'
+            }[user.subscription] || '#6b7280';
+
+            return `
+                <tr>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600;">
+                                ${initials}
+                            </div>
+                            <div>
+                                <div style="font-weight: 600;">${user.name}</div>
+                                <div style="font-size: 12px; color: #6b7280;">${user.email}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${user.phone}</td>
+                    <td>
+                        <span style="padding: 4px 8px; background: ${subscriptionBadgeColor}; color: white; border-radius: 4px; font-size: 12px; text-transform: capitalize;">
+                            ${user.subscription}
+                        </span>
+                    </td>
+                    <td>
+                        <span style="color: ${statusColor}; font-weight: 600;">
+                            <i class="fas fa-circle" style="font-size: 8px; margin-right: 4px;"></i>
+                            ${user.status === 'active' ? 'Active' : 'Inactive'}
+                        </span>
+                        ${user.status === 'inactive' && user.subscriptionExpiry ? 
+                            `<div style="font-size: 11px; color: #ef4444;">Expired: ${new Date(user.subscriptionExpiry).toLocaleDateString()}</div>` 
+                            : ''}
+                    </td>
+                    <td>${new Date(user.lastActive).toLocaleString()}</td>
+                    <td>
+                        <button class="action-btn" style="border: none; background: none; padding: 4px; cursor: pointer;" onclick="editUser('${user.id}')" title="Edit User">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn" style="border: none; background: none; padding: 4px; cursor: pointer;" onclick="manageUserCommands('${user.id}')" title="Manage Commands">
+                            <i class="fas fa-terminal"></i>
+                        </button>
+                        <button class="action-btn danger" style="border: none; background: none; padding: 4px; cursor: pointer; color: #ef4444;" onclick="deleteUser('${user.id}')" title="Delete User">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading users:', error);
+        usersTableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+                    Error loading users
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Edit user basic info
+async function editUser(userId) {
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        const user = data.users.find(u => u.id === userId);
+
+        if (!user) {
+            showNotification('User not found', 'error');
+            return;
+        }
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit User: ${user.name}</h3>
+                    <button class="modal-close" onclick="this.closest('.modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" id="editUserName" value="${user.name}" readonly style="background: #f3f4f6;">
                     </div>
-                    <div>
-                        <div style="font-weight: 600;">${user.name}</div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="editUserEmail" value="${user.email}" readonly style="background: #f3f4f6;">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" id="editUserPhone" value="${user.phone}" readonly style="background: #f3f4f6;">
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="editUserStatus">
+                            <option value="active" ${user.status === 'active' ? 'selected' : ''}>Active</option>
+                            <option value="inactive" ${user.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+                            <option value="suspended" ${user.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Subscription</label>
+                        <input type="text" value="${user.subscription}" readonly style="background: #f3f4f6; text-transform: capitalize;">
+                    </div>
+                    <div class="form-group">
+                        <label>Payment Status</label>
+                        <input type="text" value="${user.paymentStatus}" readonly style="background: #f3f4f6; text-transform: capitalize;">
                     </div>
                 </div>
-            </td>
-            <td>${user.phone}</td>
-            <td>
-                <span style="padding: 4px 8px; background: ${user.type === 'Admin' ? '#667eea' : '#e5e7eb'}; color: ${user.type === 'Admin' ? 'white' : '#374151'}; border-radius: 4px; font-size: 12px;">
-                    ${user.type}
-                </span>
-            </td>
-            <td>
-                <span style="color: ${user.status === 'active' ? '#48bb78' : '#9ca3af'};">
-                    ${user.status === 'active' ? 'Active' : 'Inactive'}
-                </span>
-            </td>
-            <td>${user.lastActive}</td>
-            <td>
-                <button class="action-btn" style="border: none; background: none; padding: 4px;" onclick="editUser(${user.id})">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="action-btn danger" style="border: none; background: none; padding: 4px;" onclick="deleteUser(${user.id})">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        </tr>
-    `).join('');
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button class="btn-primary" onclick="saveUserEdit('${userId}')">Save Changes</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    } catch (error) {
+        console.error('Error editing user:', error);
+        showNotification('Error loading user data', 'error');
+    }
+}
+
+async function saveUserEdit(userId) {
+    try {
+        const status = document.getElementById('editUserStatus').value;
+        const token = localStorage.getItem('adminToken');
+
+        const response = await fetch(`/api/admin/users/${userId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('User updated successfully', 'success');
+            document.querySelector('.modal').remove();
+            loadUsers(); // Reload the users table
+        } else {
+            showNotification(data.message || 'Failed to update user', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving user:', error);
+        showNotification('Error updating user', 'error');
+    }
+}
+
+// Manage custom commands for a user
+async function manageUserCommands(userId) {
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        const user = data.users.find(u => u.id === userId);
+
+        if (!user) {
+            showNotification('User not found', 'error');
+            return;
+        }
+
+        // All available commands
+        const allCommands = [
+            'ping', 'help', 'status', 'list', 'tag', 'tagexcept', 
+            'broadcast', 'auto_reply', 'analytics', 'scheduler', 
+            'custom_commands', 'export', 'dmall', 'tagfew', 'forward'
+        ];
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h3>Manage Commands: ${user.name}</h3>
+                    <button class="modal-close" onclick="this.closest('.modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 16px; color: #6b7280;">
+                        <strong>Current Subscription:</strong> <span style="text-transform: capitalize;">${user.subscription}</span>
+                    </p>
+                    <p style="margin-bottom: 16px; color: #6b7280; font-size: 14px;">
+                        Grant additional commands to this user beyond their subscription level.
+                    </p>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        ${allCommands.map(cmd => `
+                            <label style="display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #e5e7eb; cursor: pointer;">
+                                <input type="checkbox" 
+                                    value="${cmd}" 
+                                    ${user.customCommands.includes(cmd) ? 'checked' : ''}
+                                    style="margin-right: 12px; width: 18px; height: 18px; cursor: pointer;">
+                                <span style="font-family: monospace; font-weight: 600;">!${cmd}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button class="btn-primary" onclick="saveUserCommands('${userId}')">Save Commands</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    } catch (error) {
+        console.error('Error managing commands:', error);
+        showNotification('Error loading user commands', 'error');
+    }
+}
+
+async function saveUserCommands(userId) {
+    try {
+        const modal = document.querySelector('.modal');
+        const checkboxes = modal.querySelectorAll('input[type="checkbox"]:checked');
+        const customCommands = Array.from(checkboxes).map(cb => cb.value);
+
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch(`/api/admin/users/${userId}/commands`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ customCommands })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('Custom commands updated successfully', 'success');
+            modal.remove();
+            loadUsers();
+        } else {
+            showNotification(data.message || 'Failed to update commands', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving commands:', error);
+        showNotification('Error updating commands', 'error');
+    }
 }
 
 // ==================== EXEMPTION MANAGEMENT ====================

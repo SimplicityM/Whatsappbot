@@ -7,7 +7,6 @@ const mongoose = require('mongoose');
 const MongoStore = require('./MongoDBAuth');
 const SessionAuth = require('./models/SessionAuth');
 const Contact = require('./models/Contact');
-// const User = require('./models/User');
 const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
@@ -194,8 +193,6 @@ async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHU
   return { sent, chunks: chunks.length };
 }
 
-
-
 // ---------------- CONFIG (adjust as needed) ----------------
 const SESSION_DIR = path.join(__dirname, 'sessions');
 const MEDIA_DIR = path.join(__dirname, 'media');
@@ -226,95 +223,6 @@ const logger = {
 };
 
 
-// function createClientOptions(sessionId) {
-//   return {
-//     authStrategy: new LocalAuth({ clientId: sessionId }),
-
-//     puppeteer: {
-//       headless: true,
-//       handleSIGINT: false,
-//       handleSIGTERM: false,
-//       handleSIGHUP: false,
-//       defaultViewport: null,   // better rendering stability
-//       args: [
-//         '--no-sandbox',
-//         '--disable-setuid-sandbox',
-//         '--disable-dev-shm-usage',
-//         '--disable-gpu',
-//         '--disable-software-rasterizer',
-//         '--disable-extensions',
-//         '--disable-background-timer-throttling',
-//         '--disable-backgrounding-occluded-windows',
-//         '--disable-renderer-backgrounding',
-//         '--disable-infobars',
-//         '--no-first-run',
-//         '--no-zygote',
-//         '--enable-features=NetworkService',
-//         '--ignore-certificate-errors'
-//       ]
-//     },
-
-//     // Automatically restore session
-//     restartOnAuthFail: true,
-
-//     // If WhatsApp detects duplicate login, bot takes control
-//     takeoverOnConflict: true,
-//     takeoverTimeoutMs: 0,
-
-//     // Enables quicker start-up for heavy chats
-//     qrMaxRetries: 3,
-
-//     // Prevents “Session closed” error
-//     webVersionCache: {
-//       type: "local"
-//     }
-//   };
-// }
-
-// function createClientOptions(sessionId) {
-//   return {
-//     authStrategy: new MongoDBAuth(sessionId), // 🔥 CHANGED: MongoDB instead of LocalAuth
-
-//     puppeteer: {
-//       headless: true,
-//       handleSIGINT: false,
-//       handleSIGTERM: false,
-//       handleSIGHUP: false,
-//       defaultViewport: null,   // better rendering stability
-//       args: [
-//         '--no-sandbox',
-//         '--disable-setuid-sandbox',
-//         '--disable-dev-shm-usage',
-//         '--disable-gpu',
-//         '--disable-software-rasterizer',
-//         '--disable-extensions',
-//         '--disable-background-timer-throttling',
-//         '--disable-backgrounding-occluded-windows',
-//         '--disable-renderer-backgrounding',
-//         '--disable-infobars',
-//         '--no-first-run',
-//         '--no-zygote',
-//         '--enable-features=NetworkService',
-//         '--ignore-certificate-errors'
-//       ]
-//     },
-
-//     // Automatically restore session
-//     restartOnAuthFail: true,
-
-//     // If WhatsApp detects duplicate login, bot takes control
-//     takeoverOnConflict: true,
-//     takeoverTimeoutMs: 0,
-
-//     // Enables quicker start-up for heavy chats
-//     qrMaxRetries: 3,
-
-//     // Prevents "Session closed" error
-//     webVersionCache: {
-//       type: "local"
-//     }
-//   };
-// }
 
 function createClientOptions(sessionId) {
   const store = new MongoStore(sessionId);
@@ -483,79 +391,6 @@ function normalizeJid(jid) {
     logger.info(`[${sessionName}] loading ${percent}% ${message}`);
   });
 
-//   client.on('ready', async () => {
-//     try {
-//       logger.info(`[${sessionName}] READY fired`);
-//       // wait until client.info available
-//       let attempts = 0;
-//       while ((!client.info || !client.info.wid) && attempts < 60) {
-//         await new Promise(r => setTimeout(r, 100));
-//         attempts++;
-//       }
-//       if (!client.info || !client.info.wid) {
-//         logger.error(`[${sessionName}] client.info.wid missing after READY`);
-//         return;
-//       }
-//       selfId = client.info.wid._serialized;
-//       logger.info(`[${sessionName}] selfId set to ${selfId}`);
-
-//       // wait until connected state
-//       attempts = 0;
-//       let state = null;
-//       while (attempts < 50) {
-//         try { state = await client.getState(); } catch {}
-//         if (state === 'CONNECTED' || state === 'OPEN') break;
-//         await new Promise(r => setTimeout(r, 100));
-//         attempts++;
-//       }
-//       logger.info(`[${sessionName}] final state=${state}`);
-
-//       // small wait to let chats sync begin
-//       await new Promise(r => setTimeout(r, 2500));
-
-//       // deliver welcome-to-self
-//       await safeSend(selfId, `🤖 *BOT CONNECTED*\nSession: ${sessionId}`);
-//       await new Promise(r => setTimeout(r, 400));
-//       await safeSend(selfId, `
-// ━━━━━━━━━━━━━━━━━━
-// ✨ WELCOME TO TAGTHEMALL BOT ✨
-// ━━━━━━━━━━━━━━━━━━
-
-// 🤖 Your automation assistant is now active!
-
-// 📌 GROUP TOOLS
-// • !list — Groups where you're admin
-// • !members — View group members
-// • !admins — View group admins
-
-// 👥 TAGGING
-// • !tag — Tag all members
-// • !tagexcept — Tag everyone except selected users
-
-// 📨 DIRECT MESSAGING
-// • !dmall — DM all members
-// • !dmselected — DM selected members only
-
-// 💡 Type *!help* for full command details.
-// `);
-
-
-//       // start keepalive and scheduler
-//       keepAliveInterval = setInterval(async () => {
-//         try { await client.getState(); logger.info(`[${sessionName}] keepalive OK`); } catch (e) { logger.error(`[${sessionName}] keepalive failed`, e.message || e); }
-//       }, 300000);
-
-//       // start scheduler runner for this session
-//       schedulerInterval = setInterval(() => runSchedulerForSession(sessionId, client), SCHEDULER_POLL_MS);
-//       // immediate run once
-//       setTimeout(() => runSchedulerForSession(sessionId, client), 3000);
-
-//       sessionWorkers.set(sessionId, { keepAliveInterval, schedulerInterval });
-//       logger.info(`[${sessionName}] setup complete`);
-//     } catch (e) {
-//       logger.error(`[${sessionName}] ready handler error`, e);
-//     }
-//   });
 
 client.on('ready', async () => {
     try {
@@ -870,6 +705,222 @@ async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
 
 
   // generic message handler (per-client)
+// client.on('message_create', async (message) => {
+//   try {
+//     // only process commands (ignore status & empty)
+//     if (!message.body || message.from === 'status@broadcast') return;
+
+//     // ensure selfId is set
+//     if (!client.info || !client.info.wid) {
+//       if (message.fromMe) {
+//         client.info = client.info || {};
+//         client.info.wid = client.info.wid || { _serialized: message.from };
+//       }
+//     }
+
+//     const mySelf = client.info?.wid?._serialized;
+
+//     // determine sender
+//     const sender = message.fromMe ? mySelf : message.from;
+//     const isSelfChat = sender === mySelf;
+
+//     // --------------------------------------------------
+//     // 🟢 RECORD GROUP MESSAGE SENDERS INTO DB (NEW)
+//     // --------------------------------------------------
+//     try {
+//       const chat = await message.getChat().catch(() => null);
+
+//       if (chat && chat.isGroup) {
+//         const senderJid = message.author || message.from;
+
+//         if (senderJid) {
+//           await addMemberToGroup(
+//             sessionId,
+//             chat.id._serialized || chat.id,
+//             senderJid
+//           );
+//         }
+//       }
+//     } catch (e) {
+//       // ignore db errors
+//     }
+//     // --------------------------------------------------
+
+//     // --------------------------------------------------
+//     // 🟢 SELF-CHAT COMMAND FILTER + ✔️ REACTION
+//     // --------------------------------------------------
+//     if (message.body.startsWith(COMMAND_PREFIX)) {
+
+//       // Only owner can run commands
+//       if (sender !== mySelf) return;
+
+//       // Only self-chat allowed
+//       if (!isSelfChat) return;
+
+//       // Reaction to confirm command
+//       try {
+//         await message.react('✔️');
+//       } catch {}
+//     }
+
+//     // If no command prefix, stop here
+//     if (!message.body.startsWith(COMMAND_PREFIX)) return;
+
+//     // --------------------------------------------------
+//     // 🟢 COMMAND PARSER
+//     // --------------------------------------------------
+//     const full = message.body.slice(COMMAND_PREFIX.length).trim();
+//     const [cmdRaw, ...args] = full.split(/\s+/);
+//     const cmd = (cmdRaw || '').toLowerCase();
+
+//     // --------------------------------------------------
+//     // Your entire command switch block stays exactly as is
+//     // --------------------------------------------------
+
+//     async function fetchAndSaveAdminGroups() {
+//       let chats = await client.getChats();
+
+//       if (chats.length < CHAT_SYNC_THRESHOLD) {
+//         for (let i = 0; i < CHAT_SYNC_WAIT_ITER; i++) {
+//           if (chats.length > CHAT_SYNC_THRESHOLD) break;
+//           await new Promise(r => setTimeout(r, 500));
+//           chats = await client.getChats();
+//         }
+//       }
+
+//       const adminGroups = [];
+
+//       for (const c of chats) {
+//         if (!c.isGroup) continue;
+
+//         let participants = [];
+//         try {
+//           if (Array.isArray(c.participants) && c.participants.length) {
+//             participants = c.participants;
+//           } else if (typeof c.getParticipants === "function") {
+//             participants = await c.getParticipants();
+//           }
+//         } catch {
+//           participants = [];
+//         }
+
+//         const amIAdmin = participants.some(p =>
+//           p.id._serialized === mySelf &&
+//           (p.isAdmin || p.isSuperAdmin)
+//         );
+
+//         if (amIAdmin)
+//           adminGroups.push({
+//             name: c.name || 'Unnamed group',
+//             groupId: c.id._serialized
+//           });
+//       }
+
+//       if (adminGroups.length) {
+//         await SavedGroupList.findOneAndUpdate(
+//           { sessionId },
+//           { groups: adminGroups, updatedAt: new Date() },
+//           { upsert: true }
+//         );
+//       }
+
+//       return adminGroups;
+//     }
+
+    
+//   async function resolveTargetGroupArg(argIndex) {
+//     try {
+//         // 1️⃣ Load cached admin groups for this session
+//         let cached = await SavedGroupList.findOne({ sessionId })
+//             .lean()
+//             .catch(() => null);
+
+//         let adminGroups =
+//             cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+//         // If no cache exists → rebuild FAST
+//         if (!adminGroups.length) {
+//             logger.warn(`[${sessionId}] No cached admin groups — rebuilding list.`);
+
+//             const chats = await client.getChats();
+//             adminGroups = [];
+
+//             for (const c of chats) {
+//                 if (!c.isGroup) continue;
+
+//                 let parts = [];
+//                 try {
+//                     if (Array.isArray(c.participants) && c.participants.length) {
+//                         parts = c.participants;
+//                     } else if (typeof c.getParticipants === "function") {
+//                         parts = await c.getParticipants();
+//                     }
+//                 } catch { parts = []; }
+
+//                 const amIAdmin = parts.some(
+//                     p =>
+//                         p.id?._serialized === client.info?.wid?._serialized &&
+//                         (p.isAdmin || p.isSuperAdmin)
+//                 );
+
+//                 if (amIAdmin) {
+//                     adminGroups.push({
+//                         name: c.name || 'Unnamed Group',
+//                         groupId: c.id._serialized,
+//                     });
+//                 }
+//             }
+
+//             // Save rebuilt cache
+//             await SavedGroupList.findOneAndUpdate(
+//                 { sessionId },
+//                 { groups: adminGroups, updatedAt: new Date() },
+//                 { upsert: true }
+//             ).catch(() => null);
+//         }
+
+//         // 2️⃣ If user passed an index → resolve directly
+//         if (argIndex && !isNaN(argIndex)) {
+//             const idx = parseInt(argIndex);
+//             const arrayIndex = idx - 1;
+
+//             if (adminGroups[arrayIndex]) {
+//                 return {
+//                     index: idx,
+//                     group: adminGroups[arrayIndex],
+//                 };
+//             }
+
+//             return { index: null, group: null };
+//         }
+
+//         // 3️⃣ No index → try to load last active group (from !use)
+//         const active = await ActiveGroup.findOne({ sessionId })
+//             .lean()
+//             .catch(() => null);
+
+//         if (active) {
+//             // Find this active group in cache
+//             const match = adminGroups.find(g => g.groupId === active.groupId);
+
+//             if (match) {
+//                 return {
+//                     index: adminGroups.indexOf(match) + 1,
+//                     group: match
+//                 };
+//             }
+//         }
+
+//         // 4️⃣ Nothing found
+//         return { index: null, group: null };
+
+//     } catch (e) {
+//         logger.error(`[${sessionId}] resolveTargetGroupArg ERROR`, e);
+//         return { index: null, group: null };
+//     }
+// }
+
+
 client.on('message_create', async (message) => {
   try {
     // only process commands (ignore status & empty)
@@ -939,6 +990,64 @@ client.on('message_create', async (message) => {
     const cmd = (cmdRaw || '').toLowerCase();
 
     // --------------------------------------------------
+    // 🟢 COMMAND PERMISSION CHECK
+    // --------------------------------------------------
+    // Get userId from sessionId (format: session-<userId>-<timestamp>)
+    const userMatch = sessionId.match(/^session-([^-]+)-/);
+    const userId = userMatch ? userMatch[1] : null;
+
+    if (userId) {
+        try {
+            // Fetch user document from database
+            const userDoc = await User.findById(userId).lean();
+            
+            if (userDoc) {
+                // Define subscription plan hierarchy and their allowed commands
+                const subscriptionPlans = {
+                    'starter': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept'],
+                    'professional': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler'],
+                    'business': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'export', 'dmall', 'tagfew', 'forward'],
+                    'enterprise': 'all' // All commands
+                };
+
+                const userSubscription = userDoc.subscription || 'starter';
+                const allowedCommands = subscriptionPlans[userSubscription] || [];
+                
+                // Check if command is allowed by subscription
+                const hasAccess = allowedCommands === 'all' || allowedCommands.includes(cmd);
+                
+                // Check if user has custom command access
+                const userCustomCommands = userDoc.customCommands || [];
+                const hasCustomAccess = userCustomCommands.includes(cmd);
+
+                // Check if subscription is active (not expired)
+                const now = new Date();
+                const isSubscriptionActive = userDoc.subscriptionExpiry && new Date(userDoc.subscriptionExpiry) > now;
+                const isPaymentValid = userDoc.paymentStatus === 'paid' || userDoc.exemptFromPayment;
+
+                // If subscription expired and payment not valid, block all premium commands
+                if (!isSubscriptionActive && !isPaymentValid && !['ping', 'help', 'status'].includes(cmd)) {
+                    await safeSend(message.from, `❌ Your subscription has expired. Please renew to continue using premium commands.\n\nVisit: https://yourwebsite.com/pricing`);
+                    return;
+                }
+
+                // If command not allowed by subscription and not in custom commands
+                if (!hasAccess && !hasCustomAccess) {
+                    const requiredPlan = Object.keys(subscriptionPlans).find(plan => 
+                        subscriptionPlans[plan] === 'all' || subscriptionPlans[plan].includes(cmd)
+                    ) || 'business';
+                    
+                    await safeSend(message.from, `❌ Command !${cmd} requires ${requiredPlan} subscription or higher.\n\nYour current plan: ${userSubscription}\n\nUpgrade at: https://yourwebsite.com/pricing`);
+                    return;
+                }
+            }
+        } catch (error) {
+            logger.error(`[${sessionId}] Permission check error:`, error);
+            // Continue anyway if there's an error checking permissions
+        }
+    }
+
+    // --------------------------------------------------
     // Your entire command switch block stays exactly as is
     // --------------------------------------------------
 
@@ -992,28 +1101,8 @@ client.on('message_create', async (message) => {
       return adminGroups;
     }
 
-    // async function resolveTargetGroupArg(argIndex) {
-    //   if (argIndex && !isNaN(argIndex)) {
-    //     const idx = parseInt(argIndex);
-    //     const group = await getGroupFromIndex(sessionId, idx);
-    //     return { index: idx, group };
-    //   }
-
-    //   const active = await getActiveGroup(sessionId);
-    //   if (active) {
-    //     return {
-    //       index: active.index,
-    //       group: {
-    //         name: active.name,
-    //         groupId: active.groupId
-    //       }
-    //     };
-    //   }
-
-    //   return { index: null, group: null };
-    // }
-
-async function resolveTargetGroupArg(argIndex) {
+    
+  async function resolveTargetGroupArg(argIndex) {
     try {
         // 1️⃣ Load cached admin groups for this session
         let cached = await SavedGroupList.findOne({ sessionId })
@@ -1104,7 +1193,6 @@ async function resolveTargetGroupArg(argIndex) {
         return { index: null, group: null };
     }
 }
-
 
     // ------------ COMMANDS ------------
     switch (cmd) {
@@ -3293,60 +3381,6 @@ async function createBotSession(userId, sessionId, workerIO) {
     throw e;
   }
 }
-
-// // =========================================
-// // RESTORE ALL SESSIONS ON SERVER STARTUP
-// // =========================================
-// async function restoreAllSessions(io) {
-//     try {
-//         if (mongoose.connection.readyState !== 1) {
-//             logger.info("⛔ Mongoose not connected - skipping session restore");
-//             return;
-//         }
-
-//         logger.info("♻ Starting WhatsApp session restoration...");
-
-//         const sessions = await Session.find({
-//             status: { $in: ["connected", "authenticated", "ready"] }
-//         });
-
-//         if (!sessions.length) {
-//             logger.info("📭 No sessions found to restore.");
-//             return;
-//         }
-
-//         logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
-
-//         const fs = require("fs");
-
-//         for (const s of sessions) {
-//             const sessionId = s.sessionId;
-//             const userId = s.userId;
-
-//             const authFolderPath = `./sessions/${sessionId}`;
-
-//             // Check if LocalAuth folder exists
-//             if (!fs.existsSync(authFolderPath)) {
-//                 logger.info(`⚠ LocalAuth missing for ${sessionId}. Skipping restore.`);
-//                 continue;
-//             }
-
-//             logger.info(`♻ Restoring WhatsApp session: ${sessionId} for user ${userId}`);
-
-//             try {
-//                 await createBotSession(userId, sessionId, io);
-//                 logger.info(`✅ Successfully restored session: ${sessionId}`);
-//             } catch (err) {
-//                 logger.error(`❌ Failed to restore session ${sessionId}: ${err.message}`);
-//             }
-//         }
-
-//         logger.info("🎉 Session restoration completed!");
-
-//     } catch (err) {
-//         logger.error("❌ restoreAllSessions error:", err);
-//     }
-// }
 
 
 // =========================================
