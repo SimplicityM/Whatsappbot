@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const qrcode = require('qrcode-terminal');
 const { Client, MessageMedia } = require('whatsapp-web.js');
 const mongoose = require('mongoose');
-const MongoDBAuth = require('./MongoDBAuth');
+const MongoStore = require('./MongoDBAuth');
 const SessionAuth = require('./models/SessionAuth');
 const Contact = require('./models/Contact');
 // const User = require('./models/User');
@@ -271,16 +271,67 @@ const logger = {
 //   };
 // }
 
+// function createClientOptions(sessionId) {
+//   return {
+//     authStrategy: new MongoDBAuth(sessionId), // 🔥 CHANGED: MongoDB instead of LocalAuth
+
+//     puppeteer: {
+//       headless: true,
+//       handleSIGINT: false,
+//       handleSIGTERM: false,
+//       handleSIGHUP: false,
+//       defaultViewport: null,   // better rendering stability
+//       args: [
+//         '--no-sandbox',
+//         '--disable-setuid-sandbox',
+//         '--disable-dev-shm-usage',
+//         '--disable-gpu',
+//         '--disable-software-rasterizer',
+//         '--disable-extensions',
+//         '--disable-background-timer-throttling',
+//         '--disable-backgrounding-occluded-windows',
+//         '--disable-renderer-backgrounding',
+//         '--disable-infobars',
+//         '--no-first-run',
+//         '--no-zygote',
+//         '--enable-features=NetworkService',
+//         '--ignore-certificate-errors'
+//       ]
+//     },
+
+//     // Automatically restore session
+//     restartOnAuthFail: true,
+
+//     // If WhatsApp detects duplicate login, bot takes control
+//     takeoverOnConflict: true,
+//     takeoverTimeoutMs: 0,
+
+//     // Enables quicker start-up for heavy chats
+//     qrMaxRetries: 3,
+
+//     // Prevents "Session closed" error
+//     webVersionCache: {
+//       type: "local"
+//     }
+//   };
+// }
+
 function createClientOptions(sessionId) {
+  const store = new MongoStore(sessionId);
+  
   return {
-    authStrategy: new MongoDBAuth(sessionId), // 🔥 CHANGED: MongoDB instead of LocalAuth
+    authStrategy: new (require('whatsapp-web.js').LocalAuth)({
+      clientId: sessionId,
+      dataPath: './.wwebjs_auth',
+      store: store
+    }),
 
     puppeteer: {
       headless: true,
       handleSIGINT: false,
       handleSIGTERM: false,
       handleSIGHUP: false,
-      defaultViewport: null,   // better rendering stability
+      defaultViewport: null,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -299,17 +350,11 @@ function createClientOptions(sessionId) {
       ]
     },
 
-    // Automatically restore session
     restartOnAuthFail: true,
-
-    // If WhatsApp detects duplicate login, bot takes control
     takeoverOnConflict: true,
     takeoverTimeoutMs: 0,
-
-    // Enables quicker start-up for heavy chats
     qrMaxRetries: 3,
 
-    // Prevents "Session closed" error
     webVersionCache: {
       type: "local"
     }

@@ -1,64 +1,61 @@
-const { AuthStrategy } = require('whatsapp-web.js');
+const { Client } = require('whatsapp-web.js');
 const SessionAuth = require('./models/SessionAuth');
 
-class MongoDBAuth extends AuthStrategy {
+class MongoStore {
     constructor(sessionId) {
-        super();
         this.sessionId = sessionId;
     }
 
-    async beforeBrowserInitialized() {
-        // Load auth data from MongoDB before browser starts
+    async sessionExists() {
         try {
-            const sessionAuth = await SessionAuth.findOne({ sessionId: this.sessionId });
-            
-            if (sessionAuth && sessionAuth.authData) {
-                // Restore auth data
-                const authData = JSON.parse(sessionAuth.authData);
-                this.authData = authData;
-                console.log(`✅ Restored auth data for session: ${this.sessionId}`);
-            } else {
-                console.log(`📭 No auth data found for session: ${this.sessionId}`);
-            }
+            const session = await SessionAuth.findOne({ sessionId: this.sessionId });
+            return !!session;
         } catch (error) {
-            console.error(`❌ Failed to load auth data for ${this.sessionId}:`, error);
+            console.error(`❌ [MongoStore] Error checking session existence:`, error);
+            return false;
         }
     }
 
-    async logout() {
-        // Delete auth data from MongoDB on logout
+    async save(session) {
         try {
-            await SessionAuth.deleteOne({ sessionId: this.sessionId });
-            console.log(`🗑️ Deleted auth data for session: ${this.sessionId}`);
-        } catch (error) {
-            console.error(`❌ Failed to delete auth data for ${this.sessionId}:`, error);
-        }
-    }
-
-    async destroy() {
-        // Clean up on destroy
-        await this.logout();
-    }
-
-    async afterAuthReady() {
-        // Save auth data to MongoDB after successful authentication
-        try {
-            const authDataString = JSON.stringify(this.authData || {});
-            
+            const sessionData = JSON.stringify(session);
             await SessionAuth.findOneAndUpdate(
                 { sessionId: this.sessionId },
                 { 
-                    authData: authDataString,
+                    authData: sessionData,
                     updatedAt: new Date()
                 },
                 { upsert: true, new: true }
             );
-            
-            console.log(`💾 Saved auth data for session: ${this.sessionId}`);
+            console.log(`💾 [MongoStore] Saved session data for: ${this.sessionId}`);
         } catch (error) {
-            console.error(`❌ Failed to save auth data for ${this.sessionId}:`, error);
+            console.error(`❌ [MongoStore] Failed to save session:`, error);
+        }
+    }
+
+    async extract() {
+        try {
+            const session = await SessionAuth.findOne({ sessionId: this.sessionId });
+            if (session && session.authData) {
+                console.log(`✅ [MongoStore] Restored session data for: ${this.sessionId}`);
+                return JSON.parse(session.authData);
+            }
+            console.log(`📭 [MongoStore] No session data found for: ${this.sessionId}`);
+            return null;
+        } catch (error) {
+            console.error(`❌ [MongoStore] Failed to extract session:`, error);
+            return null;
+        }
+    }
+
+    async delete() {
+        try {
+            await SessionAuth.deleteOne({ sessionId: this.sessionId });
+            console.log(`🗑️ [MongoStore] Deleted session data for: ${this.sessionId}`);
+        } catch (error) {
+            console.error(`❌ [MongoStore] Failed to delete session:`, error);
         }
     }
 }
 
-module.exports = MongoDBAuth;
+module.exports = MongoStore;
