@@ -2,7 +2,11 @@ const express = require('express');
 const User = require('../models/User');
 const Session = require('../models/Session');
 const { authenticate, checkSubscription } = require('../../middleware/auth');
+const checkDbConnection = require('../../middleware/checkDbConnection');
 const router = express.Router();
+
+// Apply to all routes
+router.use(checkDbConnection);
 
 // Get user's sessions
 router.get('/my-sessions', authenticate, async (req, res) => {
