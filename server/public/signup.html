@@ -414,13 +414,17 @@
             }, 5000);
         }
 
-        // Google Sign-in callback
+        // ========== GOOGLE SIGN-IN CALLBACK (MUST BE GLOBAL) ==========
 async function handleCredentialResponse(response) {
-    console.log("Google sign-in initiated...");
+    console.log("🔐 Google sign-in initiated...");
     
     try {
-        // Show loading state
-        showNotification('Signing in with Google...', 'info');
+        // Show loading notification
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'google-loading';
+        loadingDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #3b82f6; color: white; padding: 15px 25px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-family: Inter, sans-serif;';
+        loadingDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in with Google...';
+        document.body.appendChild(loadingDiv);
         
         const result = await fetch('/auth/google-login', {
             method: 'POST',
@@ -433,9 +437,10 @@ async function handleCredentialResponse(response) {
         });
 
         const data = await result.json();
-
+        
         if (data.success) {
-            showNotification('Sign-in successful! Redirecting...', 'success');
+            loadingDiv.style.background = '#10b981';
+            loadingDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Redirecting...';
             
             // Store user session
             localStorage.setItem('userSession', JSON.stringify({
@@ -443,19 +448,54 @@ async function handleCredentialResponse(response) {
                 user: data.data.user
             }));
 
+            console.log('✅ Google sign-in successful, redirecting to dashboard...');
+            
             // Redirect to dashboard
             setTimeout(() => {
                 window.location.href = '/dashboard.html';
-            }, 1000);
+            }, 1500);
         } else {
-            showNotification(data.message || 'Google sign-in failed', 'error');
+            loadingDiv.style.background = '#ef4444';
+            loadingDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.message || 'Sign-in failed');
+            setTimeout(() => loadingDiv.remove(), 4000);
+            console.error('❌ Google sign-in failed:', data.message);
         }
     } catch (error) {
-        console.error('Google sign-in error:', error);
-        showNotification('An error occurred during sign-in. Please try again.', 'error');
+        console.error('❌ Google sign-in error:', error);
+        const errorDiv = document.getElementById('google-loading');
+        if (errorDiv) {
+            errorDiv.style.background = '#ef4444';
+            errorDiv.innerHTML = '<i class="fas fa-times-circle"></i> Connection error. Please try again.';
+            setTimeout(() => errorDiv.remove(), 4000);
+        }
     }
 }
-    });
+
+// ========== DOM READY FUNCTIONS ==========
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('signupForm');
+    const togglePassword = document.getElementById('togglePassword');
+    const password = document.getElementById('password');
+    const confirmPassword = document.getElementById('confirmPassword');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnLoader = document.getElementById('btnLoader');
+    const btnText = document.querySelector('.btn-text');
+
+    // Mobile menu toggle
+    const hamburger = document.querySelector('.hamburger');
+    const navMenu = document.querySelector('.nav-menu');
+
+    if (hamburger && navMenu) {
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            navMenu.classList.toggle('active');
+        });
+    }
+
+    // ... rest of your existing DOMContentLoaded code ...
+    // (Keep all the other functions like togglePassword, validateForm, etc.)
+    
+});
 </script>
 </body>
 </html>
