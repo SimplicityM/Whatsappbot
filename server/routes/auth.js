@@ -4,18 +4,24 @@ const User = require('../models/User');
 const { generateToken, authenticate, verifyToken } = require('../../middleware/auth');
 const { Resend } = require('resend');  // ✅ Only need Resend
 const router = express.Router();
+const verifyRecaptcha = require("../utils/verifyRecaptcha");
 
 // Initialize Resend once at the top
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 
-// Register new user
+// Register new user with reCAPTCHA v3 protection
 router.post('/register', async (req, res) => {
     try {
-        const { fullName, email, password, confirmPassword } = req.body;
+        const { fullName, email, password, confirmPassword, recaptchaToken } = req.body;
 
-        // Validation
+        console.log("🆕 Registration attempt:", email);
+
+        // ================================
+        // 1. Basic field validation
+        // ================================
         if (!fullName || !email || !password || !confirmPassword) {
+            console.log("❌ Missing required fields");
             return res.status(400).json({
                 success: false,
                 message: 'All fields are required.'
@@ -23,6 +29,7 @@ router.post('/register', async (req, res) => {
         }
 
         if (password !== confirmPassword) {
+            console.log("❌ Passwords do not match");
             return res.status(400).json({
                 success: false,
                 message: 'Passwords do not match.'
@@ -30,42 +37,85 @@ router.post('/register', async (req, res) => {
         }
 
         if (password.length < 8) {
+            console.log("❌ Weak password");
             return res.status(400).json({
                 success: false,
                 message: 'Password must be at least 8 characters long.'
             });
         }
 
-        // Check if user already exists
+        if (!recaptchaToken) {
+            console.log("❌ Missing recaptcha token");
+            return res.status(400).json({
+                success: false,
+                message: "Recaptcha validation failed."
+            });
+        }
+
+        // ===============================================
+        // 2. Verify reCAPTCHA v3 (anti-bot protection)
+        // ===============================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "signup");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ Registration blocked. Low recaptcha score: ${recaptchaResult.score}`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious activity detected. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed. Score: ${recaptchaResult.score}`);
+
+
+        // ===============================================
+        // 3. Check existing user
+        // ===============================================
         const existingUser = await User.findOne({ email: email.toLowerCase() });
+
         if (existingUser) {
+            console.log("❌ Email already registered");
             return res.status(400).json({
                 success: false,
                 message: 'User with this email already exists.'
             });
         }
 
-        // Create new user
+        // ===============================================
+        // 4. Create user
+        // ===============================================
+        console.log("📌 Creating new user record...");
+
+        const crypto = require("crypto");
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+
         const user = new User({
             fullName,
             email: email.toLowerCase(),
             password,
             emailVerificationToken,
-            paymentStatus: 'trial' // Start with trial
+            paymentStatus: 'trial' // Start with free trial
         });
 
         await user.save();
 
-        // Generate token
+        // ===============================================
+        // 5. Generate Auth Token
+        // ===============================================
         const token = generateToken(user._id);
 
-        // Remove password from response
-        const userResponse = user.toObject();
+        let userResponse = user.toObject();
         delete userResponse.password;
         delete userResponse.emailVerificationToken;
 
-        res.status(201).json({
+        console.log("✅ Account created:", email);
+
+
+        // ===============================================
+        // 6. Response
+        // ===============================================
+        return res.status(201).json({
             success: true,
             message: 'Account created successfully!',
             data: {
@@ -75,130 +125,117 @@ router.post('/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({
+        console.error('❌ Registration error:', error);
+        console.error("Stack:", error.stack);
+
+        return res.status(500).json({
             success: false,
             message: 'Error creating account. Please try again.'
         });
     }
 });
 
-// // Login user
-// router.post('/login', async (req, res) => {
-//     try {
-//         const { email, password } = req.body;
 
-//         // Validation
-//         if (!email || !password) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: 'Email and password are required.'
-//             });
-//         }
 
-//         // Find user
-//         const user = await User.findOne({ email: email.toLowerCase() });
-//         if (!user) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message: 'Invalid email or password.'
-//             });
-//         }
-
-//         // Check password
-//         const isPasswordValid = await user.comparePassword(password);
-//         if (!isPasswordValid) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message: 'Invalid email or password.'
-//             });
-//         }
-
-//         // Update last login
-//         user.lastLogin = new Date();
-//         await user.save();
-
-//         // Generate token
-//         const token = generateToken(user._id);
-
-//         // Remove password from response
-//         const userResponse = user.toObject();
-//         delete userResponse.password;
-
-//         res.json({
-//             success: true,
-//             message: 'Login successful!',
-//             data: {
-//                 user: userResponse,
-//                 token
-//             }
-//         });
-
-//     } catch (error) {
-//         console.error('Login error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: 'Error logging in. Please try again.'
-//         });
-//     }
-// });
-
-// Login user
+// Login user with reCAPTCHA v3 verification
 router.post('/login', async (req, res) => {
     try {
-        console.log('🔐 Login attempt:', req.body.email); // Add this
-        
-        const { email, password } = req.body;
+        const { email, password, recaptchaToken } = req.body;
 
-        // Validation
+        console.log('🔐 Login attempt:', email);
+
+        // ============================
+        // 1. Validate required fields
+        // ============================
         if (!email || !password) {
-            console.log('❌ Missing credentials'); // Add this
+            console.log('❌ Missing credentials');
             return res.status(400).json({
                 success: false,
                 message: 'Email and password are required.'
             });
         }
 
-        // Find user
-        console.log('🔍 Looking for user:', email.toLowerCase()); // Add this
+        if (!recaptchaToken) {
+            console.log('❌ Missing reCAPTCHA token');
+            return res.status(400).json({
+                success: false,
+                message: 'Recaptcha validation failed. Try again.'
+            });
+        }
+
+        // ==================================================
+        // 2. Verify reCAPTCHA v3 Token (Anti-Bot Protection)
+        // ==================================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "login");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ Recaptcha rejected login. Score: ${recaptchaResult.score}`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious login attempt blocked. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed. Score: ${recaptchaResult.score}`);
+
+
+        // ============================
+        // 3. Find user
+        // ============================
+        console.log('🔍 Looking for user:', email.toLowerCase());
+
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
-            console.log('❌ User not found'); // Add this
+            console.log('❌ User not found');
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password.'
             });
         }
 
-        console.log('✅ User found, checking password'); // Add this
-        
-        // Check password
+        console.log('✅ User found, checking password');
+
+
+        // ============================
+        // 4. Validate password
+        // ============================
         const isPasswordValid = await user.comparePassword(password);
+
         if (!isPasswordValid) {
-            console.log('❌ Invalid password'); // Add this
+            console.log('❌ Invalid password');
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password.'
             });
         }
 
-        console.log('✅ Password valid, generating token'); // Add this
+        console.log('✅ Password valid, generating token');
 
-        // Update last login
+
+        // ============================
+        // 5. Update last login time
+        // ============================
         user.lastLogin = new Date();
         await user.save();
 
-        // Generate token
+
+        // ============================
+        // 6. Generate token
+        // ============================
         const token = generateToken(user._id);
 
-        // Remove password from response
         const userResponse = user.toObject();
         delete userResponse.password;
 
-        console.log('✅ Login successful for:', email); // Add this
+        console.log('✅ Login successful for:', email);
 
-        res.json({
+
+        // ============================
+        // 7. Respond to frontend
+        // ============================
+        return res.json({
             success: true,
             message: 'Login successful!',
             data: {
@@ -208,80 +245,137 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Login error:', error); // This already exists but make sure it's there
-        console.error('Error stack:', error.stack); // Add this for more detail
-        res.status(500).json({
+        console.error('❌ Login error:', error);
+        console.error('Error stack:', error.stack);
+        
+        return res.status(500).json({
             success: false,
             message: 'Error logging in. Please try again.'
         });
     }
 });
 
-// Google OAuth Login/Signup
+
+// Google OAuth Login/Signup with reCAPTCHA v3 protection
 router.post("/google-login", async (req, res) => {
     try {
-        const { credential } = req.body;
-        
+        const { credential, recaptchaToken } = req.body;
+
+        console.log("🔵 Google OAuth login attempt");
+
+        // ======================================================
+        // 1. Validate request fields
+        // ======================================================
         if (!credential) {
+            console.log("❌ Missing Google credential");
             return res.status(400).json({
                 success: false,
                 message: "Google credential is required"
             });
         }
 
-        // Verify Google token
-        const { OAuth2Client } = require('google-auth-library');
-        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com');
-        
+        if (!recaptchaToken) {
+            console.log("❌ Missing reCAPTCHA token");
+            return res.status(400).json({
+                success: false,
+                message: "Recaptcha validation failed."
+            });
+        }
+
+        // ======================================================
+        // 2. Verify reCAPTCHA v3 first (protects against bot abuse)
+        // ======================================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "google_login");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ Low reCAPTCHA score (${recaptchaResult.score}). Blocking Google login.`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious activity detected. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed for Google Login. Score: ${recaptchaResult.score}`);
+
+
+        // ======================================================
+        // 3. Verify Google OAuth Token
+        // ======================================================
+        const { OAuth2Client } = require("google-auth-library");
+        const client = new OAuth2Client(
+            process.env.GOOGLE_CLIENT_ID ||
+            "1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com"
+        );
+
         const ticket = await client.verifyIdToken({
             idToken: credential,
-            audience: process.env.GOOGLE_CLIENT_ID || '1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com'
+            audience: process.env.GOOGLE_CLIENT_ID ||
+                "1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com"
         });
-        
+
         const payload = ticket.getPayload();
         const { email, name, picture, sub: googleId } = payload;
 
-        // Check if user exists
+        console.log("🔍 Google user:", email);
+
+
+        // ======================================================
+        // 4. Check if user already exists
+        // ======================================================
         let user = await User.findOne({ email: email.toLowerCase() });
 
         if (!user) {
-            // Create new user from Google account
+            // ============================================
+            // 4a. Create new user from Google Account
+            // ============================================
+            const crypto = require("crypto");
+
             user = new User({
                 fullName: name,
                 email: email.toLowerCase(),
-                password: crypto.randomBytes(32).toString('hex'), // Random password (won't be used)
-                isEmailVerified: true, // Google emails are verified
+                password: crypto.randomBytes(32).toString("hex"), // never used
+                isEmailVerified: true,
                 googleId: googleId,
                 profilePicture: picture,
-                paymentStatus: 'trial',
-                status: 'active'
+                paymentStatus: "trial",
+                status: "active"
             });
+
             await user.save();
-            console.log(`✅ New user created via Google: ${email}`);
+            console.log(`🆕 New Google user created: ${email}`);
         } else {
-            // Update existing user with Google ID if not set
+            // ============================================
+            // 4b. User exists — update googleId and login time
+            // ============================================
             if (!user.googleId) {
                 user.googleId = googleId;
                 user.isEmailVerified = true;
-                await user.save();
             }
-            // Update last login
+
             user.lastLogin = new Date();
             await user.save();
-            console.log(`✅ Existing user logged in via Google: ${email}`);
+
+            console.log(`🔁 Existing user logged in via Google: ${email}`);
         }
 
-        // Generate token
+
+        // ======================================================
+        // 5. Generate JWT Token
+        // ======================================================
         const token = generateToken(user._id);
 
-        // Remove sensitive data
         const userResponse = user.toObject();
         delete userResponse.password;
         delete userResponse.emailVerificationToken;
 
-        res.json({
+
+        // ======================================================
+        // 6. Send Response
+        // ======================================================
+        return res.json({
             success: true,
-            message: 'Google sign-in successful!',
+            message: "Google sign-in successful!",
             data: {
                 user: userResponse,
                 token
@@ -289,13 +383,14 @@ router.post("/google-login", async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Google login error:', error);
-        res.status(500).json({
+        console.error("❌ Google login error:", error);
+        return res.status(500).json({
             success: false,
-            message: 'Google authentication failed. Please try again.'
+            message: "Google authentication failed. Please try again."
         });
     }
 });
+
 
 // Admin Login Route
 router.post('/admin-login', async (req, res) => {
@@ -503,12 +598,18 @@ router.put('/profile', authenticate, async (req, res) => {
     }
 });
 
-// Change password
+// Change user password with reCAPTCHA v3 protection
 router.put('/change-password', authenticate, async (req, res) => {
     try {
-        const { currentPassword, newPassword, confirmPassword } = req.body;
+        const { currentPassword, newPassword, confirmPassword, recaptchaToken } = req.body;
 
+        console.log("🔐 Change password request from user:", req.user._id);
+
+        // ========================================
+        // 1. Basic Validation
+        // ========================================
         if (!currentPassword || !newPassword || !confirmPassword) {
+            console.log("❌ Missing password fields");
             return res.status(400).json({
                 success: false,
                 message: 'All password fields are required.'
@@ -516,6 +617,7 @@ router.put('/change-password', authenticate, async (req, res) => {
         }
 
         if (newPassword !== confirmPassword) {
+            console.log("❌ Password mismatch");
             return res.status(400).json({
                 success: false,
                 message: 'New passwords do not match.'
@@ -523,40 +625,90 @@ router.put('/change-password', authenticate, async (req, res) => {
         }
 
         if (newPassword.length < 8) {
+            console.log("❌ Weak password");
             return res.status(400).json({
                 success: false,
                 message: 'Password must be at least 8 characters long.'
             });
         }
 
-        // Verify current password
+        if (!recaptchaToken) {
+            console.log("❌ Missing reCAPTCHA token");
+            return res.status(400).json({
+                success: false,
+                message: "Recaptcha validation failed. Try again."
+            });
+        }
+
+        // ========================================
+        // 2. Verify reCAPTCHA v3
+        // ========================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "change_password");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ reCAPTCHA rejected password change. Score: ${recaptchaResult.score}`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious activity detected. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed. Score: ${recaptchaResult.score}`);
+
+
+        // ========================================
+        // 3. Validate Current Password
+        // ========================================
         const user = await User.findById(req.user._id);
+
+        if (!user) {
+            console.log("❌ User not found during password change");
+            return res.status(404).json({
+                success: false,
+                message: 'User not found.'
+            });
+        }
+
         const isCurrentPasswordValid = await user.comparePassword(currentPassword);
-        
+
         if (!isCurrentPasswordValid) {
+            console.log("❌ Incorrect current password");
             return res.status(400).json({
                 success: false,
                 message: 'Current password is incorrect.'
             });
         }
 
-        // Update password
+        console.log("🔑 Current password verified. Updating password...");
+
+
+        // ========================================
+        // 4. Update Password
+        // ========================================
         user.password = newPassword;
         await user.save();
 
-        res.json({
+        console.log("✅ Password changed successfully for:", req.user._id);
+
+
+        // ========================================
+        // 5. Respond
+        // ========================================
+        return res.json({
             success: true,
             message: 'Password changed successfully!'
         });
 
     } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({
+        console.error('❌ Change password error:', error);
+        return res.status(500).json({
             success: false,
             message: 'Error changing password.'
         });
     }
 });
+
 
 // Logout
 router.post('/logout', authenticate, (req, res) => {
@@ -670,12 +822,18 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
-// Reset password
+// Reset password with reCAPTCHA v3 protection
 router.post('/reset-password', async (req, res) => {
     try {
-        const { token, newPassword, confirmPassword } = req.body;
+        const { token, newPassword, confirmPassword, recaptchaToken } = req.body;
 
+        console.log("🔧 Password reset attempt");
+
+        // ===========================================
+        // 1. Basic Validation
+        // ===========================================
         if (!token || !newPassword || !confirmPassword) {
+            console.log("❌ Missing required fields");
             return res.status(400).json({
                 success: false,
                 message: 'All fields are required.'
@@ -683,6 +841,7 @@ router.post('/reset-password', async (req, res) => {
         }
 
         if (newPassword !== confirmPassword) {
+            console.log("❌ Password mismatch");
             return res.status(400).json({
                 success: false,
                 message: 'Passwords do not match.'
@@ -690,43 +849,88 @@ router.post('/reset-password', async (req, res) => {
         }
 
         if (newPassword.length < 8) {
+            console.log("❌ Weak password");
             return res.status(400).json({
                 success: false,
                 message: 'Password must be at least 8 characters long.'
             });
         }
 
-        // Find user with valid reset token
+        if (!recaptchaToken) {
+            console.log("❌ Missing reCAPTCHA token");
+            return res.status(400).json({
+                success: false,
+                message: "Recaptcha validation failed."
+            });
+        }
+
+        // ===========================================
+        // 2. Verify reCAPTCHA v3 (anti-bot protection)
+        // ===========================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "reset_password");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ Low recaptcha score ${recaptchaResult.score}. Blocking reset.`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious activity detected. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed. Score: ${recaptchaResult.score}`);
+
+
+        // ===========================================
+        // 3. Find User With Valid Reset Token
+        // ===========================================
+        console.log("🔍 Checking password reset token...");
+
         const user = await User.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: new Date() }
         });
 
         if (!user) {
+            console.log("❌ Invalid or expired reset token");
             return res.status(400).json({
                 success: false,
                 message: 'Invalid or expired reset token.'
             });
         }
 
-        // Update password and clear reset token
+        console.log("🔑 Reset token valid. Updating password...");
+
+
+        // ===========================================
+        // 4. Update Password + Clear Reset Token
+        // ===========================================
         user.password = newPassword;
         user.resetPasswordToken = null;
         user.resetPasswordExpires = null;
+
         await user.save();
 
-        res.json({
+        console.log("✅ Password reset successful for:", user.email);
+
+
+        // ===========================================
+        // 5. Success Response
+        // ===========================================
+        return res.json({
             success: true,
             message: 'Password reset successfully!'
         });
 
     } catch (error) {
-        console.error('Reset password error:', error);
-        res.status(500).json({
+        console.error('❌ Reset password error:', error);
+
+        return res.status(500).json({
             success: false,
             message: 'Error resetting password.'
         });
     }
 });
+
 
 module.exports = router;

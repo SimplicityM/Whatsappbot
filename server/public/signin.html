@@ -177,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hide forgot modal initially
     forgotPasswordModal.style.display = "none";
 
-
     // ============================= MOBILE NAV =============================
     const hamburger = document.querySelector('.hamburger');
     const navMenu = document.querySelector('.nav-menu');
@@ -186,7 +185,6 @@ document.addEventListener('DOMContentLoaded', function() {
         hamburger.classList.toggle('active');
         navMenu.classList.toggle('active');
     });
-
 
     // ============================= PASSWORD TOGGLE =============================
     togglePassword.addEventListener('click', function() {
@@ -197,7 +195,6 @@ document.addEventListener('DOMContentLoaded', function() {
         icon.classList.toggle("fa-eye");
         icon.classList.toggle("fa-eye-slash");
     });
-
 
     // ============================= OPEN / CLOSE FORGOT PASSWORD MODAL =============================
     forgotPasswordLink.addEventListener('click', (e) => {
@@ -214,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keydown', (e) => {
         if (e.key === "Escape") forgotPasswordModal.style.display = "none";
     });
-
 
     // ============================= VALIDATION =============================
     function validateForm() {
@@ -234,7 +230,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         return valid;
     }
-
 
     // ============================= LOGIN HANDLER =============================
     form.addEventListener('submit', async function(e) {
@@ -286,8 +281,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-
-
     // ============================= FORGOT PASSWORD HANDLER =============================
     forgotPasswordForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -330,8 +323,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
-
-
 
 
     // ============================= NOTIFICATION =============================
