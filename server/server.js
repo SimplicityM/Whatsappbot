@@ -885,7 +885,7 @@ app.post('/api/admin/exempt-user', authenticateAdmin, async (req, res) => {
     }
 });
 
-/ Admin route to set user as admin by email
+// Admin route to set user as admin by email
 app.post('/api/admin/set-admin', authenticateAdmin, async (req, res) => {
     try {
         const { email, adminLevel, reason } = req.body;
