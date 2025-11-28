@@ -688,6 +688,69 @@
         </div>
     </div>
 
+!-- Add Admin Modal -->
+<div id="addAdminModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3>Add Admin User</h3>
+            <button class="modal-close" onclick="closeAddAdminModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="addAdminForm" onsubmit="submitAddAdmin(event)">
+                <div class="form-group">
+                    <label for="adminEmail">User Email *</label>
+                    <input 
+                        type="email" 
+                        id="adminEmail" 
+                        placeholder="user@example.com" 
+                        required
+                        autocomplete="off"
+                    >
+                    <small style="color: #6b7280; font-size: 12px;">
+                        Enter the email of an existing user or a new user who will register later
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="adminLevel">Admin Level *</label>
+                    <select id="adminLevel" required>
+                        <option value="">Select admin level</option>
+                        <option value="secondary">Secondary Admin</option>
+                        <option value="primary">Primary Admin</option>
+                        <option value="owner">Owner Admin</option>
+                    </select>
+                    <small style="color: #6b7280; font-size: 12px;">
+                        <strong>Secondary:</strong> Basic admin access<br>
+                        <strong>Primary:</strong> Advanced admin access<br>
+                        <strong>Owner:</strong> Full admin access
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="adminReason">Reason (Optional)</label>
+                    <textarea 
+                        id="adminReason" 
+                        rows="3" 
+                        placeholder="Why is this user being granted admin access?"
+                    ></textarea>
+                </div>
+
+                <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="closeAddAdminModal()">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-user-shield"></i>
+                        Grant Admin Access
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
     <!-- JavaScript -->
      <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
    <script src="js/admin.js"></script>

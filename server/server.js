@@ -885,6 +885,165 @@ app.post('/api/admin/exempt-user', authenticateAdmin, async (req, res) => {
     }
 });
 
+/ Admin route to set user as admin by email
+app.post('/api/admin/set-admin', authenticateAdmin, async (req, res) => {
+    try {
+        const { email, adminLevel, reason } = req.body;
+        
+        if (!email || !adminLevel) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and admin level are required'
+            });
+        }
+
+        // Validate admin level
+        const validLevels = ['secondary', 'primary', 'owner'];
+        if (!validLevels.includes(adminLevel)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid admin level. Must be: secondary, primary, or owner'
+            });
+        }
+
+        // Find user by email (case-insensitive)
+        let user = await User.findOne({ email: email.toLowerCase() });
+
+        // If user doesn't exist, create a placeholder account
+        if (!user) {
+            user = new User({
+                email: email.toLowerCase(),
+                fullName: email.split('@')[0], // Use email prefix as temporary name
+                password: require('crypto').randomBytes(32).toString('hex'), // Random password
+                status: 'pending', // They need to complete registration
+                subscription: 'starter',
+                adminLevel: adminLevel,
+                isAdmin: true,
+                exemptFromPayment: true,
+                exemptionReason: reason || `${adminLevel} admin privileges`,
+                exemptedBy: req.user.id,
+                exemptedAt: new Date()
+            });
+            await user.save();
+
+            console.log(`👨‍💼 Created placeholder admin account for ${email} with level: ${adminLevel}`);
+
+            return res.json({
+                success: true,
+                message: `Admin account created for ${email}. They will have admin access when they register and connect WhatsApp.`,
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    adminLevel: user.adminLevel,
+                    exemptFromPayment: user.exemptFromPayment
+                }
+            });
+        }
+
+        // User exists - update their admin level
+        await user.setAdminLevel(adminLevel);
+
+        console.log(`👨‍💼 Admin ${req.user.email} granted ${adminLevel} access to ${user.email}`);
+
+        res.json({
+            success: true,
+            message: `${user.email} has been granted ${adminLevel} admin access${user.whatsappNumber ? ' and can use the bot immediately' : ' and will have access when they connect WhatsApp'}`,
+            user: {
+                id: user._id,
+                email: user.email,
+                adminLevel: user.adminLevel,
+                exemptFromPayment: user.exemptFromPayment,
+                whatsappNumber: user.whatsappNumber
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Set admin error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error setting admin privileges'
+        });
+    }
+});
+
+// Admin route to get all admin users
+app.get('/api/admin/admin-users', authenticateAdmin, async (req, res) => {
+    try {
+        const admins = await User.find({
+            $or: [
+                { isAdmin: true },
+                { adminLevel: { $ne: 'none' } }
+            ]
+        }).select('fullName email whatsappNumber adminLevel exemptFromPayment isAdmin createdAt').lean();
+
+        res.json({
+            success: true,
+            admins
+        });
+    } catch (error) {
+        console.error('❌ Get admin users error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching admin users'
+        });
+    }
+});
+
+// Admin route to remove admin access
+app.post('/api/admin/remove-admin', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Prevent removing the system owner
+        if (user.role === 'system_admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot remove system admin privileges'
+            });
+        }
+
+        // Remove admin privileges
+        user.adminLevel = 'none';
+        user.isAdmin = false;
+        user.exemptFromPayment = false;
+        user.exemptionReason = null;
+        user.exemptedBy = null;
+        user.exemptedAt = null;
+
+        await user.save();
+
+        console.log(`👨‍💼 Admin ${req.user.email} removed admin access from ${user.email}`);
+
+        res.json({
+            success: true,
+            message: `Admin access removed from ${user.email}`
+        });
+
+    } catch (error) {
+        console.error('❌ Remove admin error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error removing admin privileges'
+        });
+    }
+});
+
 // Admin route to get all users with exemption status
 app.get('/api/admin/users-exemption-status', authenticateAdmin, async (req, res) => {
     try {

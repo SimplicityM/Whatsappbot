@@ -529,7 +529,7 @@ function setupEventListeners() {
             scheduleGroup.style.display = this.checked ? 'block' : 'none';
         });
     }
-    
+
      // Settings tabs 
     const tabBtns = document.querySelectorAll('.tab-btn');
     tabBtns.forEach(btn => {
@@ -1927,9 +1927,163 @@ function saveSettings() {
     showNotification('Settings saved successfully!', 'success');
 }
 
-function addAdmin() {
-    showNotification('Add admin functionality coming soon!', 'info');
+// ==================== ADD ADMIN FUNCTIONALITY ====================
+
+function openAddAdminModal() {
+    const modal = document.getElementById('addAdminModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        // Reset form
+        document.getElementById('addAdminForm').reset();
+    }
 }
+
+function closeAddAdminModal() {
+    const modal = document.getElementById('addAdminModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function submitAddAdmin(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('adminEmail').value.trim();
+    const adminLevel = document.getElementById('adminLevel').value;
+    const reason = document.getElementById('adminReason').value.trim();
+    
+    if (!email || !adminLevel) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/set-admin', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                email,
+                adminLevel,
+                reason: reason || `Granted ${adminLevel} admin privileges`
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            closeAddAdminModal();
+            loadAdminUsers(); // Refresh admin users list
+        } else {
+            showNotification(data.message || 'Failed to add admin', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding admin:', error);
+        showNotification('Error adding admin user', 'error');
+    }
+}
+
+async function loadAdminUsers() {
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/admin-users', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const adminUsersList = document.getElementById('adminUsersList');
+            if (!adminUsersList) return;
+            
+            if (data.admins.length === 0) {
+                adminUsersList.innerHTML = `
+                    <p style="color: #6b7280; font-size: 14px; padding: 10px;">
+                        No admin users found
+                    </p>
+                `;
+                return;
+            }
+            
+            adminUsersList.innerHTML = data.admins.map(admin => `
+                <div class="admin-user-card" style="background: #f9fafb; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600; color: #1f2937;">
+                            ${admin.fullName || admin.email}
+                        </div>
+                        <div style="font-size: 12px; color: #6b7280;">
+                            ${admin.email}
+                        </div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
+                            ${admin.whatsappNumber ? `📱 ${admin.whatsappNumber}` : '📱 Not connected'}
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="padding: 4px 8px; background: #667eea; color: white; border-radius: 4px; font-size: 11px; text-transform: capitalize;">
+                            ${admin.adminLevel}
+                        </span>
+                        ${admin.exemptFromPayment ? 
+                            '<div style="font-size: 10px; color: #10b981; margin-top: 4px;">✓ Payment Exempt</div>' 
+                            : ''}
+                        <button 
+                            onclick="removeAdmin('${admin._id}')" 
+                            style="margin-top: 8px; padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;"
+                            title="Remove admin access">
+                            <i class="fas fa-user-minus"></i> Remove
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading admin users:', error);
+    }
+}
+
+async function removeAdmin(userId) {
+    if (!confirm('Are you sure you want to remove admin access from this user?')) {
+        return;
+    }
+    
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch('/api/admin/remove-admin', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ userId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadAdminUsers(); // Refresh list
+        } else {
+            showNotification(data.message || 'Failed to remove admin', 'error');
+        }
+    } catch (error) {
+        console.error('Error removing admin:', error);
+        showNotification('Error removing admin access', 'error');
+    }
+}
+
+// Load admin users when settings section is opened
+document.addEventListener('DOMContentLoaded', function() {
+    // Load admin users when security tab is clicked
+    const securityTab = document.querySelector('[data-tab="security"]');
+    if (securityTab) {
+        securityTab.addEventListener('click', loadAdminUsers);
+    }
+});
 
 // ==================== GLOBAL FUNCTION EXPORTS ====================
 
@@ -1962,6 +2116,11 @@ window.saveSettings = saveSettings;
 window.addAdmin = addAdmin;
 window.exemptUser = exemptUser;
 window.refreshExemptions = refreshExemptions;
+window.openAddAdminModal = openAddAdminModal;
+window.closeAddAdminModal = closeAddAdminModal;
+window.submitAddAdmin = submitAddAdmin;
+window.loadAdminUsers = loadAdminUsers;
+window.removeAdmin = removeAdmin;
 
 // ==================== INITIALIZATION COMPLETE ====================
 
