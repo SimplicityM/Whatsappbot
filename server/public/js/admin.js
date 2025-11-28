@@ -1932,16 +1932,17 @@ function saveSettings() {
 function openAddAdminModal() {
     const modal = document.getElementById('addAdminModal');
     if (modal) {
-        modal.style.display = 'flex';
+        modal.classList.add('active');
         // Reset form
-        document.getElementById('addAdminForm').reset();
+        const form = document.getElementById('addAdminForm');
+        if (form) form.reset();
     }
 }
 
 function closeAddAdminModal() {
     const modal = document.getElementById('addAdminModal');
     if (modal) {
-        modal.style.display = 'none';
+        modal.classList.remove('active');
     }
 }
 
