@@ -229,6 +229,112 @@ app.use(express.static(path.join(__dirname, 'public')));
 //     }
 // };
 
+// // DB connection
+// const connectDB = async () => {
+//   try {
+//     const mongoURI = process.env.MONGODB_URI;
+//     if (!mongoURI) throw new Error('MONGODB_URI not defined');
+
+//     console.log('🔄 Connecting to MongoDB...');
+//     console.log('📍 MongoDB URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@')); // Log sanitized URI
+
+//     // Set global mongoose settings BEFORE connecting
+//     mongoose.set('bufferCommands', false);
+//     mongoose.set('strictQuery', false);
+
+//     await mongoose.connect(mongoURI, {
+//       serverSelectionTimeoutMS: 60000,  // Increased to 60 seconds
+//       socketTimeoutMS: 60000,
+//       connectTimeoutMS: 60000,          // Added connection timeout
+//       bufferCommands: false,
+//       maxPoolSize: 10,
+//       minPoolSize: 2,
+//       retryWrites: true,                // Added retry writes
+//       w: 'majority'                     // Added write concern
+//     });
+
+//     console.log('🟢 Initial MongoDB connection established');
+
+//     // Verify DB connection with ping
+//     await mongoose.connection.db.admin().ping();
+//     console.log('✅ MongoDB ping successful');
+    
+//     // Wait for connection to stabilize
+//     await new Promise(resolve => setTimeout(resolve, 2000));
+//     console.log('✅ MongoDB connection stabilized');
+
+//     // ----- MongoDB Connection Event Handlers -----
+//     mongoose.connection.on('connected', () => {
+//       console.log("🟢 MongoDB connected.");
+//     });
+
+//     mongoose.connection.on('error', (err) => {
+//       console.error("❌ MongoDB connection error:", err);
+//     });
+
+//     mongoose.connection.on('disconnected', () => {
+//       console.warn("⚠️ MongoDB disconnected. Attempting to reconnect...");
+//     });
+
+//     mongoose.connection.on('reconnected', () => {
+//       console.log("🔄 MongoDB reconnected.");
+//     });
+
+//     mongoose.connection.on('reconnectFailed', () => {
+//       console.error("❌ MongoDB reconnection failed");
+//     });
+//     // -----------------------------------------
+
+//     // Load models AFTER confirmed connection
+//     User = require('./models/User');
+//     Session = require('./models/Session');
+
+//     // Assign globally if needed
+//     global.User = User;
+//     global.Session = Session;
+
+//     console.log('✅ Models loaded');
+
+//     // Test database operations before proceeding
+//     try {
+//       await User.countDocuments();
+//       await Session.countDocuments();
+//       console.log('✅ Database operations verified');
+//     } catch (dbTestError) {
+//       console.error('❌ Database operation test failed:', dbTestError);
+//       throw dbTestError;
+//     }
+
+//     // Register auth routes AFTER models are loaded
+//     app.use("/api/auth", require("./routes/auth"));
+//     console.log('✅ Auth routes registered');
+
+//     app.use("/api/user", require("./routes/user"));
+//     console.log('✅ User routes registered');
+
+//     app.use("/api/admin", require("./routes/admin"));
+//     console.log('✅ Admin routes registered');
+
+//     app.use("/api/sessions", require("./routes/sessions"));
+//     console.log('✅ Session routes registered');
+
+//     // Start trial monitoring AFTER DB is connected
+//     const { checkExpiredTrials } = require('./utils/trialMonitor');
+//     checkExpiredTrials();
+//     console.log('✅ Trial monitoring started');
+
+//     return true; // Return success
+
+//   } catch (err) {
+//     console.error('❌ Server DB error:', err);
+//     console.error('❌ Error details:', err.message);
+//     console.error('❌ Stack trace:', err.stack);
+    
+//     // Don't exit immediately, let retry logic handle it
+//     throw err;
+//   }
+// };
+
 // DB connection
 const connectDB = async () => {
   try {
@@ -246,7 +352,6 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 60000,  // Increased to 60 seconds
       socketTimeoutMS: 60000,
       connectTimeoutMS: 60000,          // Added connection timeout
-      bufferCommands: false,
       maxPoolSize: 10,
       minPoolSize: 2,
       retryWrites: true,                // Added retry writes
@@ -255,9 +360,24 @@ const connectDB = async () => {
 
     console.log('🟢 Initial MongoDB connection established');
 
-    // Verify DB connection with ping
-    await mongoose.connection.db.admin().ping();
-    console.log('✅ MongoDB ping successful');
+    // Wait for connection to be fully ready
+    let attempts = 0;
+    while (mongoose.connection.readyState !== 1 && attempts < 10) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      attempts++;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('MongoDB connection not ready after waiting');
+    }
+
+    // Verify DB connection with ping - with safety check
+    if (mongoose.connection.db) {
+      await mongoose.connection.db.admin().ping();
+      console.log('✅ MongoDB ping successful');
+    } else {
+      console.log('⚠️ Skipping ping - connection.db not available yet');
+    }
     
     // Wait for connection to stabilize
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -332,6 +452,78 @@ const connectDB = async () => {
     
     // Don't exit immediately, let retry logic handle it
     throw err;
+  }
+};
+
+// Global variables
+const activeClients = new Map();
+
+// Subscription tiers and their features
+const subscriptionPlans = {
+  free: {
+    name: 'Free Plan',
+    maxSessions: 1,
+    amount: 0, // Free
+    allowedCommands: ['ping', 'help','list','tag', 'status'],
+    features: ['basic_messaging'],
+    description: 'Perfect for trying out the bot',
+    limits: {
+      dailyMessages: 50,
+      monthlyMessages: 1000,
+      groupsPerSession: 5
+    }
+  },
+  starter: {
+    name: 'Starter Plan',
+    maxSessions: 5,
+    amount: 2900, // ₦29/month (in kobo)
+    allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'tag', 'tagexcept'],
+    features: ['basic_messaging', 'broadcast', 'auto_reply', 'group_tagging'],
+    description: 'Essential features for small businesses',
+    limits: {
+      dailyMessages: 500,
+      monthlyMessages: 10000,
+      groupsPerSession: 20
+    }
+  },
+  professional: {
+    name: 'Professional Plan',
+    maxSessions: 25,
+    amount: 7900, // ₦79/month (in kobo)
+    allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'tag', 'tagexcept', 'list'],
+    features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'group_tagging', 'advanced_commands'],
+    description: 'Advanced features for growing businesses',
+    limits: {
+      dailyMessages: 2000,
+      monthlyMessages: 50000,
+      groupsPerSession: 50
+    }
+  },
+  business: {
+    name: 'Business Plan',
+    maxSessions: 100,
+    amount: 14900, // ₦149/month (in kobo)
+    allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export'],
+    features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands', 'group_tagging', 'advanced_commands', 'priority_support', 'data_export'],
+    description: 'Comprehensive solution for established businesses',
+    limits: {
+      dailyMessages: 10000,
+      monthlyMessages: 250000,
+      groupsPerSession: 200
+    }
+  },
+  enterprise: {
+    name: 'Enterprise Plan',
+    maxSessions: -1, // Unlimited
+    amount: 27900, // ₦279/month (in kobo)
+    allowedCommands: 'all', // All commands available
+    features: ['all_features', 'unlimited_messaging', 'dedicated_support', 'custom_integrations', 'white_label', 'api_access', 'advanced_analytics', 'multi_user_access'],
+    description: 'Full-featured solution for large organizations',
+    limits: {
+      dailyMessages: -1, // Unlimited
+      monthlyMessages: -1, // Unlimited
+      groupsPerSession: -1 // Unlimited
+    }
   }
 };
 
@@ -1192,7 +1384,53 @@ io.on('connection', (socket) => {
 //   }
 // };
 
+// const startServer = async () => {
+//   let retries = 5;
+//   let connected = false;
+  
+//   while (retries > 0 && !connected) {
+//     try {
+//       console.log(`🔄 Connection attempt ${6 - retries}/5...`);
+//       await connectDB();
+//       connected = true;
+      
+//       const PORT = process.env.PORT || 3000;
+//       server.listen(PORT, () => {
+//         console.log(`🚀 Server running on port ${PORT}`);
+//         console.log('✅ All systems ready!');
+//       });
+      
+//     } catch (error) {
+//       retries--;
+//       console.error(`❌ Failed to start server (${retries} retries left):`, error.message);
+      
+//       if (retries === 0) {
+//         console.error('❌ All connection attempts failed. Exiting...');
+//         console.error('💡 Please check:');
+//         console.error('   1. MONGODB_URI environment variable is set correctly');
+//         console.error('   2. MongoDB Atlas Network Access allows your IP (0.0.0.0/0)');
+//         console.error('   3. Database user credentials are correct');
+//         console.error('   4. Your internet connection is stable');
+//         process.exit(1);
+//       }
+      
+//       console.log(`⏳ Retrying in 5 seconds...`);
+//       await new Promise(resolve => setTimeout(resolve, 5000));
+//     }
+//   }
+// };
+
+// startServer();
+
+// Start server ONLY after MongoDB is connected with retry logic
+let serverStarted = false; // Add flag to prevent multiple starts
+
 const startServer = async () => {
+  if (serverStarted) {
+    console.log('⚠️ Server already started, skipping...');
+    return;
+  }
+
   let retries = 5;
   let connected = false;
   
@@ -1204,6 +1442,7 @@ const startServer = async () => {
       
       const PORT = process.env.PORT || 3000;
       server.listen(PORT, () => {
+        serverStarted = true; // Mark as started
         console.log(`🚀 Server running on port ${PORT}`);
         console.log('✅ All systems ready!');
       });
