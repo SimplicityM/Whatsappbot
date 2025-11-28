@@ -45,6 +45,13 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    googleId: {
+        type: String,
+        sparse: true
+    },
+    profilePicture: {
+        type: String
+    },
     phone: {
         type: String,
         default: null

@@ -415,12 +415,46 @@
         }
 
         // Google Sign-in callback
-        function handleCredentialResponse(response) {
-            console.log("Encoded JWT ID token: " + response.credential);
-            // Handle the Google sign-in response here
-            // You can send this token to your backend for verification
-            showNotification('Google sign-in successful!', 'success');
+async function handleCredentialResponse(response) {
+    console.log("Google sign-in initiated...");
+    
+    try {
+        // Show loading state
+        showNotification('Signing in with Google...', 'info');
+        
+        const result = await fetch('/auth/google-login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                credential: response.credential
+            })
+        });
+
+        const data = await result.json();
+
+        if (data.success) {
+            showNotification('Sign-in successful! Redirecting...', 'success');
+            
+            // Store user session
+            localStorage.setItem('userSession', JSON.stringify({
+                token: data.data.token,
+                user: data.data.user
+            }));
+
+            // Redirect to dashboard
+            setTimeout(() => {
+                window.location.href = '/dashboard.html';
+            }, 1000);
+        } else {
+            showNotification(data.message || 'Google sign-in failed', 'error');
         }
+    } catch (error) {
+        console.error('Google sign-in error:', error);
+        showNotification('An error occurred during sign-in. Please try again.', 'error');
+    }
+}
     });
 </script>
 </body>
