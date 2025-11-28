@@ -529,9 +529,8 @@ function setupEventListeners() {
             scheduleGroup.style.display = this.checked ? 'block' : 'none';
         });
     }
-}
-
- // Settings tabs 
+    
+     // Settings tabs 
     const tabBtns = document.querySelectorAll('.tab-btn');
     tabBtns.forEach(btn => {
         btn.addEventListener('click', function() {
@@ -555,7 +554,10 @@ function setupEventListeners() {
             }
         });
     });
+
 }
+
+
 
 function switchSection(sectionName) {
     currentSection = sectionName;
