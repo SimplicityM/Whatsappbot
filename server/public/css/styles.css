@@ -3967,7 +3967,7 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-Hero Section
+/* Hero Section
 .hero-section.commands-hero {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -4013,7 +4013,7 @@ Hero Section
     top: 50%;
     transform: translateY(-50%);
     color: #666;
-}
+} */
 
 /* Commands Navigation */
 .commands-nav {
