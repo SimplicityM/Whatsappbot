@@ -217,11 +217,84 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// Google OAuth Login/Signup
 router.post("/google-login", async (req, res) => {
-    return res.status(400).json({
-        success: false,
-        message: "Google login not implemented yet."
-    });
+    try {
+        const { credential } = req.body;
+        
+        if (!credential) {
+            return res.status(400).json({
+                success: false,
+                message: "Google credential is required"
+            });
+        }
+
+        // Verify Google token
+        const { OAuth2Client } = require('google-auth-library');
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com');
+        
+        const ticket = await client.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID || '1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com'
+        });
+        
+        const payload = ticket.getPayload();
+        const { email, name, picture, sub: googleId } = payload;
+
+        // Check if user exists
+        let user = await User.findOne({ email: email.toLowerCase() });
+
+        if (!user) {
+            // Create new user from Google account
+            user = new User({
+                fullName: name,
+                email: email.toLowerCase(),
+                password: crypto.randomBytes(32).toString('hex'), // Random password (won't be used)
+                isEmailVerified: true, // Google emails are verified
+                googleId: googleId,
+                profilePicture: picture,
+                paymentStatus: 'trial',
+                status: 'active'
+            });
+            await user.save();
+            console.log(`✅ New user created via Google: ${email}`);
+        } else {
+            // Update existing user with Google ID if not set
+            if (!user.googleId) {
+                user.googleId = googleId;
+                user.isEmailVerified = true;
+                await user.save();
+            }
+            // Update last login
+            user.lastLogin = new Date();
+            await user.save();
+            console.log(`✅ Existing user logged in via Google: ${email}`);
+        }
+
+        // Generate token
+        const token = generateToken(user._id);
+
+        // Remove sensitive data
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        delete userResponse.emailVerificationToken;
+
+        res.json({
+            success: true,
+            message: 'Google sign-in successful!',
+            data: {
+                user: userResponse,
+                token
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Google login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Google authentication failed. Please try again.'
+        });
+    }
 });
 
 // Admin Login Route

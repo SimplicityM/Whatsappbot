@@ -135,267 +135,214 @@
         </div>
     </div>
 
-   <!-- GLOBAL GOOGLE CALLBACK (must be outside DOMContentLoaded) -->
+   <!-- GOOGLE ONE TAP CALLBACK -->
 <script>
-    window.handleCredentialResponse = function (response) {
-        console.log("Encoded JWT ID token:", response.credential);
-
-        // Send token to backend for verification
-        fetch("https://whatsappbot-u5yq.onrender.com/api/auth/google-login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: response.credential })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                localStorage.setItem("userSession", JSON.stringify(data.data));
-                showNotification("Google sign-in successful!", "success");
-                setTimeout(() => (window.location.href = "/dashboard"), 1500);
-            } else {
-                showNotification(data.message || "Google login failed", "error");
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            showNotification("Network error. Try again.", "error");
-        });
-    };
+window.handleCredentialResponse = function (response) {
+    fetch("https://whatsappbot-u5yq.onrender.com/api/auth/google-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: response.credential })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            localStorage.setItem("userSession", JSON.stringify(data.data));
+            showNotification("Google sign-in successful!", "success");
+            setTimeout(() => (window.location.href = "/dashboard"), 1500);
+        } else {
+            showNotification(data.message || "Google login failed", "error");
+        }
+    })
+    .catch(() => showNotification("Network error. Try again.", "error"));
+};
 </script>
 
 <!-- MAIN SCRIPT -->
 <script>
-// Form validation and interactions
 document.addEventListener('DOMContentLoaded', function() {
-    const forgotPasswordModal = document.getElementById('forgotPasswordModal');
-    if (forgotPasswordModal) {
-        forgotPasswordModal.style.display = 'none';
-    }
 
+    // ============================= ELEMENTS =============================
     const form = document.getElementById('signinForm');
-    const togglePassword = document.getElementById('togglePassword');
     const password = document.getElementById('password');
+    const togglePassword = document.getElementById('togglePassword');
     const submitBtn = document.getElementById('submitBtn');
     const btnLoader = document.getElementById('btnLoader');
     const btnText = document.querySelector('.btn-text');
-    const forgotPasswordLink = document.getElementById('forgotPasswordLink');
-    const modalClose = document.getElementById('modalClose');
-    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
 
+    const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+    const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+    const modalClose = document.getElementById('modalClose');
+
+    // Hide forgot modal initially
+    forgotPasswordModal.style.display = "none";
+
+
+    // ============================= MOBILE NAV =============================
     const hamburger = document.querySelector('.hamburger');
     const navMenu = document.querySelector('.nav-menu');
 
-    if (hamburger && navMenu) {
-        hamburger.addEventListener('click', () => {
-            hamburger.classList.toggle('active');
-            navMenu.classList.toggle('active');
-        });
-    }
-
-    if (togglePassword && password) {
-        togglePassword.addEventListener('click', function() {
-            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-            password.setAttribute('type', type);
-            const icon = this.querySelector('i');
-            if (icon) {
-                icon.classList.toggle('fa-eye');
-                icon.classList.toggle('fa-eye-slash');
-            }
-        });
-    }
-
-    if (forgotPasswordLink && forgotPasswordModal) {
-        forgotPasswordLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            forgotPasswordModal.style.display = 'flex';
-        });
-    }
-
-    if (modalClose && forgotPasswordModal) {
-        modalClose.addEventListener('click', function() {
-            forgotPasswordModal.style.display = 'none';
-        });
-    }
-
-    if (forgotPasswordModal) {
-        forgotPasswordModal.addEventListener('click', function(e) {
-            if (e.target === forgotPasswordModal) {
-                forgotPasswordModal.style.display = 'none';
-            }
-        });
-    }
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && forgotPasswordModal && forgotPasswordModal.style.display === 'flex') {
-            forgotPasswordModal.style.display = 'none';
-        }
+    hamburger.addEventListener('click', () => {
+        hamburger.classList.toggle('active');
+        navMenu.classList.toggle('active');
     });
 
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            if (validateForm()) {
-                submitForm();
-            }
-        });
-    }
 
-    if (forgotPasswordForm) {
-        forgotPasswordForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            submitForgotPassword();
-        });
-    }
+    // ============================= PASSWORD TOGGLE =============================
+    togglePassword.addEventListener('click', function() {
+        const type = password.type === "password" ? "text" : "password";
+        password.type = type;
 
+        const icon = this.querySelector("i");
+        icon.classList.toggle("fa-eye");
+        icon.classList.toggle("fa-eye-slash");
+    });
+
+
+    // ============================= OPEN / CLOSE FORGOT PASSWORD MODAL =============================
+    forgotPasswordLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        forgotPasswordModal.style.display = "flex";
+    });
+
+    modalClose.addEventListener('click', () => forgotPasswordModal.style.display = "none");
+
+    forgotPasswordModal.addEventListener('click', (e) => {
+        if (e.target === forgotPasswordModal) forgotPasswordModal.style.display = "none";
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === "Escape") forgotPasswordModal.style.display = "none";
+    });
+
+
+    // ============================= VALIDATION =============================
     function validateForm() {
-        let isValid = true;
-        const formData = new FormData(form);
+        let valid = true;
+        const email = document.getElementById("email").value.trim();
+        const pwd = password.value;
 
-        const email = formData.get('email')?.trim() || '';
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            showError('emailError', 'Please enter a valid email address');
-            isValid = false;
-        } else {
-            clearError('emailError');
-        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            showError("emailError", "Enter a valid email");
+            valid = false;
+        } else clearError("emailError");
 
-        const pwd = formData.get('password') || '';
-        if (pwd.length < 1) {
-            showError('passwordError', 'Password is required');
-            isValid = false;
-        } else {
-            clearError('passwordError');
-        }
+        if (!pwd.length) {
+            showError("passwordError", "Password is required");
+            valid = false;
+        } else clearError("passwordError");
 
-        return isValid;
+        return valid;
     }
 
-    function showError(elementId, message) {
-        const errorElement = document.getElementById(elementId);
-        if (errorElement) {
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-        }
-    }
 
-    function clearError(elementId) {
-        const errorElement = document.getElementById(elementId);
-        if (errorElement) {
-            errorElement.style.display = 'none';
-        }
-    }
-
-    async function submitForm() {
-        if (!submitBtn || !btnText || !btnLoader) return;
+    // ============================= LOGIN HANDLER =============================
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!validateForm()) return;
 
         submitBtn.disabled = true;
-        btnText.style.opacity = '0';
-        btnLoader.style.display = 'block';
+        btnText.style.opacity = "0";
+        btnLoader.style.display = "block";
 
-        try {
-            const formData = new FormData(form);
+        // RUN RECAPTCHA FIRST
+        grecaptcha.ready(function() {
+            grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "login" })
+            .then(async function(token) {
 
-            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: formData.get('email'),
-                    password: formData.get('password')
-                })
+                try {
+                    const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/login", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            email: document.getElementById("email").value.trim(),
+                            password: document.getElementById("password").value,
+                            recaptchaToken: token
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        localStorage.setItem("userSession", JSON.stringify({
+                            token: data.data.token,
+                            user: data.data.user
+                        }));
+
+                        showNotification("Login successful! Redirecting...", "success");
+                        setTimeout(() => window.location.href = "/dashboard", 1500);
+                    } else {
+                        showNotification(data.message || "Invalid login", "error");
+                    }
+
+                } catch (err) {
+                    showNotification("Network error. Try again.", "error");
+                }
+
+                submitBtn.disabled = false;
+                btnText.style.opacity = "1";
+                btnLoader.style.display = "none";
             });
+        });
+    });
 
-            const data = await response.json();
-console.log('Login response:', data); // Add this line
-console.log('Response status:', response.status); // Add this too
 
-            if (data.success) {
-                const userSession = {
-                    token: data.data.token,
-                    user: data.data.user
-                };
-                localStorage.setItem('userSession', JSON.stringify(userSession));
 
-                showNotification('Login successful! Redirecting to dashboard...', 'success');
+    // ============================= FORGOT PASSWORD HANDLER =============================
+    forgotPasswordForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 1500);
-            } else {
-                showNotification(data.message || 'Invalid email or password. Please try again.', 'error');
-            }
-        } catch (error) {
-            console.error('Login error:', error);
-            showNotification('Network error. Please check your connection and try again.', 'error');
-        } finally {
-            submitBtn.disabled = false;
-            btnText.style.opacity = '1';
-            btnLoader.style.display = 'none';
-        }
-    }
+        const email = document.getElementById("resetEmail").value.trim();
+        const resetBtn = document.getElementById("resetSubmitBtn");
+        const resetLoader = document.getElementById("resetBtnLoader");
+        const resetText = resetBtn.querySelector(".btn-text");
 
-    async function submitForgotPassword() {
-        const resetSubmitBtn = document.getElementById('resetSubmitBtn');
-        const resetBtnLoader = document.getElementById('resetBtnLoader');
-        const resetBtnText = resetSubmitBtn.querySelector('.btn-text');
+        resetBtn.disabled = true;
+        resetText.style.opacity = "0";
+        resetLoader.style.display = "block";
 
-        if (!resetSubmitBtn) return;
+        grecaptcha.ready(() => {
+            grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "forgot_password" })
+            .then(async (token) => {
 
-        resetSubmitBtn.disabled = true;
-        resetBtnText.style.opacity = '0';
-        resetBtnLoader.style.display = 'block';
+                try {
+                    const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/forgot-password", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, recaptchaToken: token })
+                    });
 
-        try {
-            const formData = new FormData(forgotPasswordForm);
-            const email = formData.get('resetEmail')?.trim();
+                    const data = await res.json();
 
-            if (!email) {
-                showError('resetEmailError', 'Email is required');
-                return;
-            }
+                    if (data.success) {
+                        showNotification("Password reset link sent!", "success");
+                        forgotPasswordModal.style.display = "none";
+                    } else {
+                        showNotification(data.message || "Error sending reset email", "error");
+                    }
+                } catch (err) {
+                    showNotification("Network error. Try again.", "error");
+                }
 
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                showError('resetEmailError', 'Please enter a valid email address');
-                return;
-            }
-
-            clearError('resetEmailError');
-
-            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/forgot-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                resetBtn.disabled = false;
+                resetText.style.opacity = "1";
+                resetLoader.style.display = "none";
             });
+        });
+    });
 
-            const data = await response.json();
 
-            if (data.success) {
-                showNotification('Password reset instructions sent to your email!', 'success');
-                forgotPasswordModal.style.display = 'none';
-                forgotPasswordForm.reset();
-            } else {
-                showNotification(data.message || 'Error sending reset email. Please try again.', 'error');
-            }
-        } catch (error) {
-            console.error('Forgot password error:', error);
-            showNotification('Network error. Please check your connection and try again.', 'error');
-        } finally {
-            resetSubmitBtn.disabled = false;
-            resetBtnText.style.opacity = '1';
-            resetBtnLoader.style.display = 'none';
-        }
-    }
 
-    function showNotification(message, type = 'info') {
-        const existingNotifications = document.querySelectorAll('.custom-notification');
-        existingNotifications.forEach(notification => notification.remove());
 
-        const notification = document.createElement('div');
-        notification.className = `custom-notification ${type}`;
-        notification.innerHTML = `
+    // ============================= NOTIFICATION =============================
+    function showNotification(message, type="info") {
+        document.querySelectorAll(".custom-notification").forEach(n => n.remove());
+
+        const n = document.createElement("div");
+        n.className = `custom-notification ${type}`;
+        n.innerHTML = `
             <div class="notification-content">
-                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <i class="fas fa-${type === "success" ? "check-circle" : "exclamation-circle"}"></i>
                 <span>${message}</span>
             </div>
             <button class="notification-close" onclick="this.parentElement.remove()">
@@ -403,16 +350,11 @@ console.log('Response status:', response.status); // Add this too
             </button>
         `;
 
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            if (notification.parentElement) {
-                notification.remove();
-            }
-        }, 10000);
+        document.body.appendChild(n);
+        setTimeout(() => n.remove(), 5000);
     }
+
 });
 </script>
-
 </body>
 </html>
