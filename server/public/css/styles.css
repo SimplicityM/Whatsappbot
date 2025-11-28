@@ -883,7 +883,7 @@ input[type="password"].success {
 
 .hero-description {
   font-size: var(--font-size-lg);
-  color: var(--gray-800);
+  color: var(--gray-900);
   margin-bottom: var(--space-8);
   line-height: 1.8; /* Changed from 1.7 for better readability */
   max-width: 540px; /* Add this to prevent text from being too wide */
