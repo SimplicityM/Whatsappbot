@@ -531,6 +531,32 @@ function setupEventListeners() {
     }
 }
 
+ // Settings tabs 
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.getAttribute('data-tab');
+            
+            // Remove active class from all tab buttons
+            tabBtns.forEach(b => b.classList.remove('active'));
+            
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Hide all settings tabs
+            document.querySelectorAll('.settings-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected settings tab
+            const selectedTab = document.getElementById(`${tabName}-settings`);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+        });
+    });
+}
+
 function switchSection(sectionName) {
     currentSection = sectionName;
 
@@ -1767,56 +1793,6 @@ function systemRestart() {
     }
 }
 
-// function sendBroadcast() {
-//     const message = document.getElementById('broadcastMessage')?.value;
-//     const target = document.getElementById('broadcastTarget')?.value;
-//     const scheduleMessage = document.getElementById('scheduleMessage')?.checked;
-//     const scheduleTime = document.getElementById('scheduleTime')?.value;
-    
-//     if (!message || !message.trim()) {
-//         showNotification('Please enter a message', 'error');
-//         return;
-//     }
-
-//     if (scheduleMessage && !scheduleTime) {
-//         showNotification('Please select a schedule time', 'error');
-//         return;
-//     }
-
-//     // Simulate broadcast sending
-//     showNotification('Sending broadcast...', 'info');
-    
-//     setTimeout(() => {
-//         const targetText = target === 'all' ? 'all users' : 
-//                           target === 'groups' ? 'all groups' : 
-//                           target === 'individuals' ? 'all individuals' : 'selected users';
-        
-//         if (scheduleMessage) {
-//             showNotification(`Broadcast scheduled successfully for ${new Date(scheduleTime).toLocaleString()}!`, 'success');
-//         } else {
-//             showNotification(`Broadcast sent successfully to ${targetText}!`, 'success');
-//         }
-        
-//         closeBroadcastModal();
-        
-//         // Add to recent activity
-//         const activityList = document.getElementById('activityList');
-//         if (activityList && activityList.children.length > 0) {
-//             const newActivity = document.createElement('div');
-//             newActivity.className = 'activity-item success';
-//             newActivity.innerHTML = `
-//                 <div class="activity-icon">
-//                     <i class="fas fa-bullhorn"></i>
-//                 </div>
-//                 <div class="activity-content">
-//                     <p>Broadcast sent to ${targetText}</p>
-//                     <span class="activity-time">Just now</span>
-//                 </div>
-//             `;
-//             activityList.insertBefore(newActivity, activityList.firstChild);
-//         }
-//     }, 1500);
-// }
 
 async function sendBroadcast() {
     const message = document.getElementById('broadcastMessage')?.value;
