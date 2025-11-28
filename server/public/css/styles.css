@@ -817,7 +817,11 @@ input[type="password"].success {
   z-index: 1;
 }
 
-.hero-content {
+/* .hero-content {
+  max-width: 600px;
+} */
+
+.hero-section:not(.commands-hero) .hero-content {
   max-width: 600px;
 }
 
@@ -3967,54 +3971,6 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Hero Section
-.hero-section.commands-hero {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 80px 0;
-    text-align: center;
-}
-
-.hero-content h1 {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    font-weight: 700;
-}
-
-.hero-content h1 i {
-    margin-right: 15px;
-}
-
-.hero-content p {
-    font-size: 1.2rem;
-    margin-bottom: 2rem;
-    opacity: 0.9;
-}
-
-.command-search {
-    position: relative;
-    max-width: 500px;
-    margin: 30px auto 0;
-}
-
-.search-input {
-    width: 100%;
-    padding: 15px 50px 15px 20px;
-    border: none;
-    border-radius: 25px;
-    font-size: 16px;
-    outline: none;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-.command-search i {
-    position: absolute;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #666;
-} */
-
 /* Commands Navigation */
 .commands-nav {
     background: #f8f9fa;
@@ -5966,4 +5922,12 @@ input:checked + .slider:before {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+.hero-title {
+  color: #0f172a; /* stronger dark slate */
+}
+
+.hero-description {
+  color: #334155; /* darker and clearer */
 }
