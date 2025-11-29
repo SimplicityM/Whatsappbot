@@ -788,17 +788,21 @@ input[type="password"].success {
    ULTRA PREMIUM HERO — CINEMATIC VERSION (same class names)
 =========================================================== */
 
+/* ==========================================================
+   ULTRA PREMIUM HERO — FINAL MERGED NON-CONFLICT VERSION
+=========================================================== */
+
 /* Main Hero Area */
 .hero {
   position: relative;
-  background: #0d1117; /* Override plain gradient */
+  background: #0d1117;
   padding: 120px 0 120px;
   margin-top: 4rem;
   overflow: hidden;
   color: white;
 }
 
-/* Replace your old gradient dots with CINEMATIC neon moving grid */
+/* CINEMATIC Neon Grid Background */
 .hero::before {
   content: "";
   position: absolute;
@@ -821,7 +825,6 @@ input[type="password"].success {
   opacity: 0.9;
   animation: heroFloat 6s ease-in-out infinite;
 }
-
 .hero .emoji-1 { top: 22%; left: 5%; animation-duration: 7s; }
 .hero .emoji-2 { bottom: 15%; right: 8%; animation-duration: 9s; }
 .hero .emoji-3 { top: 60%; right: 25%; animation-duration: 8s; }
@@ -880,8 +883,6 @@ input[type="password"].success {
   gap: 18px;
   margin-bottom: 3rem;
 }
-
-/* STYLING your existing .btn-primary and .btn-secondary */
 .hero-buttons .btn-primary {
   padding: 16px 28px;
   font-weight: 700;
@@ -891,12 +892,10 @@ input[type="password"].success {
   box-shadow: 0 5px 18px rgba(99,102,241,0.4);
   transition: 0.3s ease;
 }
-
 .hero-buttons .btn-primary:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 28px rgba(99,102,241,0.5);
 }
-
 .hero-buttons .btn-secondary {
   padding: 16px 28px;
   border-radius: 12px;
@@ -906,7 +905,6 @@ input[type="password"].success {
   color: white !important;
   transition: 0.3s;
 }
-
 .hero-buttons .btn-secondary:hover {
   background: rgba(255,255,255,0.2);
   transform: translateY(-4px);
@@ -918,7 +916,6 @@ input[type="password"].success {
   gap: 3rem;
   margin-top: 1rem;
 }
-
 .stat-number {
   color: #6366f1;
   font-weight: 800;
@@ -950,24 +947,63 @@ input[type="password"].success {
   overflow: hidden;
 }
 
-/* Chat UI Enhancements */
+/* ==========================================================
+   FINAL MERGED CHAT BUBBLE FIX — WhatsApp Mockup
+=========================================================== */
+
 .chat-header {
   background: #0ea5e9 !important;
   font-weight: 700;
 }
 
+/* Chat container */
 .chat-messages {
+  flex: 1;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
+  overflow-y: auto;
 }
 
-/* Chat bubble fade-in animation */
+/* Base message bubble */
 .message {
-  opacity: 0;
+  max-width: 78%;
+  display: flex;
+  opacity: 0; /* for fade animation */
 }
 
+.message-content {
+  background: #f1f5f9;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: #1e293b;
+  box-shadow: 0 3px 9px rgba(0,0,0,0.12);
+}
+
+/* BOT bubble (left) */
+.bot-message {
+  align-self: flex-start;
+}
+.bot-message .message-content {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-bottom-left-radius: 4px;
+}
+
+/* USER bubble (right) */
+.user-message {
+  align-self: flex-end;
+}
+.user-message .message-content {
+  background: #4f46e5;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+/* Fade-in animation */
 .message:nth-child(1) { animation: chatFade 1s ease-out forwards 0.3s; }
 .message:nth-child(2) { animation: chatFade 1s ease-out forwards 0.9s; }
 
