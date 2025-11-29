@@ -289,7 +289,7 @@ router.post("/google-login", async (req, res) => {
         // 2. Verify reCAPTCHA v3 first (protects against bot abuse)
         // ======================================================
         const verifyRecaptcha = require("../utils/verifyRecaptcha");
-        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "google_login");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken);
 
         if (!recaptchaResult.success) {
             console.log(`❌ Low reCAPTCHA score (${recaptchaResult.score}). Blocking Google login.`);
