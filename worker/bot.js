@@ -1120,7 +1120,7 @@ client.on('message_create', async (message) => {
           }
       }
 
-  
+  }  
     // --------------------------------------------------
 // 🟢 AUTO-REPLY TRIGGER (works in all groups & chats)
 // --------------------------------------------------
