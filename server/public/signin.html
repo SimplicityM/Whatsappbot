@@ -275,7 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
         grecaptcha.ready(function() {
             grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "login" })
             .then(async function(token) {
-                
+
         const API_BASE = window.location.origin;
                 try {
                     const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function() {
         grecaptcha.ready(() => {
             grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "forgot_password" })
             .then(async (token) => {
-
+                const API_BASE = window.location.origin;
                 try {
                     const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/forgot-password", {
                         method: "POST",
