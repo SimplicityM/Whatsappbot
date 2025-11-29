@@ -170,7 +170,7 @@ window.handleCredentialResponse = function (response) {
                     localStorage.setItem("userSession", JSON.stringify(data.data));
                     
                     showNotification("Google sign-in successful!", "success");
-                    setTimeout(() => (window.location.href = "/dashboard"), 1500);
+                    setTimeout(() => (window.location.href = "/dashboard.html"), 1500);
                 } else {
                     showNotification(data.message || "Google login failed", "error");
                 }
