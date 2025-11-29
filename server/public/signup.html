@@ -178,6 +178,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const btnLoader = document.getElementById("btnLoader");
     const btnText = document.querySelector(".btn-text");
 
+     // Get plan from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedPlan = urlParams.get('plan') || 'free';
+    if (document.getElementById('selectedPlan')) {
+        document.getElementById('selectedPlan').value = selectedPlan;
+    }
+
     // MOBILE MENU
     const hamburger = document.querySelector(".hamburger");
     const navMenu = document.querySelector(".nav-menu");
@@ -189,13 +196,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-     // Get plan from URL parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const selectedPlan = urlParams.get('plan') || 'free';
-    if (document.getElementById('selectedPlan')) {
-        document.getElementById('selectedPlan').value = selectedPlan;
-    }
-
+    
     // PASSWORD TOGGLE
     togglePassword.addEventListener("click", function () {
         const type = password.type === "password" ? "text" : "password";
@@ -310,8 +311,14 @@ document.addEventListener("DOMContentLoaded", function () {
                         localStorage.setItem("userSession", JSON.stringify(data.data));
                         showNotification("Account created! Redirecting...", "success");
 
-                        setTimeout(() => {
-                            window.location.href = "/dashboard";
+                         setTimeout(() => {
+                            // Check if paid plan - redirect to payment
+                            if (selectedPlan !== 'free') {
+                                window.location.href = `/payment?plan=${selectedPlan}`;
+                            } else {
+                                // Free plan goes to dashboard
+                                window.location.href = "/dashboard";
+                            }
                         }, 1500);
                     } else {
                         showNotification(data.message || "Signup failed.", "error");
