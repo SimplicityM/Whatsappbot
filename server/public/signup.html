@@ -322,9 +322,10 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(async function (token) {
 
                 const fd = new FormData(form);
+                 const API_BASE = window.location.origin;
 
                 try {
-                    const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/register", {
+                    const res = await fetch(`${API_BASE}/api/auth/register`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -339,6 +340,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     const data = await res.json();
 
                     if (data.success) {
+                        // ✅ Store BOTH token and session
+                        localStorage.setItem("authToken", data.data.token);
                         localStorage.setItem("userSession", JSON.stringify(data.data));
                         showNotification("Account created! Redirecting...", "success");
 

@@ -275,9 +275,10 @@ document.addEventListener('DOMContentLoaded', function() {
         grecaptcha.ready(function() {
             grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "login" })
             .then(async function(token) {
-
+                
+        const API_BASE = window.location.origin;
                 try {
-                    const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/login", {
+                    const res = await fetch(`${API_BASE}/api/auth/login`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -290,10 +291,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     const data = await res.json();
 
                     if (data.success) {
-                        localStorage.setItem("userSession", JSON.stringify({
-                            token: data.data.token,
-                            user: data.data.user
-                        }));
+                    // ✅ Store BOTH token and session
+                    localStorage.setItem("authToken", data.data.token);
+                    localStorage.setItem("userSession", JSON.stringify({
+                        token: data.data.token,
+                        user: data.data.user
+                    }));
 
                         showNotification("Login successful! Redirecting...", "success");
                         setTimeout(() => window.location.href = "/dashboard", 1500);

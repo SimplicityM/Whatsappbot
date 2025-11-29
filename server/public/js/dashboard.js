@@ -84,8 +84,8 @@ function normalizeUserData(userData) {
 
 // Configuration
 const CONFIG = {
-    API_BASE: "https://whatsappbot-u5yq.onrender.com",
-    SOCKET_URL: "https://whatsappbot-u5yq.onrender.com",
+    API_BASE: window.location.origin, // ✅ Changed
+    SOCKET_URL: window.location.origin, // ✅ Changed
     REFRESH_INTERVAL: 30000 // 30 seconds
 };
 
