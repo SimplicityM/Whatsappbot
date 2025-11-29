@@ -124,28 +124,28 @@ router.post('/register', async (req, res) => {
             }
         });
 
-        const crypto = require("crypto");
-        const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+        // const crypto = require("crypto");
+        // const emailVerificationToken = crypto.randomBytes(32).toString('hex');
 
-        // ✅ Determine subscription plan
-        const validPlans = ['free', 'starter', 'professional', 'business', 'enterprise'];
-        const selectedPlan = validPlans.includes(plan) ? plan : 'free';
+        // // ✅ Determine subscription plan
+        // const validPlans = ['free', 'starter', 'professional', 'business', 'enterprise'];
+        // const selectedPlan = validPlans.includes(plan) ? plan : 'free';
         
-        // ✅ Set payment status based on plan
-        const paymentStatus = selectedPlan === 'free' ? 'trial' : 'pending';
+        // // ✅ Set payment status based on plan
+        // const paymentStatus = selectedPlan === 'free' ? 'trial' : 'pending';
 
-        const user = new User({
-            fullName,
-            email: email.toLowerCase(),
-            password,
-            emailVerificationToken,
-            subscription: selectedPlan, // ✅ Use selected plan
-            paymentStatus: paymentStatus // ✅ trial for free, pending for paid
-        });
+        // const user = new User({
+        //     fullName,
+        //     email: email.toLowerCase(),
+        //     password,
+        //     emailVerificationToken,
+        //     subscription: selectedPlan, // ✅ Use selected plan
+        //     paymentStatus: paymentStatus // ✅ trial for free, pending for paid
+        // });
 
-        await user.save();
+        // await user.save();
 
-        console.log(`✅ Account created: ${email} with ${selectedPlan} plan`);
+        // console.log(`✅ Account created: ${email} with ${selectedPlan} plan`);
 
     } catch (error) {
         console.error('❌ Registration error:', error);
