@@ -333,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(async (token) => {
                 const API_BASE = window.location.origin;
                 try {
-                    const res = await fetch("https://whatsappbot-u5yq.onrender.com/api/auth/forgot-password", {
+                    const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ email, recaptchaToken: token })
