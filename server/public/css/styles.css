@@ -947,10 +947,19 @@ input[type="password"].success {
    FINAL MERGED CHAT BUBBLE FIX — WhatsApp Mockup
 =========================================================== */
 
+/* FIXED CHAT HEADER — combines old UI + cinematic theme */
 .chat-header {
-  background: #0ea5e9 !important;
-  font-weight: 700;
+  background: #0ea5e9 !important;   /* Cinematic color */
+  color: #ffffff;
+  padding: 16px;                    /* same spacing as original mockup */
+  display: flex;
+  align-items: center;
+  gap: 12px;                        /* icon + text spacing */
+  font-weight: 700;                 /* strong header label */
+  font-size: 1rem;                  /* restored original sizing */
+  border-bottom: 1px solid rgba(255,255,255,0.15); /* subtle detail */
 }
+
 
 /* Chat container */
 .chat-messages {
@@ -3809,7 +3818,7 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    z-index: 10000;
     backdrop-filter: blur(5px);
 }
 
