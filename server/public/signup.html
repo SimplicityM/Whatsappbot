@@ -143,8 +143,10 @@ window.handleCredentialResponse = function (response) {
     grecaptcha.ready(function () {
         grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "google_signup" })
         .then(function (token) {
-
-            fetch("https://whatsappbot-u5yq.onrender.com/api/auth/google-login", {
+            // ✅ Use relative URL instead of hardcoded
+            const API_BASE = window.location.origin;
+            
+            fetch(`${API_BASE}/api/auth/google-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -155,7 +157,10 @@ window.handleCredentialResponse = function (response) {
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
+                    // Store token and user data
+                    localStorage.setItem("authToken", data.data.token);
                     localStorage.setItem("userSession", JSON.stringify(data.data));
+                    
                     showNotification("Google sign-in successful! Redirecting...", "success");
                     setTimeout(() => {
                         if (selectedPlan !== 'free') {
@@ -168,7 +173,14 @@ window.handleCredentialResponse = function (response) {
                     showNotification(data.message || "Google login failed", "error");
                 }
             })
-            .catch(() => showNotification("Network error. Try again.", "error"));
+            .catch((error) => {
+                console.error("Google login error:", error);
+                showNotification("Network error. Try again.", "error");
+            });
+        })
+        .catch((error) => {
+            console.error("reCAPTCHA error:", error);
+            showNotification("Security verification failed. Please try again.", "error");
         });
     });
 };

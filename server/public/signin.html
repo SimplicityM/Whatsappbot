@@ -138,22 +138,47 @@
    <!-- GOOGLE ONE TAP CALLBACK -->
 <script>
 window.handleCredentialResponse = function (response) {
-    fetch("https://whatsappbot-u5yq.onrender.com/api/auth/google-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: response.credential })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            localStorage.setItem("userSession", JSON.stringify(data.data));
-            showNotification("Google sign-in successful!", "success");
-            setTimeout(() => (window.location.href = "/dashboard"), 1500);
-        } else {
-            showNotification(data.message || "Google login failed", "error");
-        }
-    })
-    .catch(() => showNotification("Network error. Try again.", "error"));
+    console.log("🔐 Google credential received");
+    
+    // ✅ Use relative URL
+    const API_BASE = window.location.origin;
+    
+    // ✅ Run reCAPTCHA v3 protection (same as signup)
+    grecaptcha.ready(function () {
+        grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "google_login" })
+        .then(function (recaptchaToken) {
+            
+            fetch(`${API_BASE}/api/auth/google-login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    credential: response.credential,  // ✅ Changed from 'token' to 'credential'
+                    recaptchaToken: recaptchaToken    // ✅ Added reCAPTCHA token
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Store token and user data
+                    localStorage.setItem("authToken", data.data.token);
+                    localStorage.setItem("userSession", JSON.stringify(data.data));
+                    
+                    showNotification("Google sign-in successful!", "success");
+                    setTimeout(() => (window.location.href = "/dashboard"), 1500);
+                } else {
+                    showNotification(data.message || "Google login failed", "error");
+                }
+            })
+            .catch((error) => {
+                console.error("Google login error:", error);
+                showNotification("Network error. Try again.", "error");
+            });
+        })
+        .catch((error) => {
+            console.error("reCAPTCHA error:", error);
+            showNotification("Security verification failed. Please try again.", "error");
+        });
+    });
 };
 </script>
 
