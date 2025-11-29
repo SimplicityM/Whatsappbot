@@ -70,12 +70,20 @@ workerEventNames.forEach(evt => {
   });
 });
 
-// CORS - BEFORE routes
-const cors = require('cors');
+const cors = require("cors");
+
 app.use(cors({
-  origin: "*",
+  origin: [
+    "https://tagthemall.com.ng",
+    "http://localhost:3000"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
+
+// Allow preflight requests for all routes
+app.options("*", cors());
 
 // Add headers for Google Sign-In
 app.use((req, res, next) => {
