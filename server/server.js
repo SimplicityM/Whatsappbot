@@ -125,14 +125,16 @@ const connectDB = async () => {
     mongoose.set('strictQuery', false);
 
     await mongoose.connect(mongoURI, {
-      serverSelectionTimeoutMS: 60000,  // Increased to 60 seconds
-      socketTimeoutMS: 60000,
-      connectTimeoutMS: 60000,          // Added connection timeout
-      maxPoolSize: 10,
-      minPoolSize: 2,
-      retryWrites: true,                // Added retry writes
-      w: 'majority'                     // Added write concern
-    });
+  serverSelectionTimeoutMS: 60000,  // 60 seconds
+  socketTimeoutMS: 75000,            // ✅ Increased from 60s to 75s
+  connectTimeoutMS: 60000,
+  maxPoolSize: 10,
+  minPoolSize: 2,
+  retryWrites: true,
+  w: 'majority',
+  bufferCommands: false,             // ✅ Explicitly set here too
+  autoIndex: false                   // ✅ Disable auto-indexing in production
+});
 
     console.log('🟢 Initial MongoDB connection established');
 

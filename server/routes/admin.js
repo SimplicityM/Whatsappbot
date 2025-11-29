@@ -5,6 +5,19 @@ const { authenticateAdmin } = require('../../middleware/auth');
 const Contact = require('../../models/Contact');
 const router = express.Router();
 
+// ✅ ADD THIS MIDDLEWARE - Check DB connection before processing
+router.use((req, res, next) => {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({
+            success: false,
+            message: 'Database connection not ready. Please try again.',
+            error: 'DB_NOT_READY'
+        });
+    }
+    next();
+});
+
 // Get admin dashboard stats
 router.get('/dashboard', authenticateAdmin, async (req, res) => {
     try {
@@ -293,13 +306,19 @@ router.get('/sessions', authenticateAdmin, async (req, res) => {
         const filter = {};
         if (status) filter.status = status;
 
+        // Add timeout to queries
+        const queryTimeout = 30000; // 30 seconds
+
         const sessions = await Session.find(filter)
             .populate('userId', 'fullName email subscription')
             .sort({ createdAt: -1 })
             .limit(limit)
-            .skip((page - 1) * limit);
+            .skip((page - 1) * limit)
+            .maxTimeMS(queryTimeout)  // ✅ Add query timeout
+            .lean();  // ✅ Use lean for better performance
 
-        const totalSessions = await Session.countDocuments(filter);
+        const totalSessions = await Session.countDocuments(filter)
+            .maxTimeMS(queryTimeout);  // ✅ Add timeout to count too
 
         res.json({
             success: true,
@@ -317,9 +336,20 @@ router.get('/sessions', authenticateAdmin, async (req, res) => {
 
     } catch (error) {
         console.error('Get sessions error:', error);
+        
+        // Better error handling
+        if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection timeout. Please try again in a moment.',
+                error: 'DB_TIMEOUT'
+            });
+        }
+        
         res.status(500).json({
             success: false,
-            message: 'Error fetching sessions.'
+            message: 'Error fetching sessions.',
+            error: error.message
         });
     }
 });
