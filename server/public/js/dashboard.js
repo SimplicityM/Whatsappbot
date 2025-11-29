@@ -96,9 +96,22 @@ function updateUserInfo() {
     const userName = document.getElementById('userName');
     const userSubscription = document.getElementById('userSubscription');
     
-    if (userName) userName.textContent = currentUser.user.name || 'User';
-    if (userSubscription) userSubscription.textContent = currentUser.user.subscription || 'Free Plan';
-}
+    // ✅ Better plan display names
+    const planNames = {
+        'free': 'Free Trial',
+        'starter': 'Starter Plan',
+        'professional': 'Professional Plan',
+        'business': 'Business Plan',
+        'enterprise': 'Enterprise Plan'
+    };
+    
+    // ✅ Get the display name or default to 'Free Trial'
+    const userPlan = currentUser.user.subscription || 'free';
+    const displayName = planNames[userPlan] || 'Free Trial';
+    
+    // ✅ Use fullName first, then name, then default to 'User'
+    if (userName) userName.textContent = currentUser.user.fullName || currentUser.user.name || 'User';
+    if (userSubscription) userSubscription.textContent = displayName;
 
 function setupEventListeners() {
     console.log('🔧 Setting up event listeners...');

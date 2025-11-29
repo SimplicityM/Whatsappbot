@@ -1178,12 +1178,13 @@ try {
             
             if (userDoc) {
                 // Define subscription plan hierarchy and their allowed commands
-                const subscriptionPlans = {
-                    'starter': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept'],
-                    'professional': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler'],
-                    'business': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'export', 'dmall', 'tagfew', 'forward'],
-                    'enterprise': 'all' // All commands
-                };
+               const subscriptionPlans = {
+                'free': ['ping', 'help', 'status', 'list', 'tag'], // ✅ Added free plan
+                'starter': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept'],
+                'professional': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler'],
+                'business': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'export', 'dmall', 'tagfew', 'forward'],
+                'enterprise': 'all' // All commands
+            };
 
                 const userSubscription = userDoc.subscription || 'starter';
                 const allowedCommands = subscriptionPlans[userSubscription] || [];

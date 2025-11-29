@@ -333,6 +333,24 @@ document.addEventListener("DOMContentLoaded", function () {
                 const fd = new FormData(form);
                  const API_BASE = window.location.origin;
 
+                 // ✅ Get plan from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedPlan = urlParams.get('plan') || 'free';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        fullName: fd.get("fullName"),
+                        email: fd.get("email"),
+                        password: fd.get("password"),
+                        confirmPassword: fd.get("confirmPassword"),
+                        recaptchaToken: token,
+                        plan: selectedPlan // ✅ Added plan parameter
+                    })
+                });
+
                 try {
                     const res = await fetch(`${API_BASE}/api/auth/register`, {
                         method: "POST",

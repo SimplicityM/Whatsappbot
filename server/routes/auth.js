@@ -13,9 +13,9 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Register new user with reCAPTCHA v3 protection
 router.post('/register', async (req, res) => {
     try {
-        const { fullName, email, password, confirmPassword, recaptchaToken } = req.body;
+        const { fullName, email, password, confirmPassword, recaptchaToken, plan } = req.body; // ✅ Added plan
 
-        console.log("🆕 Registration attempt:", email);
+        console.log("🆕 Registration attempt:", email, "Plan:", plan);
 
         // ================================
         // 1. Basic field validation
@@ -123,6 +123,29 @@ router.post('/register', async (req, res) => {
                 token
             }
         });
+
+        const crypto = require("crypto");
+        const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+
+        // ✅ Determine subscription plan
+        const validPlans = ['free', 'starter', 'professional', 'business', 'enterprise'];
+        const selectedPlan = validPlans.includes(plan) ? plan : 'free';
+        
+        // ✅ Set payment status based on plan
+        const paymentStatus = selectedPlan === 'free' ? 'trial' : 'pending';
+
+        const user = new User({
+            fullName,
+            email: email.toLowerCase(),
+            password,
+            emailVerificationToken,
+            subscription: selectedPlan, // ✅ Use selected plan
+            paymentStatus: paymentStatus // ✅ trial for free, pending for paid
+        });
+
+        await user.save();
+
+        console.log(`✅ Account created: ${email} with ${selectedPlan} plan`);
 
     } catch (error) {
         console.error('❌ Registration error:', error);
@@ -341,6 +364,7 @@ router.post("/google-login", async (req, res) => {
                 isEmailVerified: true,
                 googleId: googleId,
                 profilePicture: picture,
+                subscription: "free",
                 paymentStatus: "trial",
                 status: "active"
             });

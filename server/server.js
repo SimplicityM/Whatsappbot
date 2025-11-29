@@ -249,7 +249,7 @@ const subscriptionPlans = {
     limits: {
       dailyMessages: 50,
       monthlyMessages: 1000,
-      groupsPerSession: 5
+      groupsPerSession: 1
     }
   },
   starter: {
@@ -262,7 +262,7 @@ const subscriptionPlans = {
     limits: {
       dailyMessages: 500,
       monthlyMessages: 10000,
-      groupsPerSession: 20
+      groupsPerSession: 1
     }
   },
   professional: {
@@ -275,7 +275,7 @@ const subscriptionPlans = {
     limits: {
       dailyMessages: 2000,
       monthlyMessages: 50000,
-      groupsPerSession: 50
+      groupsPerSession: 1
     }
   },
   business: {
@@ -288,7 +288,7 @@ const subscriptionPlans = {
     limits: {
       dailyMessages: 10000,
       monthlyMessages: 250000,
-      groupsPerSession: 200
+      groupsPerSession: 1
     }
   },
   enterprise: {
