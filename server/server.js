@@ -12,6 +12,30 @@ let User, Session;
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 const app = express();
+
+const cors = require("cors");
+
+// GLOBAL CORS FIX
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "https://tagthemall.com.ng");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
+// ALSO INIT YOUR NORMAL CORS MIDDLEWARE
+app.use(cors({
+  origin: ["https://tagthemall.com.ng", "http://localhost:3000"],
+  credentials: true
+}));
+
+
 const server = http.createServer(app);
 
 // Server io - front-end connects here
@@ -70,20 +94,6 @@ workerEventNames.forEach(evt => {
   });
 });
 
-const cors = require("cors");
-
-app.use(cors({
-  origin: [
-    "https://tagthemall.com.ng",
-    "http://localhost:3000"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
-
-// Allow preflight requests for all routes
-app.options(/.*/, cors());
 
 // Add headers for Google Sign-In
 app.use((req, res, next) => {
