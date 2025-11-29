@@ -6,13 +6,9 @@ const socketIo = require('socket.io');       // server io for frontend
 const { io: socketIoClient } = require('socket.io-client'); // client to worker
 const mongoose = require('mongoose');
 const path = require('path');
-
-// ⚠️ Don't import models here - they'll be imported after DB connection
-let User, Session;
-const { authenticate, authenticateAdmin } = require('../middleware/auth');
-
-
 const cors = require("cors");
+const app = express();
+
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
 app.use((req, res, next) => {
@@ -35,7 +31,8 @@ app.use(cors({
   credentials: true
 }));
 
-const app = express();
+// ⚠️ Don't import models here - they'll be imported after DB connection
+let User, Session;
 
 const server = http.createServer(app);
 
@@ -210,6 +207,8 @@ const connectDB = async () => {
 
     app.use("/api/sessions", require("./routes/sessions"));
     console.log('✅ Session routes registered');
+
+const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     // Start trial monitoring AFTER DB is connected
     const { checkExpiredTrials } = require('./utils/trialMonitor');
@@ -577,6 +576,7 @@ app.get('/admin', (req, res) => {
 app.get('/payment', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'payment.html'));
 });
+
 
 // User endpoints
 app.get('/api/users/profile', authenticate, async (req, res) => {
