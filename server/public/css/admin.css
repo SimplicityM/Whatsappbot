@@ -2339,3 +2339,45 @@ input:checked + .slider:before {
     transform: translateY(-2px);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
+
+/* Dark theme styles */
+body.dark-theme {
+    background: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-theme .admin-sidebar {
+    background: #2d2d2d;
+    border-color: #404040;
+}
+
+body.dark-theme .admin-header {
+    background: #2d2d2d;
+    border-color: #404040;
+}
+
+body.dark-theme .stat-card,
+body.dark-theme .quick-actions,
+body.dark-theme .recent-activity,
+body.dark-theme .system-status {
+    background: #2d2d2d;
+    border-color: #404040;
+    color: #e0e0e0;
+}
+
+body.dark-theme .page-title,
+body.dark-theme h1, 
+body.dark-theme h2, 
+body.dark-theme h3 {
+    color: #e0e0e0;
+}
+
+body.dark-theme .action-btn {
+    background: #3d3d3d;
+    border-color: #505050;
+    color: #e0e0e0;
+}
+
+body.dark-theme .action-btn:hover {
+    background: #4d4d4d;
+}

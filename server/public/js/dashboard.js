@@ -2350,8 +2350,10 @@ function switchTab(tabName) {
 }
 
 function toggleMobileMenu() {
-    const mobileMenu = document.getElementById('mobileMenu');
-    if (mobileMenu) mobileMenu.classList.toggle('active');
+    const sidebar = document.querySelector('.admin-sidebar');
+    if (sidebar) {
+        sidebar.classList.toggle('mobile-open');
+    }
 }
 
 function toggleSidebar() {
@@ -2582,3 +2584,37 @@ function updateSessionStatus(sessionId, message, status) {
         }
     }
 }
+
+// Theme toggle function
+function toggleTheme() {
+    const body = document.body;
+    const themeIcon = document.getElementById('themeIcon');
+    const themeText = document.getElementById('themeText');
+    
+    body.classList.toggle('dark-theme');
+    
+    if (body.classList.contains('dark-theme')) {
+        themeIcon.className = 'fas fa-sun';
+        themeText.textContent = 'Light';
+        localStorage.setItem('theme', 'dark');
+    } else {
+        themeIcon.className = 'fas fa-moon';
+        themeText.textContent = 'Dark';
+        localStorage.setItem('theme', 'light');
+    }
+}
+
+// Load saved theme on page load
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-theme');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        if (themeIcon) themeIcon.className = 'fas fa-sun';
+        if (themeText) themeText.textContent = 'Light';
+    }
+}
+
+// Call loadTheme when page loads
+document.addEventListener('DOMContentLoaded', loadTheme);
