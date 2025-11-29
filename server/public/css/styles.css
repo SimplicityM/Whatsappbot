@@ -5971,7 +5971,22 @@ input:checked + .slider:before {
   color: #334155; /* darker and clearer */
 }
 
+.about-hero p {
+    font-size: 1.3rem;
+    opacity: 0.9;
+}
 
+.about-hero .hero-content {
+    max-width: none;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.about-hero .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
 
 
 
