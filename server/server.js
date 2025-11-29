@@ -15,21 +15,22 @@ const app = express();
 
 const cors = require("cors");
 
-// GLOBAL CORS FIX
+// ALWAYS return CORS headers — even for 404 routes or before DB loads
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "https://tagthemall.com.ng");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  
+
+  // Handle preflight for ALL paths
   if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+    return res.status(200).end();
   }
 
   next();
 });
 
-// ALSO INIT YOUR NORMAL CORS MIDDLEWARE
+// Standard CORS middleware
 app.use(cors({
   origin: ["https://tagthemall.com.ng", "http://localhost:3000"],
   credentials: true
