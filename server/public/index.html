@@ -871,9 +871,10 @@ if (pricingToggle) {
             
             if (amountElement && periodElement && durationElement && planType) {
                 if (isYearly) {
-                    // Switch to yearly: multiply by 12
+                    // Switch to yearly: multiply by 12 and apply 20% discount
                     const monthlyPrice = monthlyPrices[planType];
-                    const yearlyPrice = monthlyPrice * 12;
+                    const yearlyPriceBeforeDiscount = monthlyPrice * 12;
+                    const yearlyPrice = Math.round(yearlyPriceBeforeDiscount * 0.8); // 20% off
                     amountElement.textContent = yearlyPrice;
                     periodElement.textContent = '/year';
                     
