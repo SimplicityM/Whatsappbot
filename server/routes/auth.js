@@ -257,6 +257,7 @@ router.post('/login', async (req, res) => {
 
 
 // Google OAuth Login/Signup with reCAPTCHA v3 protection
+// Google OAuth Login/Signup with reCAPTCHA v3 protection
 router.post("/google-login", async (req, res) => {
     try {
         // ✅ Handle both 'credential' and 'token' for backward compatibility
@@ -283,15 +284,115 @@ router.post("/google-login", async (req, res) => {
                 message: "Recaptcha validation failed."
             });
         }
-        
-        // Continue with rest of the code...
-        // Change line 312 to use googleCredential instead of credential:
+
+        // ======================================================
+        // 2. Verify reCAPTCHA v3 first (protects against bot abuse)
+        // ======================================================
+        const verifyRecaptcha = require("../utils/verifyRecaptcha");
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken, "google_login");
+
+        if (!recaptchaResult.success) {
+            console.log(`❌ Low reCAPTCHA score (${recaptchaResult.score}). Blocking Google login.`);
+            return res.status(400).json({
+                success: false,
+                message: "Suspicious activity detected. Try again."
+            });
+        }
+
+        console.log(`🛡 reCAPTCHA passed for Google Login. Score: ${recaptchaResult.score}`);
+
+
+        // ======================================================
+        // 3. Verify Google OAuth Token
+        // ======================================================
+        const { OAuth2Client } = require("google-auth-library");
+        const client = new OAuth2Client(
+            process.env.GOOGLE_CLIENT_ID ||
+            "1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com"
+        );
+
         const ticket = await client.verifyIdToken({
             idToken: googleCredential,  // ✅ Use the variable
             audience: process.env.GOOGLE_CLIENT_ID ||
                 "1024040438272-d9emfus837hjp2oc7afvcoq11p7p1qpg.apps.googleusercontent.com"
         });
 
+        const payload = ticket.getPayload();
+        const { email, name, picture, sub: googleId } = payload;
+
+        console.log("🔍 Google user:", email);
+
+
+        // ======================================================
+        // 4. Check if user already exists
+        // ======================================================
+        let user = await User.findOne({ email: email.toLowerCase() });
+
+        if (!user) {
+            // ============================================
+            // 4a. Create new user from Google Account
+            // ============================================
+            const crypto = require("crypto");
+
+            user = new User({
+                fullName: name,
+                email: email.toLowerCase(),
+                password: crypto.randomBytes(32).toString("hex"), // never used
+                isEmailVerified: true,
+                googleId: googleId,
+                profilePicture: picture,
+                paymentStatus: "trial",
+                status: "active"
+            });
+
+            await user.save();
+            console.log(`🆕 New Google user created: ${email}`);
+        } else {
+            // ============================================
+            // 4b. User exists — update googleId and login time
+            // ============================================
+            if (!user.googleId) {
+                user.googleId = googleId;
+                user.isEmailVerified = true;
+            }
+
+            user.lastLogin = new Date();
+            await user.save();
+
+            console.log(`🔁 Existing user logged in via Google: ${email}`);
+        }
+
+
+        // ======================================================
+        // 5. Generate JWT Token
+        // ======================================================
+        const jwtToken = generateToken(user._id);
+
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        delete userResponse.emailVerificationToken;
+
+
+        // ======================================================
+        // 6. Send Response
+        // ======================================================
+        return res.json({
+            success: true,
+            message: "Google sign-in successful!",
+            data: {
+                user: userResponse,
+                token: jwtToken
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Google login error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Google authentication failed. Please try again."
+        });
+    }
+});
 
 // Admin Login Route
 router.post('/admin-login', async (req, res) => {
