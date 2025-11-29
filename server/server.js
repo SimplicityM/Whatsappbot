@@ -104,6 +104,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
 const connectDB = async () => {
@@ -207,8 +208,6 @@ const connectDB = async () => {
 
     app.use("/api/sessions", require("./routes/sessions"));
     console.log('✅ Session routes registered');
-
-const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     // Start trial monitoring AFTER DB is connected
     const { checkExpiredTrials } = require('./utils/trialMonitor');
