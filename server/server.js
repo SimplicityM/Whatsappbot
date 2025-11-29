@@ -83,7 +83,7 @@ app.use(cors({
 }));
 
 // Allow preflight requests for all routes
-app.options("*", cors());
+app.options(/.*/, cors());
 
 // Add headers for Google Sign-In
 app.use((req, res, next) => {
