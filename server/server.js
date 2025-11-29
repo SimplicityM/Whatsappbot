@@ -11,7 +11,6 @@ const path = require('path');
 let User, Session;
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
-const app = express();
 
 const cors = require("cors");
 
@@ -36,6 +35,7 @@ app.use(cors({
   credentials: true
 }));
 
+const app = express();
 
 const server = http.createServer(app);
 
