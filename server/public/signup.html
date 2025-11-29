@@ -305,6 +305,15 @@ document.addEventListener("DOMContentLoaded", function () {
         return ok;
     }
 
+    function clearError(elementId) {
+    const errorElement = document.getElementById(elementId);
+    if (errorElement) {
+        errorElement.textContent = "";
+        errorElement.style.display = "none";
+    }
+}
+
+
 
     // SUBMIT
     form.addEventListener("submit", function (e) {
