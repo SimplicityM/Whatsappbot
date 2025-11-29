@@ -847,12 +847,48 @@
                 });
             });
 
-            // Pricing toggle
+           // Pricing toggle
             const pricingToggle = document.getElementById('pricingToggle');
             if (pricingToggle) {
+                // Store original monthly prices
+                const monthlyPrices = {
+                    starter: 7,
+                    professional: 15,
+                    business: 22,
+                    enterprise: 38
+                };
+
                 pricingToggle.addEventListener('change', function() {
-                    // Add yearly pricing logic here
-                    console.log('Pricing toggle changed:', this.checked);
+                    const isYearly = this.checked;
+                    const pricingCards = document.querySelectorAll('.pricing-card');
+                    
+                    pricingCards.forEach(card => {
+                        const amountElement = card.querySelector('.amount');
+                        const periodElement = card.querySelector('.period');
+                        const durationElement = card.querySelector('.plan-duration');
+                        
+                        if (amountElement && periodElement && durationElement) {
+                            const currentAmount = parseInt(amountElement.textContent);
+                            
+                            if (isYearly) {
+                                // Switch to yearly: multiply by 12
+                                const yearlyPrice = currentAmount * 12;
+                                amountElement.textContent = yearlyPrice;
+                                periodElement.textContent = '/year';
+                                durationElement.textContent = '12 Months';
+                            } else {
+                                // Switch back to monthly: use original prices
+                                const planName = card.querySelector('h3').textContent.toLowerCase();
+                                if (monthlyPrices[planName]) {
+                                    amountElement.textContent = monthlyPrices[planName];
+                                }
+                                periodElement.textContent = '/month';
+                                durationElement.textContent = '1 Month';
+                            }
+                        }
+                    });
+                    
+                    console.log('Pricing toggle changed:', isYearly ? 'Yearly' : 'Monthly');
                 });
             }
 
