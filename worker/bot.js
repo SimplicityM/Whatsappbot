@@ -3423,6 +3423,7 @@ try {
             try { await client.sendMessage(t, job.message); await new Promise(r=>setTimeout(r,200)); } catch(e){ logger.error('scheduler DM send error', e); }
           }
         }
+        
         // update nextRun
         if (job.repeat === 'once') {
           job.active = false;

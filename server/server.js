@@ -10,9 +10,10 @@ const cors = require("cors");
 const app = express();
 
 
+
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://tagthemall.com.ng");
+ res.header("Access-Control-Allow-Origin", req.headers.origin || "https://tagthemall.com.ng");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -27,7 +28,11 @@ app.use((req, res, next) => {
 
 // Standard CORS middleware
 app.use(cors({
-  origin: ["https://tagthemall.com.ng", "http://localhost:3000"],
+  origin: [
+    "https://tagthemall.com.ng", 
+    "http://localhost:3000",
+    "https://whatsappbot-u5yq.onrender.com"  // Add this
+  ],
   credentials: true
 }));
 

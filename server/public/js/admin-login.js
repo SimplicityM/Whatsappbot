@@ -2,6 +2,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🔐 Admin login page loaded');
     
+    const API_BASE = window.location.origin;
+
     // Get DOM elements
     const form = document.getElementById('adminLoginForm');
     const emailInput = document.getElementById('adminEmail');
@@ -99,8 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             showLoadingOverlay(true);
             
-            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/admin/verify-token', {
-                method: 'GET',
+            const response = await fetch(`${API_BASE}/api/auth/admin/verify-token`, {
+            method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -237,8 +239,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('🔐 Attempting admin login for:', loginData.email);
             
-            const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/auth/admin-login', {
-                method: 'POST',
+           const response = await fetch(`${API_BASE}/api/auth/admin-login`, {
+            method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
