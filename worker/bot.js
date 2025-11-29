@@ -1096,6 +1096,26 @@ client.on('message_create', async (message) => {
         await message.react('✔️');
       } catch {}
     }
+    
+  // --------------------------------------------------
+  // 🟢 MEDIA AUTO-REPLY (NEW)
+  // --------------------------------------------------
+  // MEDIA AUTO-REPLY
+  if (!message.fromMe && message.hasMedia) {
+      const mime = (message._data?.mimeType || '').toLowerCase();
+      let mediaType = null;
+      if (mime.includes('image')) mediaType = 'image';
+      else if (mime.includes('video')) mediaType = 'video';
+      else if (mime.includes('audio')) mediaType = 'audio';
+      else if (mime.includes('pdf')) mediaType = 'document';
+      else if (mime.includes('application')) mediaType = 'document';
+      else if (mime.includes('sticker')) mediaType = 'sticker';
+      if (mediaType && auto && Array.isArray(auto.mediaRules)) {
+          const match = auto.mediaRules.find(r => r.type === mediaType);
+          if (match) {
+              await safeSend(message.from, match.response);
+          }
+      }
 
     // --------------------------------------------------
 // 🟢 AUTO-REPLY TRIGGER (works in all groups & chats)
