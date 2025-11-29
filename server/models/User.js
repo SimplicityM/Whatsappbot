@@ -30,8 +30,8 @@ const userSchema = new mongoose.Schema({
     
     subscription: {
         type: String,
-        enum: ['starter', 'professional', 'business', 'enterprise'],
-        default: 'starter'
+        enum: ['free','starter', 'professional', 'business', 'enterprise'],
+        default: 'Free'
     },
     subscriptionExpiry: {
         type: Date,
