@@ -36,14 +36,24 @@ const AutoReplySchema = new mongoose.Schema({
                 type: Boolean,
                 default: true
             }
-
-            mediaRules: [
-                    {
-                        type: { type: String, required: true },   // image, video, audio, sticker, document
-                        response: { type: String, required: true }
-                    }
-                ]
-
+        }
+    ],
+    // Media auto-reply rules (moved outside of rules array)
+    mediaRules: [
+        {
+            type: { 
+                type: String, 
+                enum: ['image', 'video', 'audio', 'sticker', 'document'],
+                required: true 
+            },
+            response: { 
+                type: String, 
+                required: true 
+            },
+            active: {
+                type: Boolean,
+                default: true
+            }
         }
     ]
 }, { timestamps: true });
