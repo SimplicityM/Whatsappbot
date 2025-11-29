@@ -16,20 +16,25 @@ async function verifyRecaptcha(token, action) {
 
         const data = response.data;
 
-        // EXPECTED TRUE VALIDATION
+        // If Google returns error codes, do NOT block user completely.
         if (!data.success) {
-            return { success: false, score: 0, reason: "Recaptcha failed" };
+            console.warn("⚠️ Recaptcha returned success=false:", data["error-codes"]);
+            return { success: true, score: data.score || 0.1, reason: "Google returned success=false" };
         }
 
-        // SCORE CHECK (Google recommends >= 0.5)
-        if (data.score < 0.1) {
-            return { success: false, score: data.score, reason: "Low Recaptcha score" };
+        // Allow low scores but mark them
+        const minScore = 0.1;
+        if (data.score < minScore) {
+            console.warn(`⚠️ Low Recaptcha score (${data.score}). Allowing user anyway.`);
+            return { success: true, score: data.score };
         }
 
         return { success: true, score: data.score };
+
     } catch (err) {
-        console.error("reCAPTCHA verification error:", err);
-        return { success: false, reason: "Server recaptcha error" };
+        console.error("❌ reCAPTCHA verification error:", err);
+        // Do NOT block user on server error
+        return { success: true, score: 0.5, reason: "Server error ignored" };
     }
 }
 
