@@ -1583,6 +1583,85 @@ case 'autoreply': {
     break;
 }
 
+if (sub === 'addmedia') {
+    const full = args.slice(1).join(' ');
+    const pipe = full.indexOf('|');
+
+    if (pipe === -1) {
+        await safeSend(message.from,
+            'Usage:\n!autoreply addmedia <type> | <response>\n\n' +
+            'Types: image, video, audio, sticker, document'
+        );
+        break;
+    }
+
+    const type = full.slice(0, pipe).trim().toLowerCase();
+    const response = full.slice(pipe + 1).trim();
+
+    const valid = ['image', 'video', 'audio', 'sticker', 'document'];
+    if (!valid.includes(type)) {
+        await safeSend(message.from,
+            `❌ Invalid type. Use: ${valid.join(', ')}`
+        );
+        break;
+    }
+
+    let doc = await AutoReply.findOne({ sessionId });
+    if (!doc) doc = await AutoReply.create({ sessionId, rules: [], mediaRules: [] });
+
+    doc.mediaRules.push({ type, response });
+    await doc.save();
+
+    await safeSend(message.from,
+        `✅ Media auto-reply added.\nType: *${type}*\nResponse: ${response}`
+    );
+    break;
+}
+
+
+if (sub === 'removemedia') {
+    const type = args[1]?.toLowerCase();
+
+    if (!type) {
+        await safeSend(message.from,
+            'Usage:\n!autoreply removemedia <type>'
+        );
+        break;
+    }
+
+    let doc = await AutoReply.findOne({ sessionId });
+    if (!doc || !doc.mediaRules.length) {
+        await safeSend(message.from, '❌ No media auto-reply rules saved.');
+        break;
+    }
+
+    doc.mediaRules = doc.mediaRules.filter(r => r.type !== type);
+    await doc.save();
+
+    await safeSend(message.from,
+        `🗑 Removed media auto-reply for type: *${type}*`
+    );
+    break;
+}
+
+
+if (sub === 'listmedia') {
+    const doc = await AutoReply.findOne({ sessionId }).lean();
+
+    if (!doc || !doc.mediaRules.length) {
+        await safeSend(message.from, '📭 No media auto-reply rules saved.');
+        break;
+    }
+
+    let out = '*📄 MEDIA AUTO-REPLY RULES:*\n\n';
+    doc.mediaRules.forEach((r, i) => {
+        out += `${i + 1}. Type: *${r.type}*\n   Reply: ${r.response}\n\n`;
+    });
+
+    await safeSend(message.from, out);
+    break;
+}
+
 
 
 case 'broadcast': {
