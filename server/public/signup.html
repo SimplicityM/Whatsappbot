@@ -11,6 +11,12 @@
     <link rel="icon" type="image/jpg" href="images/Zufamoa.jpg"/>
     <!-- reCAPTCHA v3 -->
     <script src="https://www.google.com/recaptcha/api.js?render=6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo"></script>
+<!-- Hide reCAPTCHA badge -->
+    <style>
+        .grecaptcha-badge {
+            visibility: hidden;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -103,6 +109,13 @@
                             <div class="spinner"></div>
                         </div>
                     </button>
+
+                    <!-- reCAPTCHA Disclosure -->
+                    <div class="recaptcha-notice" style="font-size: 11px; color: #666; margin-top: 15px; text-align: center;">
+                        This site is protected by reCAPTCHA and the Google
+                        <a href="https://policies.google.com/privacy" target="_blank" style="color: #1a73e8;">Privacy Policy</a> and
+                        <a href="https://policies.google.com/terms" target="_blank" style="color: #1a73e8;">Terms of Service</a> apply.
+                    </div>
                 </form>
 
                 <div class="divider">
