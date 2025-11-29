@@ -87,7 +87,7 @@ router.post('/register', async (req, res) => {
         // ===============================================
         console.log("📌 Creating new user record...");
 
-        const crypto = require("crypto");
+        // const crypto = require("crypto");
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
 
         const user = new User({
