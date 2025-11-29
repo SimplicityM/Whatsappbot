@@ -1054,6 +1054,9 @@ client.on('message_create', async (message) => {
 
     const mySelf = client.info?.wid?._serialized;
 
+    // Load auto-reply settings for this session
+    const auto = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+
     // determine sender
     const sender = message.fromMe ? mySelf : message.from;
     const isSelfChat = sender === mySelf;
@@ -1096,7 +1099,7 @@ client.on('message_create', async (message) => {
         await message.react('✔️');
       } catch {}
     }
-    
+
   // --------------------------------------------------
   // 🟢 MEDIA AUTO-REPLY (NEW)
   // --------------------------------------------------
