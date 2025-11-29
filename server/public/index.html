@@ -292,7 +292,7 @@
 
         <div class="pricing-grid">
             <!-- Free Plan - 7 Days -->
-            <div class="pricing-card">
+            <div class="pricing-card" data-plan="free">
                 <div class="plan-header">
                     <h3>Free</h3>
                     <div class="plan-duration">7 Days</div>
@@ -314,7 +314,7 @@
             </div>
             
             <!-- Starter Plan - 1 Month -->
-            <div class="pricing-card">
+            <div class="pricing-card" data-plan="starter">
                 <div class="plan-header">
                     <h3>Starter</h3>
                     <div class="plan-duration">1 Month</div>
@@ -339,7 +339,7 @@
             </div>
 
             <!-- Professional Plan - 1 Months -->
-            <div class="pricing-card featured">
+            <div class="pricing-card featured" data-plan="professional">
                 <div class="plan-badge">Most Popular</div>
                 <div class="plan-header">
                     <h3>Professional</h3>
@@ -365,7 +365,7 @@
             </div>
 
             <!-- Business Plan - 1 Months -->
-            <div class="pricing-card">
+            <div class="pricing-card" data-plan="business">
                 <div class="plan-header">
                     <h3>Business</h3>
                     <div class="plan-duration">1 Month</div>
@@ -390,7 +390,7 @@
             </div>
 
             <!-- Enterprise Plan - 1 Month -->
-            <div class="pricing-card premium">
+            <div class="pricing-card premium" data-plan="enterprise">
                 <div class="plan-badge">Best Value</div>
                 <div class="plan-header">
                     <h3>Enterprise</h3>
@@ -848,50 +848,59 @@
             });
 
            // Pricing toggle
-            const pricingToggle = document.getElementById('pricingToggle');
-            if (pricingToggle) {
-                // Store original monthly prices
-                const monthlyPrices = {
-                    free: 0,
-                    starter: 7,
-                    professional: 15,
-                    business: 22,
-                    enterprise: 38
-                };
+const pricingToggle = document.getElementById('pricingToggle');
+if (pricingToggle) {
+    // Store original monthly prices
+    const monthlyPrices = {
+        free: 0,
+        starter: 7,
+        professional: 15,
+        business: 22,
+        enterprise: 38
+    };
 
-                pricingToggle.addEventListener('change', function() {
-                    const isYearly = this.checked;
-                    const pricingCards = document.querySelectorAll('.pricing-card');
+    pricingToggle.addEventListener('change', function() {
+        const isYearly = this.checked;
+        const pricingCards = document.querySelectorAll('.pricing-card');
+        
+        pricingCards.forEach(card => {
+            const planType = card.getAttribute('data-plan');
+            const amountElement = card.querySelector('.amount');
+            const periodElement = card.querySelector('.period');
+            const durationElement = card.querySelector('.plan-duration');
+            
+            if (amountElement && periodElement && durationElement && planType) {
+                if (isYearly) {
+                    // Switch to yearly: multiply by 12
+                    const monthlyPrice = monthlyPrices[planType];
+                    const yearlyPrice = monthlyPrice * 12;
+                    amountElement.textContent = yearlyPrice;
+                    periodElement.textContent = '/year';
                     
-                    pricingCards.forEach(card => {
-                        const amountElement = card.querySelector('.amount');
-                        const periodElement = card.querySelector('.period');
-                        const durationElement = card.querySelector('.plan-duration');
-                        
-                        if (amountElement && periodElement && durationElement) {
-                            const currentAmount = parseInt(amountElement.textContent);
-                            
-                            if (isYearly) {
-                                // Switch to yearly: multiply by 12
-                                const yearlyPrice = currentAmount * 12;
-                                amountElement.textContent = yearlyPrice;
-                                periodElement.textContent = '/year';
-                                durationElement.textContent = '12 Months';
-                            } else {
-                                // Switch back to monthly: use original prices
-                                const planName = card.querySelector('h3').textContent.toLowerCase();
-                                if (monthlyPrices[planName]) {
-                                    amountElement.textContent = monthlyPrices[planName];
-                                }
-                                periodElement.textContent = '/month';
-                                durationElement.textContent = '1 Month';
-                            }
-                        }
-                    });
+                    // Update duration text
+                    if (planType === 'free') {
+                        durationElement.textContent = '7 Days'; // Free stays 7 days
+                    } else {
+                        durationElement.textContent = '12 Months';
+                    }
+                } else {
+                    // Switch back to monthly: use original prices
+                    amountElement.textContent = monthlyPrices[planType];
+                    periodElement.textContent = '/month';
                     
-                    console.log('Pricing toggle changed:', isYearly ? 'Yearly' : 'Monthly');
-                });
+                    // Update duration text
+                    if (planType === 'free') {
+                        durationElement.textContent = '7 Days';
+                    } else {
+                        durationElement.textContent = '1 Month';
+                    }
+                }
             }
+        });
+        
+        console.log('Pricing toggle changed:', isYearly ? 'Yearly' : 'Monthly');
+    });
+}
 
             // FAQ accordion
             document.querySelectorAll('.faq-question').forEach(question => {
