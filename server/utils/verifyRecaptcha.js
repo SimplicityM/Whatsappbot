@@ -22,7 +22,7 @@ async function verifyRecaptcha(token, action) {
         }
 
         // SCORE CHECK (Google recommends >= 0.5)
-        if (data.score < 0.5) {
+        if (data.score < 0.1) {
             return { success: false, score: data.score, reason: "Low Recaptcha score" };
         }
 
