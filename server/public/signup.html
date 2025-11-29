@@ -86,6 +86,8 @@
                         <span class="error-message" id="confirmPasswordError"></span>
                     </div>
 
+            <input type="hidden" id="selectedPlan" name="plan" value="free">
+
                     <div class="form-group checkbox-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="terms" name="terms" required>
@@ -166,6 +168,7 @@ window.handleCredentialResponse = function (response) {
 };
 
 
+
 // MAIN SIGNUP SCRIPT
 document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById("signupForm");
@@ -186,6 +189,12 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+     // Get plan from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedPlan = urlParams.get('plan') || 'free';
+    if (document.getElementById('selectedPlan')) {
+        document.getElementById('selectedPlan').value = selectedPlan;
+    }
 
     // PASSWORD TOGGLE
     togglePassword.addEventListener("click", function () {
