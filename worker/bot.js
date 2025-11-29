@@ -13,6 +13,7 @@ const TagUsage = require('./models/TagUsage');
 const SavedGroupList = require('./models/SavedGroupList');
 const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
+const AutoReply = require('./models/AutoReply');
 
 // bot.js (multi-session, isolated per-client implementation)
 // - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
@@ -1096,6 +1097,39 @@ client.on('message_create', async (message) => {
       } catch {}
     }
 
+    // --------------------------------------------------
+// 🟢 AUTO-REPLY TRIGGER (works in all groups & chats)
+// --------------------------------------------------
+try {
+    const chat = await message.getChat();
+    const text = (message.body || '').toLowerCase().trim();
+
+    // Ignore own messages to prevent loops
+    if (message.fromMe) {
+        // allow commands but ignore auto reply triggers
+    } else {
+        // Fetch rules once per session
+        const auto = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+
+        if (auto && Array.isArray(auto.rules)) {
+            for (const rule of auto.rules) {
+                const key = rule.keyword.toLowerCase();
+
+                // keyword match (contains)
+                if (text.includes(key)) {
+                    await safeSend(message.from, rule.response);
+                    break; // stop after first match
+                }
+            }
+        }
+    }
+} catch (e) {
+    console.error("Auto-reply error:", e);
+}
+
+
+
+
     // If no command prefix, stop here
     if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
@@ -1453,6 +1487,286 @@ case 'help': {
 
     break;
 }
+
+case 'autoreply': {
+    if (!isSelfChat) return;
+
+    const sub = (args[0] || '').toLowerCase();
+
+    // ============= ADD RULE =============
+    if (sub === 'add') {
+        const full = args.slice(1).join(' ');
+        const pipe = full.indexOf('|');
+
+        if (pipe === -1) {
+            await safeSend(message.from,
+                'Usage:\n' +
+                '!autoreply add <keyword> | <response>\n\n' +
+                'Example:\n!autoreply add hi | Hello there!'
+            );
+            break;
+        }
+
+        const keyword = full.slice(0, pipe).trim();
+        const response = full.slice(pipe + 1).trim();
+
+        if (!keyword || !response) {
+            await safeSend(message.from, '❗ Keyword or response missing.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+        if (!doc) doc = await AutoReply.create({ sessionId, rules: [] });
+
+        doc.rules.push({ keyword, response });
+        await doc.save();
+
+        await safeSend(message.from,
+            `✅ Auto-reply added.\nKeyword: *${keyword}*\nResponse: ${response}`
+        );
+
+        break;
+    }
+
+        // ============= REMOVE RULE =============
+    if (sub === 'remove') {
+        const keyword = args.slice(1).join(' ').trim().toLowerCase();
+
+        if (!keyword) {
+            await safeSend(message.from,
+                'Usage:\n!autoreply remove <keyword>'
+            );
+            break;
+        }
+
+        const doc = await AutoReply.findOne({ sessionId });
+        if (!doc || !doc.rules.length) {
+            await safeSend(message.from, '❌ No rules saved.');
+            break;
+        }
+
+        doc.rules = doc.rules.filter(r => r.keyword.toLowerCase() !== keyword);
+        await doc.save();
+
+        await safeSend(message.from,
+            `🗑 Removed auto-reply for keyword: *${keyword}*`
+        );
+
+        break;
+    }
+
+        // ============= LIST RULES =============
+    if (sub === 'list') {
+        const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+
+        if (!doc || !doc.rules.length) {
+            await safeSend(message.from, '📭 No auto-reply rules saved.');
+            break;
+        }
+
+        let out = '*📄 AUTO-REPLY RULES:*\n\n';
+        doc.rules.forEach((r, i) => {
+            out += `${i + 1}. Keyword: *${r.keyword}*\n   Reply: ${r.response}\n\n`;
+        });
+
+        await safeSend(message.from, out);
+        break;
+    }
+
+        await safeSend(message.from,
+        'Usage:\n' +
+        '!autoreply add <keyword> | <response>\n' +
+        '!autoreply remove <keyword>\n' +
+        '!autoreply list'
+    );
+
+    break;
+}
+
+
+
+case 'broadcast': {
+    if (!isSelfChat) return;
+
+    const msgText = args.join(' ').trim();
+    if (!msgText) {
+        await safeSend(message.from,
+            '❗ Usage:\n!broadcast <message>\n\nSends the message to ALL groups where you are an admin.'
+        );
+        break;
+    }
+
+    // Load cached admin groups
+    let cache = await SavedGroupList.findOne({ sessionId }).lean().catch(() => null);
+    let adminGroups = cache?.groups || [];
+
+    // If cache empty, rebuild it
+    if (!adminGroups.length) {
+        await safeSend(message.from, '⏳ Cache empty — rescanning groups...');
+        const chats = await client.getChats().catch(() => []);
+
+        adminGroups = [];
+
+        for (const c of chats) {
+            if (!c.isGroup) continue;
+            let parts = [];
+
+            try {
+                if (Array.isArray(c.participants)) {
+                    parts = c.participants;
+                } else if (typeof c.getParticipants === "function") {
+                    parts = await c.getParticipants();
+                }
+            } catch {}
+
+            const amIAdmin = parts.some(p =>
+                p.id._serialized === mySelf &&
+                (p.isAdmin || p.isSuperAdmin)
+            );
+
+            if (amIAdmin) {
+                adminGroups.push({
+                    name: c.name || 'Unnamed Group',
+                    groupId: c.id._serialized
+                });
+            }
+        }
+
+        await SavedGroupList.findOneAndUpdate(
+            { sessionId },
+            { groups: adminGroups, updatedAt: new Date() },
+            { upsert: true }
+        );
+    }
+
+    if (!adminGroups.length) {
+        await safeSend(message.from, '❌ No admin groups found.');
+        break;
+    }
+
+    await safeSend(
+        message.from,
+        `📣 *Broadcast Started*\nSending message to ${adminGroups.length} admin groups...`
+    );
+
+    let delivered = 0;
+
+    for (const g of adminGroups) {
+        try {
+            await client.sendMessage(g.groupId, msgText);
+            delivered++;
+        } catch (e) {}
+
+        // Throttle
+        await new Promise(r => setTimeout(r, 500));
+    }
+
+    await safeSend(
+        message.from,
+        `✅ *Broadcast Completed*\nMessage delivered to *${delivered}* groups.`
+    );
+
+    break;
+}
+
+case 'broadcastdm': {
+    if (!isSelfChat) return;
+
+    const msgText = args.join(' ').trim();
+    if (!msgText) {
+        await safeSend(message.from,
+            '❗ Usage:\n!broadcastdm <message>\n\nSends a direct message to ALL your contacts.'
+        );
+        break;
+    }
+
+    await safeSend(message.from, '⏳ Fetching contacts...');
+
+    let contacts = [];
+    try {
+        contacts = await client.getContacts();
+    } catch {}
+
+    if (!contacts.length) {
+        await safeSend(message.from, '❌ No contacts available.');
+        break;
+    }
+
+    // Filter real WhatsApp contacts only
+    const jids = contacts
+        .filter(c => c.id && c.id._serialized.endsWith('@c.us'))
+        .map(c => c.id._serialized)
+        .filter(j => j !== mySelf);  // skip bot
+
+    await safeSend(
+        message.from,
+        `📣 *DM Broadcast Started*\nSending message to ${jids.length} contacts...`
+    );
+
+    let delivered = 0;
+
+    for (const jid of jids) {
+        try {
+            await client.sendMessage(jid, msgText);
+            delivered++;
+        } catch (e) {}
+
+        // Important to avoid WhatsApp ban
+        await new Promise(r => setTimeout(r, 400));
+    }
+
+    await safeSend(
+        message.from,
+        `✅ *DM Broadcast Completed*\nDelivered to *${delivered}* contacts.`
+    );
+
+    break;
+}
+
+
+case 'status': {
+    if (!isSelfChat) return;
+
+    // Fetch admin groups cache
+    const adminCache = await SavedGroupList.findOne({ sessionId }).lean().catch(() => null);
+    const adminCount = adminCache?.groups?.length || 0;
+
+    // Fetch all-groups cache
+    const allCache = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+        .lean()
+        .catch(() => null);
+    const allCount = allCache?.groups?.length || 0;
+
+    // Count total member records in DB for this session
+    const memberCount = await GroupMembers.countDocuments({ sessionId }).catch(() => 0);
+
+    // Check WhatsApp client state
+    let waState = "UNKNOWN";
+    try { waState = await client.getState(); } catch {}
+
+    const text = `
+📊 *BOT STATUS REPORT*
+
+🤖 *WhatsApp Connection:* ${waState}
+🔑 *Session:* ${sessionId}
+
+📂 *Cached Admin Groups:* ${adminCount}
+📂 *Cached All Groups:* ${allCount}
+👥 *Cached Member Lists:* ${memberCount}
+
+🕒 *Auto-refresh every:* 12 hours (admin groups)
+🕒 *Member auto-sync:* Every 30 minutes
+
+💡 Use:
+• !list refresh  → refresh admin groups
+• !listall refresh → refresh all joined groups
+• !syncmembers <index> → refresh specific group members
+`;
+
+    await safeSend(message.from, text);
+    break;
+}
+
 
 case 'listall': {
     const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
@@ -2064,162 +2378,6 @@ case 'mygroups': {
     break;
 }
 
-
-// case 'tag': {
-//     if (!isSelfChat) return;
-
-//     // Rate limit check (per user)
-//     const rl = checkRateLimit(message.from);
-//     if (!rl.allowed) {
-//         await safeSend(message.from, `⚠ Rate limit: try again in ${Math.ceil(rl.retryAfter/1000)}s`);
-//         break;
-//     }
-
-//     // Parse command
-//     let raw = message.body.trim().replace(/^!tag\s*/i, '').trim();
-//     const parts = raw.split(/\s+/);
-//     const firstPart = parts[0] || '';
-
-//     // Multi-group support
-//     let groupIndexes = [];
-//     let messageText = '';
-
-//     if (/^[0-9, ]+$/.test(firstPart) && firstPart.trim().length) {
-//         groupIndexes = firstPart.split(/[, ]+/).map(n => parseInt(n)).filter(n => !isNaN(n));
-//         messageText = parts.slice(1).join(' ').trim();
-//     } else {
-//         groupIndexes = [null]; // default group
-//         messageText = raw.trim();
-//     }
-
-//     if (!messageText) messageText = "*🔔 Attention everyone!*";
-
-//     if (!groupIndexes.length) {
-//         await safeSend(message.from, "❌ Invalid group indexes.");
-//         break;
-//     }
-
-//     // Contact cache per invocation
-//     const contactCache = new Map();
-
-//     // Fetch contacts in parallel (bounded)
-//     async function fetchContactsMerged(jids, concurrency = 30) {
-//         const missing = jids.filter(j => !contactCache.has(j));
-//         if (!missing.length) return;
-
-//         let i = 0;
-//         const workers = new Array(Math.min(concurrency, missing.length)).fill(0).map(async () => {
-//             while (true) {
-//                 const idx = i++;
-//                 if (idx >= missing.length) break;
-
-//                 const jid = missing[idx];
-//                 try {
-//                     const c = await client.getContactById(jid).catch(() => null);
-//                     contactCache.set(jid, c || { id: { _serialized: jid } });
-//                 } catch (e) {
-//                     contactCache.set(jid, { id: { _serialized: jid } });
-//                 }
-//             }
-//         });
-
-//         await Promise.all(workers);
-//     }
-
-//     const successfulGroups = [];
-
-//     for (const idx of groupIndexes) {
-//         const resolved = await resolveTargetGroupArg(idx);
-//         if (!resolved.group) {
-//             await safeSend(message.from, `❌ No group found for index: ${idx}`);
-//             continue;
-//         }
-
-//         const groupId = resolved.group.groupId;
-//         const chat = await client.getChatById(groupId).catch(() => null);
-
-//         if (!chat) {
-//             await safeSend(message.from, `❌ Could not fetch group: ${resolved.group.name}`);
-//             continue;
-//         }
-
-//         // Cached member list
-//         const memberJIDs = await getCachedMembers(sessionId, groupId, chat);
-//         if (!Array.isArray(memberJIDs) || !memberJIDs.length) {
-//             await safeSend(message.from,
-//                 `⚠ Could not determine members for *${resolved.group.name}*.\nTry !syncmembers.`);
-//             continue;
-//         }
-
-//         // Exclude bot itself
-//         const filteredJIDs = memberJIDs.filter(j => j !== mySelf);
-//         if (!filteredJIDs.length) {
-//             await safeSend(message.from, `⚠ No members to tag in ${resolved.group.name}.`);
-//             continue;
-//         }
-
-//         // Parallel contact fetch
-//         await fetchContactsMerged(filteredJIDs, 30);
-
-//         // Chunked sending
-//         const chunkSize = CHUNK_SIZE || 100;
-//         const chunks = [];
-//         for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
-//             chunks.push(filteredJIDs.slice(i, i + chunkSize));
-//         }
-
-//         let totalSent = 0;
-//         let totalChunks = 0;
-
-//         for (const chunk of chunks) {
-//             const mentions = [];
-
-//             for (const jid of chunk) {
-//                 const c = contactCache.get(jid);
-//                 if (!c) continue;
-//                 const jidSerialized = c.id?._serialized || jid;
-//                 mentions.push(jidSerialized);
-//             }
-
-//             if (!mentions.length) continue;
-
-//             // THE FIX: SEND ONLY MESSAGE TEXT – NO @names
-//             const chunkMessage = messageText;
-
-//             try {
-//                 await client.sendMessage(groupId, chunkMessage, { mentions });
-//                 totalSent += mentions.length;
-//                 totalChunks++;
-//             } catch (err) {
-//                 logger.error(`[${sessionName}] tag chunk failed`, err);
-
-//                 // retry once
-//                 try {
-//                     await new Promise(r => setTimeout(r, 500));
-//                     await client.sendMessage(groupId, chunkMessage, { mentions });
-//                     totalSent += mentions.length;
-//                     totalChunks++;
-//                 } catch (e) {
-//                     logger.error(`[${sessionName}] retry failed`, e);
-//                 }
-//             }
-
-//             await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
-//         }
-
-//         successfulGroups.push(`${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`);
-
-//         await new Promise(r => setTimeout(r, 600));
-//     }
-
-//     if (!successfulGroups.length) {
-//         await safeSend(message.from, "❌ No groups tagged.");
-//     } else {
-//         await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
-//     }
-
-//     break;
-// }
 
 case 'tag': {
     if (!isSelfChat) return;
