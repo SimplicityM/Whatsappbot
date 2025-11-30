@@ -2277,11 +2277,26 @@ function updateSessionStats() {
         }
     }
     
-    // Update other stats
-    if (elements.activeSessionsCount) elements.activeSessionsCount.textContent = activeSessions;
-    if (elements.totalMessagesCount) elements.totalMessagesCount.textContent = totalMessages.toLocaleString();
-    if (elements.messagesToday) elements.messagesToday.textContent = Math.floor(totalMessages * 0.1);
-    if (elements.groupsManaged) elements.groupsManaged.textContent = totalSessions;
+   // Update other stats
+if (elements.activeSessionsCount) elements.activeSessionsCount.textContent = activeSessions;
+if (elements.totalMessagesCount) elements.totalMessagesCount.textContent = totalMessages.toLocaleString();
+
+// ✅ Calculate from actual session usage data
+const totalMessagesToday = userSessions.reduce((sum, session) => {
+    // If session has today's message count, use it
+    return sum + (session.messagesToday || 0);
+}, 0);
+
+const totalGroupsManaged = userSessions.reduce((sum, session) => {
+    // Get groups managed from session usage
+    return sum + (session.usage?.groupsTagged || 0);
+}, 0);
+
+if (elements.messagesToday) elements.messagesToday.textContent = totalMessagesToday.toLocaleString();
+if (elements.groupsManaged) elements.groupsManaged.textContent = totalGroupsManaged;
+
+// ✅ Also refresh from API to get most accurate data
+loadUserStatistics('today').catch(err => console.error('Error loading statistics:', err));
 }
 
 function updateMessageStats() {

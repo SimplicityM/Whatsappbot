@@ -1128,14 +1128,46 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {
+        const { timeframe = 'today' } = req.query;
         const sessions = await Session.find({ userId: req.user.id });
 
+        // Calculate total usage from all sessions
+        let totalMessages = 0;
+        let totalCommands = 0;
+        let totalGroups = 0;
+
+        for (const session of sessions) {
+            totalMessages += session.usage.messagesProcessed || 0;
+            totalCommands += session.usage.commandsExecuted || 0;
+            totalGroups += session.usage.groupsTagged || 0;
+        }
+
+        // Get messages today from Usage model
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const todayUsage = await Usage.findOne({ 
+            userId: req.user.id, 
+            date: today 
+        });
+
+        // Get admin groups count from SavedGroupList
+        const adminGroupsCount = await SavedGroupList.aggregate([
+            { 
+                $match: { 
+                    sessionId: { 
+                        $in: sessions.map(s => s.sessionId) 
+                    } 
+                } 
+            },
+            { $unwind: '$groups' },
+            { $group: { _id: null, count: { $sum: 1 } } }
+        ]);
+
         const stats = {
-            totalMessages: 0,
-            totalGroups: 0,
-            commandsUsed: 0,
-            messagesToday: 0,
-            groupsManaged: sessions.length
+            totalMessages: totalMessages,
+            totalGroups: totalGroups,
+            commandsUsed: totalCommands,
+            messagesToday: todayUsage?.messagesCount || 0,
+            groupsManaged: adminGroupsCount[0]?.count || 0
         };
         
         res.json({
@@ -1143,6 +1175,7 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             data: stats
         });
     } catch (error) {
+        console.error('Statistics error:', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching statistics'

@@ -73,6 +73,49 @@ async function getMembersFromDB(sessionId, groupId) {
     }
 }
 
+// Add this function near the top of the file
+async function trackDailyUsage(userId, type = 'message') {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (type === 'message') {
+            await Usage.findOneAndUpdate(
+                { userId, date: today },
+                { 
+                    $inc: { messagesCount: 1 },
+                    $setOnInsert: { 
+                        commandsUsed: [],
+                        sessionsActive: 0,
+                        groupsManaged: 0
+                    }
+                },
+                { upsert: true }
+            );
+        } else if (type === 'command') {
+            await Usage.findOneAndUpdate(
+                { userId, date: today },
+                { 
+                    $push: { 
+                        commandsUsed: {
+                            command: type,
+                            timestamp: new Date(),
+                            sessionId
+                        }
+                    },
+                    $setOnInsert: { 
+                        messagesCount: 0,
+                        sessionsActive: 0,
+                        groupsManaged: 0
+                    }
+                },
+                { upsert: true }
+            );
+        }
+    } catch (err) {
+        console.error('Error tracking daily usage:', err);
+    }
+}
+
 
 //
 // === HIGH-PERF HELPERS: members cache, rate-limiter, chunked sender ===
@@ -1044,6 +1087,23 @@ client.on('message_create', async (message) => {
     // only process commands (ignore status & empty)
     if (!message.body || message.from === 'status@broadcast') return;
 
+    // Track daily usage
+const userMatch = sessionId.match(/^session-([^-]+)-/);
+const userId = userMatch ? userMatch[1] : null;
+if (userId) {
+    await trackDailyUsage(userId, 'message');
+}
+
+    // ✅ Track message processing
+try {
+    const sessionDoc = await Session.findOne({ sessionId });
+    if (sessionDoc) {
+        await sessionDoc.updateUsage('messagesProcessed', 1);
+    }
+} catch (err) {
+    console.error('Error updating message usage:', err);
+}
+
     // ensure selfId is set
     if (!client.info || !client.info.wid) {
       if (message.fromMe) {
@@ -1163,6 +1223,16 @@ try {
     const full = message.body.slice(COMMAND_PREFIX.length).trim();
     const [cmdRaw, ...args] = full.split(/\s+/);
     const cmd = (cmdRaw || '').toLowerCase();
+
+    // ✅ Track command execution
+try {
+    const sessionDoc = await Session.findOne({ sessionId });
+    if (sessionDoc) {
+        await sessionDoc.updateUsage('commandsExecuted', 1);
+    }
+} catch (err) {
+    console.error('Error updating command usage:', err);
+}
 
     // --------------------------------------------------
     // 🟢 COMMAND PERMISSION CHECK
@@ -1494,13 +1564,48 @@ case 'help': {
         }
     }
 
-    // Save cache
+//     // Save cache
+//     if (adminGroups.length) {
+//         await SavedGroupList.findOneAndUpdate(
+//             { sessionId },
+//             { groups: adminGroups, updatedAt: new Date() },
+//             { upsert: true }
+//         );
+//     }
+
+//     let out = '*📋 Updated Admin Group List:*\n\n';
+//     adminGroups.forEach((g, i) => {
+//         out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+//     });
+//     out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
+//     await safeSend(message.from, out);
+
+//     break;
+// }
+
+ // Save cache
     if (adminGroups.length) {
         await SavedGroupList.findOneAndUpdate(
             { sessionId },
             { groups: adminGroups, updatedAt: new Date() },
             { upsert: true }
         );
+        
+        // ✅ Update session usage with group count
+        try {
+            const sessionDoc = await Session.findOne({ sessionId });
+            if (sessionDoc) {
+                sessionDoc.usage.groupsTagged = adminGroups.length;
+                await sessionDoc.save();
+            }
+        } catch (err) {
+            console.error('Error updating groups count:', err);
+        }
+    }
+
+    if (!adminGroups.length) {
+        await safeSend(message.from, '❌ You are not an admin in any group.');
+        break;
     }
 
     let out = '*📋 Updated Admin Group List:*\n\n';
