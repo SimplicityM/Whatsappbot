@@ -12,10 +12,10 @@ const BlacklistedNumber = require('../models/BlacklistedNumber');
 
 // Subscription plans
 const SUBSCRIPTION_PLANS = {
-    starter: { amount: 2900, name: 'Starter Plan' }, // Amount in kobo (₦29)
-    professional: { amount: 7900, name: 'Professional Plan' }, // ₦79
-    business: { amount: 14900, name: 'Business Plan' }, // ₦149
-    enterprise: { amount: 27900, name: 'Enterprise Plan' } // ₦279
+    starter: { amount: 700, name: 'Starter Plan' }, // Amount in kobo ($7)
+    professional: { amount: 1500, name: 'Professional Plan' }, // $15
+    business: { amount: 2200, name: 'Business Plan' }, // $22
+    enterprise: { amount: 3800, name: 'Enterprise Plan' } // $38
 };
 
 // Plans endpoint
@@ -45,11 +45,17 @@ router.get('/plans', (req, res) => {
 
 function getSubscriptionFeatures(subscription) {
     const features = {
+        free: [
+            'Basic group tagging (tagall)',
+            'Basic media sharing',
+            '1 active sessions',
+            'Standard support'
+        ],
         starter: [
             'Basic group tagging (tagall)',
             'Contact auto-save',
             'Basic media sharing',
-            '5 active sessions',
+            '1 active sessions',
             'Standard support'
         ],
         professional: [
@@ -57,7 +63,7 @@ function getSubscriptionFeatures(subscription) {
             'Advanced tagging (tagallexcept)',
             'Event & meeting scheduling',
             'Reminder management',
-            '25 active sessions',
+            '1 active sessions',
             'Priority support',
             'Basic admin controls'
         ],
@@ -66,7 +72,7 @@ function getSubscriptionFeatures(subscription) {
             'Advanced admin controls',
             'Sudo user management',
             'System monitoring',
-            '100 active sessions',
+            '1 active sessions',
             'Broadcast messaging',
             'Custom workflows',
             '24/7 support'
@@ -371,6 +377,7 @@ router.get('/history', authenticate, async (req, res) => {
 // Helper function to get subscription name
 function getSubscriptionName(subscription) {
     const names = {
+        free: 'Free Plan',
         starter: 'Starter Plan',
         professional: 'Professional Plan',
         business: 'Business Plan',
