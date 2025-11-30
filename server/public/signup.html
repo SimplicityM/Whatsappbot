@@ -148,7 +148,50 @@
     </main>
 
     <script>
-// GLOBAL GOOGLE SIGN-IN CALLBACK
+// ========================================
+// GLOBAL VARIABLES & FUNCTIONS
+// ========================================
+let selectedPlan = 'free';
+
+// NOTIFICATION HANDLER (Global scope)
+function showNotification(message, type = "info") {
+    document.querySelectorAll(".custom-notification").forEach(el => el.remove());
+
+    const note = document.createElement("div");
+    note.className = `custom-notification ${type}`;
+    note.innerHTML = `
+        <div class="notification-content">
+            <i class="fas fa-${type === "success" ? "check-circle" : "exclamation-circle"}"></i>
+            <span>${message}</span>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 5000);
+}
+
+function showError(elementId, message) {
+    const errorElement = document.getElementById(elementId);
+    if (errorElement) {
+        errorElement.textContent = message;
+        errorElement.style.display = "block";
+    }
+}
+
+function clearError(elementId) {
+    const errorElement = document.getElementById(elementId);
+    if (errorElement) {
+        errorElement.textContent = "";
+        errorElement.style.display = "none";
+    }
+}
+
+// ========================================
+// GOOGLE SIGN-IN CALLBACK
+// ========================================
 window.handleCredentialResponse = function (response) {
     console.log("🔐 Google credential received");
 
@@ -156,7 +199,6 @@ window.handleCredentialResponse = function (response) {
     grecaptcha.ready(function () {
         grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "google_signup" })
         .then(function (token) {
-            // ✅ Use relative URL instead of hardcoded
             const API_BASE = window.location.origin;
             
             fetch(`${API_BASE}/api/auth/google-login`, {
@@ -179,7 +221,7 @@ window.handleCredentialResponse = function (response) {
                         if (selectedPlan !== 'free') {
                             window.location.href = `/payment?plan=${selectedPlan}`;
                         } else {
-                            window.location.href = "/dashboard";
+                            window.location.href = "/dashboard.html";
                         }
                     }, 1500);
                 } else {
@@ -198,9 +240,9 @@ window.handleCredentialResponse = function (response) {
     });
 };
 
-
-
+// ========================================
 // MAIN SIGNUP SCRIPT
+// ========================================
 document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById("signupForm");
     const password = document.getElementById("password");
@@ -209,12 +251,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const btnLoader = document.getElementById("btnLoader");
     const btnText = document.querySelector(".btn-text");
 
-     // Get plan from URL parameter
+    // Get plan from URL parameter
     const urlParams = new URLSearchParams(window.location.search);
-    const selectedPlan = urlParams.get('plan') || 'free';
+    selectedPlan = urlParams.get('plan') || 'free';
     if (document.getElementById('selectedPlan')) {
         document.getElementById('selectedPlan').value = selectedPlan;
     }
+
+    console.log("📋 Selected plan:", selectedPlan);
 
     // MOBILE MENU
     const hamburger = document.querySelector(".hamburger");
@@ -227,7 +271,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    
     // PASSWORD TOGGLE
     togglePassword.addEventListener("click", function () {
         const type = password.type === "password" ? "text" : "password";
@@ -237,7 +280,6 @@ document.addEventListener("DOMContentLoaded", function () {
         icon.classList.toggle("fa-eye");
         icon.classList.toggle("fa-eye-slash");
     });
-
 
     // PASSWORD STRENGTH CHECKER
     password.addEventListener("input", function () {
@@ -266,7 +308,6 @@ document.addEventListener("DOMContentLoaded", function () {
         fill.style.backgroundColor = colors[strength - 1] || "#ddd";
         text.textContent = strength ? labels[strength - 1] : "Password strength";
     }
-
 
     // FORM VALIDATION
     function validateForm() {
@@ -305,16 +346,6 @@ document.addEventListener("DOMContentLoaded", function () {
         return ok;
     }
 
-    function clearError(elementId) {
-    const errorElement = document.getElementById(elementId);
-    if (errorElement) {
-        errorElement.textContent = "";
-        errorElement.style.display = "none";
-    }
-}
-
-
-
     // SUBMIT
     form.addEventListener("submit", function (e) {
         e.preventDefault();
@@ -329,27 +360,8 @@ document.addEventListener("DOMContentLoaded", function () {
         grecaptcha.ready(function () {
             grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "signup" })
             .then(async function (token) {
-
                 const fd = new FormData(form);
-                 const API_BASE = window.location.origin;
-
-                 // ✅ Get plan from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const selectedPlan = urlParams.get('plan') || 'free';
-
-            try {
-                const res = await fetch(`${API_BASE}/api/auth/register`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        fullName: fd.get("fullName"),
-                        email: fd.get("email"),
-                        password: fd.get("password"),
-                        confirmPassword: fd.get("confirmPassword"),
-                        recaptchaToken: token,
-                        plan: selectedPlan // ✅ Added plan parameter
-                    })
-                });
+                const API_BASE = window.location.origin;
 
                 try {
                     const res = await fetch(`${API_BASE}/api/auth/register`, {
@@ -360,19 +372,20 @@ document.addEventListener("DOMContentLoaded", function () {
                             email: fd.get("email"),
                             password: fd.get("password"),
                             confirmPassword: fd.get("confirmPassword"),
-                            recaptchaToken: token
+                            recaptchaToken: token,
+                            plan: selectedPlan
                         })
                     });
 
                     const data = await res.json();
 
                     if (data.success) {
-                        // ✅ Store BOTH token and session
+                        // Store BOTH token and session
                         localStorage.setItem("authToken", data.data.token);
                         localStorage.setItem("userSession", JSON.stringify(data.data));
                         showNotification("Account created! Redirecting...", "success");
 
-                         setTimeout(() => {
+                        setTimeout(() => {
                             // Check if paid plan - redirect to payment
                             if (selectedPlan !== 'free') {
                                 window.location.href = `/payment?plan=${selectedPlan}`;
@@ -383,42 +396,30 @@ document.addEventListener("DOMContentLoaded", function () {
                         }, 1500);
                     } else {
                         showNotification(data.message || "Signup failed.", "error");
+                        submitBtn.disabled = false;
+                        btnText.style.opacity = "1";
+                        btnLoader.style.display = "none";
                     }
 
                 } catch (err) {
+                    console.error("Signup error:", err);
                     showNotification("Network error. Please try again.", "error");
+                    submitBtn.disabled = false;
+                    btnText.style.opacity = "1";
+                    btnLoader.style.display = "none";
                 }
-
+            })
+            .catch((error) => {
+                console.error("reCAPTCHA error:", error);
+                showNotification("Security verification failed. Please try again.", "error");
                 submitBtn.disabled = false;
                 btnText.style.opacity = "1";
                 btnLoader.style.display = "none";
             });
         });
     });
-
-
-    // NOTIFICATION HANDLER
-    function showNotification(message, type = "info") {
-        document.querySelectorAll(".custom-notification").forEach(el => el.remove());
-
-        const note = document.createElement("div");
-        note.className = `custom-notification ${type}`;
-        note.innerHTML = `
-            <div class="notification-content">
-                <i class="fas fa-${type === "success" ? "check-circle" : "exclamation-circle"}"></i>
-                <span>${message}</span>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-
-        document.body.appendChild(note);
-        setTimeout(() => note.remove(), 5000);
-    }
-
 });
-window.showNotification = showNotification;
+    </script>
 </script>
 </body>
 </html>

@@ -141,10 +141,10 @@
         </div>
     </div>
 
- <!-- GOOGLE ONE TAP CALLBACK -->
+ 
 <script>
 // ========================================
-// 🔧 HELPER FUNCTIONS (DEFINE FIRST!)
+// 🔧 GLOBAL HELPER FUNCTIONS
 // ========================================
 function showNotification(message, type = "info") {
     document.querySelectorAll(".custom-notification").forEach(el => el.remove());
@@ -211,8 +211,8 @@ window.handleCredentialResponse = function (response) {
                     localStorage.setItem("authToken", data.data.token);
                     localStorage.setItem("userSession", JSON.stringify(data.data));
                     
-                    showNotification("Google sign-in successful!", "success");
-                    setTimeout(() => (window.location.href = "/dashboard.html"), 1500);
+                    showNotification("Google sign-in successful! Redirecting...", "success");
+                    setTimeout(() => window.location.href = "/dashboard.html", 1500);
                 } else {
                     console.error("❌ Google login failed:", data.message);
                     showNotification(data.message || "Google login failed", "error");
@@ -229,9 +229,8 @@ window.handleCredentialResponse = function (response) {
         });
     });
 };
-</script>
+
 <!-- MAIN SCRIPT -->
-<script>
 document.addEventListener('DOMContentLoaded', function() {
 
     // ============================= ELEMENTS =============================
@@ -254,10 +253,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const hamburger = document.querySelector('.hamburger');
     const navMenu = document.querySelector('.nav-menu');
 
-    hamburger.addEventListener('click', () => {
-        hamburger.classList.toggle('active');
-        navMenu.classList.toggle('active');
-    });
+    if (hamburger) {
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            navMenu.classList.toggle('active');
+        });
+    }
 
     // ============================= PASSWORD TOGGLE =============================
     togglePassword.addEventListener('click', function() {
@@ -317,8 +318,8 @@ document.addEventListener('DOMContentLoaded', function() {
         grecaptcha.ready(function() {
             grecaptcha.execute("6Lf5IhssAAAAAMoASoArAe7UTvpqxJDxswRrEnlo", { action: "login" })
             .then(async function(token) {
-
-        const API_BASE = window.location.origin;
+                const API_BASE = window.location.origin;
+                
                 try {
                     const res = await fetch(`${API_BASE}/api/auth/login`, {
                         method: "POST",
@@ -333,23 +334,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     const data = await res.json();
 
                     if (data.success) {
-                    // ✅ Store BOTH token and session
-                    localStorage.setItem("authToken", data.data.token);
-                    localStorage.setItem("userSession", JSON.stringify({
-                        token: data.data.token,
-                        user: data.data.user
-                    }));
+                        // Store BOTH token and session (consistent with signup)
+                        localStorage.setItem("authToken", data.data.token);
+                        localStorage.setItem("userSession", JSON.stringify(data.data));
 
                         showNotification("Login successful! Redirecting...", "success");
-                        setTimeout(() => window.location.href = "/dashboard", 1500);
+                        setTimeout(() => window.location.href = "/dashboard.html", 1500);
                     } else {
-                        showNotification(data.message || "Invalid login", "error");
+                        showNotification(data.message || "Invalid login credentials", "error");
+                        submitBtn.disabled = false;
+                        btnText.style.opacity = "1";
+                        btnLoader.style.display = "none";
                     }
 
                 } catch (err) {
-                    showNotification("Network error. Try again.", "error");
+                    console.error("Login error:", err);
+                    showNotification("Network error. Please try again.", "error");
+                    submitBtn.disabled = false;
+                    btnText.style.opacity = "1";
+                    btnLoader.style.display = "none";
                 }
-
+            })
+            .catch((error) => {
+                console.error("reCAPTCHA error:", error);
+                showNotification("Security verification failed. Please try again.", "error");
                 submitBtn.disabled = false;
                 btnText.style.opacity = "1";
                 btnLoader.style.display = "none";
@@ -365,6 +373,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const resetBtn = document.getElementById("resetSubmitBtn");
         const resetLoader = document.getElementById("resetBtnLoader");
         const resetText = resetBtn.querySelector(".btn-text");
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            showError("resetEmailError", "Enter a valid email address");
+            return;
+        }
 
         resetBtn.disabled = true;
         resetText.style.opacity = "0";
@@ -384,42 +397,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     const data = await res.json();
 
                     if (data.success) {
-                        showNotification("Password reset link sent!", "success");
+                        showNotification("Password reset link sent to your email!", "success");
                         forgotPasswordModal.style.display = "none";
+                        forgotPasswordForm.reset();
                     } else {
                         showNotification(data.message || "Error sending reset email", "error");
                     }
                 } catch (err) {
-                    showNotification("Network error. Try again.", "error");
+                    console.error("Forgot password error:", err);
+                    showNotification("Network error. Please try again.", "error");
                 }
 
+                resetBtn.disabled = false;
+                resetText.style.opacity = "1";
+                resetLoader.style.display = "none";
+            })
+            .catch((error) => {
+                console.error("reCAPTCHA error:", error);
+                showNotification("Security verification failed. Please try again.", "error");
                 resetBtn.disabled = false;
                 resetText.style.opacity = "1";
                 resetLoader.style.display = "none";
             });
         });
     });
-
-
-    // ============================= NOTIFICATION =============================
-    function showNotification(message, type="info") {
-        document.querySelectorAll(".custom-notification").forEach(n => n.remove());
-
-        const n = document.createElement("div");
-        n.className = `custom-notification ${type}`;
-        n.innerHTML = `
-            <div class="notification-content">
-                <i class="fas fa-${type === "success" ? "check-circle" : "exclamation-circle"}"></i>
-                <span>${message}</span>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-
-        document.body.appendChild(n);
-        setTimeout(() => n.remove(), 5000);
-    }
 
 });
 </script>
