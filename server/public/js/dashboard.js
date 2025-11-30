@@ -115,6 +115,7 @@ function updateUserInfo() {
     // ✅ Use fullName first, then name, then default to 'User'
     if (userName) userName.textContent = currentUser.user.fullName || currentUser.user.name || 'User';
     if (userSubscription) userSubscription.textContent = displayName;
+}
 
 function setupEventListeners() {
     console.log('🔧 Setting up event listeners...');
