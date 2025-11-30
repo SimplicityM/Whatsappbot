@@ -1109,7 +1109,6 @@ app.get('/api/user/usage', authenticate, async (req, res) => {
     }
 });
 
-
 // Socket.io (frontend) handling remains the same — users join rooms, etc.
 io.on('connection', (socket) => {
   console.log('🔌 Frontend client connected', socket.id);
