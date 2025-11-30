@@ -352,16 +352,30 @@ router.get('/commands', authenticate, async (req, res) => {
         const planCommands = getPlanCommandDetails(plan.allowedCommands);
         
         // Get custom granted commands
-        const customGrants = await CommandGrant.find({
-            $or: [
-                { userId: req.user.id, isActive: true },
-                { planType: user.subscription, isActive: true }
-            ],
-            $or: [
-                { expiresAt: null },
-                { expiresAt: { $gt: new Date() } }
-            ]
-        });
+        let customGrants = [];
+            try {
+            customGrants = await CommandGrant.find({
+                $and: [
+                {
+                    $or: [
+                    { userId: req.user.id, isActive: true },
+                    { planType: user.subscription, isActive: true }
+                    ]
+                },
+                {
+                    $or: [
+                    { expiresAt: null },
+                    { expiresAt: { $gt: new Date() } }
+                    ]
+                }
+                ]
+            }).lean();
+            } catch (err) {
+            console.error('CommandGrant find error (non-fatal):', err && err.message ? err.message : err);
+            // return empty array as fallback so UI doesn't fail
+            customGrants = [];
+            }
+
         
         res.json({
             success: true,

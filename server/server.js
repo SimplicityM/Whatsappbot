@@ -138,22 +138,21 @@ const connectDB = async () => {
 
             // Global mongoose configs
         mongoose.set('strictQuery', false);
-        mongoose.set('bufferCommands', true);  // LET MONGO RECONNECT SAFELY
+        mongoose.set('bufferCommands', true); // allow buffering while reconnecting
 
         await mongoose.connect(mongoURI, {
         serverSelectionTimeoutMS: 30000,
         socketTimeoutMS: 60000,
         connectTimeoutMS: 30000,
-
+        // tune pool sizes for cloud environment
         maxPoolSize: 20,
-        minPoolSize: 5,
-
+        minPoolSize: 2,
         retryWrites: true,
         w: 'majority',
-
-        bufferCommands: true,   // VERY IMPORTANT
+        bufferCommands: true,
         autoIndex: false
         });
+
 
 
     console.log('🟢 Initial MongoDB connection established');
