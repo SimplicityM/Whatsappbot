@@ -197,21 +197,28 @@ const connectDB = async () => {
 
     console.log('✅ Models loaded');
 
-    // Test database operations
-    try {
-      await User.countDocuments();
-      await Session.countDocuments();
-      console.log('✅ Database operations verified');
-    } catch (dbError) {
-      console.error('❌ Database operation test failed:', dbError);
-      throw dbError;
-    }
+        // Test database operations
+            try {
+            await User.countDocuments();
+            await Session.countDocuments();
+            console.log('✅ Database operations verified');
+            } catch (dbError) {
+            console.error('❌ Database operation test failed:', dbError);
+            throw dbError;
+            }
 
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error);
-    throw error;
-  }
-};
+            // ✅ Start trial monitoring AFTER DB is connected
+            const { checkExpiredTrials } = require('./utils/trialMonitor');
+            checkExpiredTrials();
+            console.log('✅ Trial monitoring started');
+
+            return true; // Return success
+
+        } catch (error) {
+            console.error('❌ MongoDB connection failed:', error);
+            throw error;
+        }
+        };
 
     // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
@@ -380,24 +387,6 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
         });
     }
 });
-
-    // Start trial monitoring AFTER DB is connected
-    const { checkExpiredTrials } = require('./utils/trialMonitor');
-    checkExpiredTrials();
-    console.log('✅ Trial monitoring started');
-
-    return true; // Return success
-
-  } catch (err) {
-    console.error('❌ Server DB error:', err);
-    console.error('❌ Error details:', err.message);
-    console.error('❌ Stack trace:', err.stack);
-    
-    // Don't exit immediately, let retry logic handle it
-    throw err;
-  }
-};
-
 
 // Global variables
 const activeClients = new Map();
