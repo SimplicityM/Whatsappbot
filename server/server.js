@@ -109,6 +109,22 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ========================================
+// 🩺 HEALTH CHECK ENDPOINT (SAFE, NO DB)
+// ========================================
+app.get('/health', (req, res) => {
+    const mongooseReady = mongoose.connection.readyState === 1;
+    const workerSocket = app.get('workerSocket');
+    const workerConnected = workerSocket?.connected || false;
+
+    res.json({
+        success: true,
+        server: true,
+        mongodb: mongooseReady ? "connected" : `not-ready(${mongoose.connection.readyState})`,
+        worker: workerConnected
+    });
+});
+
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
