@@ -419,38 +419,67 @@
                             </div>
                         </div>
 
-                        <!-- Commands Settings -->
-                        <div id="commands-settings" class="settings-tab">
-                            <div class="setting-group">
-                                <h3>Available Commands</h3>
-                                <div id="availableCommandsList">
-                                    <!-- Commands will be populated based on subscription -->
-                                </div>
-                            </div>
-                        </div>
+                        
 
-                        <!-- Notifications Settings -->
-                        <div id="notifications-settings" class="settings-tab">
-                            <div class="setting-group">
-                                <h3>Notification Preferences</h3>
-                                <div class="setting-item">
-                                    <label for="notifyNewMessages">New Message Alerts</label>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notifyNewMessages" checked>
-                                        <span class="slider"></span>
-                                    </label>
+                        <!-- Commands Settings -->
+                                <div id="commands-settings" class="settings-tab">
+                                    <div class="setting-group">
+                                        <h3>📋 Available Commands for Your Plan</h3>
+                                        <p class="text-muted">Commands included in your <span id="currentPlanName"></span> subscription</p>
+                                        <div id="planCommandsList" class="commands-list">
+                                            <!-- Plan commands will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setting-group" id="customCommandsSection" style="display: none;">
+                                        <h3>⭐ Custom Granted Commands</h3>
+                                        <p class="text-muted">Special commands granted to you by admin</p>
+                                        <div id="customCommandsList" class="commands-list">
+                                            <!-- Custom commands will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setting-group">
+                                        <h3>ℹ️ Command Usage</h3>
+                                        <p class="text-muted">All commands use the prefix: <code>!</code></p>
+                                        <p class="text-muted">Example: <code>!tag</code> to tag all members in a group</p>
+                                    </div>
                                 </div>
-                                <div class="setting-item">
-                                    <label for="notifySessionStatus">Session Status Alerts</label>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notifySessionStatus" checked>
-                                        <span class="slider"></span>
-                                    </label>
+
+                                <!-- Notifications Settings -->
+                                <div id="notifications-settings" class="settings-tab">
+                                    <div class="setting-group">
+                                        <h3>🔔 Command Notifications</h3>
+                                        <div id="commandNotificationsList" class="notifications-list">
+                                            <!-- Notifications will be populated here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="setting-group">
+                                        <h3>⚙️ Notification Preferences</h3>
+                                        <div class="setting-item">
+                                            <label for="notifyCommandGrants">Command Grant Alerts</label>
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" id="notifyCommandGrants" checked>
+                                                <span class="slider"></span>
+                                            </label>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label for="notifyPlanUpdates">Plan Update Alerts</label>
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" id="notifyPlanUpdates" checked>
+                                                <span class="slider"></span>
+                                            </label>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label for="notifySessionStatus">Session Status Alerts</label>
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" id="notifySessionStatus" checked>
+                                                <span class="slider"></span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </section>
 
             <!-- Payments Section -->

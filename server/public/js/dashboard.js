@@ -2550,15 +2550,35 @@ function formatDate(dateString) {
 }
 
 function switchTab(tabName) {
-    // Update active tab
+    console.log('🔄 Switching to tab:', tabName);
+    
+    // Update active tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelectorAll('.settings-tab').forEach(content => content.classList.remove('active'));
 
     const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
-    const activeContent = document.getElementById(`${tabName}-tab`);
+    const activeContent = document.getElementById(`${tabName}-settings`); // ✅ FIXED: Changed from -tab to -settings
 
-    if (activeBtn) activeBtn.classList.add('active');
-    if (activeContent) activeContent.classList.add('active');
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+        console.log('✅ Tab button activated:', tabName);
+    } else {
+        console.error('❌ Tab button not found:', tabName);
+    }
+    
+    if (activeContent) {
+        activeContent.classList.add('active');
+        console.log('✅ Tab content shown:', tabName);
+        
+        // Load tab-specific data
+        if (tabName === 'commands') {
+            loadAvailableCommands();
+        } else if (tabName === 'notifications') {
+            loadNotifications();
+        }
+    } else {
+        console.error('❌ Tab content not found:', `${tabName}-settings`);
+    }
 }
 
 // ========================================
@@ -2872,7 +2892,190 @@ function setupSocketDebugging() {
     }
 }
 
+// ========================================
+// 📋 LOAD AVAILABLE COMMANDS
+// ========================================
+async function loadAvailableCommands() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/user/commands`, {
+            headers: {
+                'Authorization': `Bearer ${currentUser.token}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayPlanCommands(data.data.planCommands);
+            displayCustomCommands(data.data.customCommands);
+            
+            // Update plan name
+            const planNameEl = document.getElementById('currentPlanName');
+            if (planNameEl) {
+                planNameEl.textContent = data.data.planName;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading commands:', error);
+        showNotification('Failed to load commands', 'error');
+    }
+}
 
+function displayPlanCommands(commands) {
+    const container = document.getElementById('planCommandsList');
+    if (!container) return;
+    
+    if (!commands || commands.length === 0) {
+        container.innerHTML = '<p class="text-muted">No commands available for your plan</p>';
+        return;
+    }
+    
+    container.innerHTML = commands.map(cmd => `
+        <div class="command-card">
+            <div class="command-header">
+                <span class="command-name">!${cmd.name}</span>
+                <span class="badge badge-primary">${cmd.category || 'General'}</span>
+            </div>
+            <p class="command-description">${cmd.description}</p>
+            <div class="command-usage">
+                <strong>Usage:</strong> <code>${cmd.usage}</code>
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayCustomCommands(commands) {
+    const container = document.getElementById('customCommandsList');
+    const section = document.getElementById('customCommandsSection');
+    
+    if (!container || !section) return;
+    
+    if (!commands || commands.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    container.innerHTML = commands.map(cmd => `
+        <div class="command-card custom-command">
+            <div class="command-header">
+                <span class="command-name">!${cmd.commandName}</span>
+                <span class="badge badge-success">Custom Grant</span>
+            </div>
+            <p class="command-description">${cmd.commandDescription || 'Special command granted to you'}</p>
+            <div class="command-meta">
+                <small class="text-muted">
+                    Granted: ${new Date(cmd.createdAt).toLocaleDateString()}
+                    ${cmd.expiresAt ? `• Expires: ${new Date(cmd.expiresAt).toLocaleDateString()}` : '• Permanent'}
+                </small>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ========================================
+// 🔔 LOAD NOTIFICATIONS
+// ========================================
+async function loadNotifications() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/user/notifications`, {
+            headers: {
+                'Authorization': `Bearer ${currentUser.token}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayNotifications(data.data.notifications);
+        }
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+        showNotification('Failed to load notifications', 'error');
+    }
+}
+
+function displayNotifications(notifications) {
+    const container = document.getElementById('commandNotificationsList');
+    if (!container) return;
+    
+    if (!notifications || notifications.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No notifications yet</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = notifications.map(notif => `
+        <div class="notification-card ${notif.isRead ? 'read' : 'unread'}" data-id="${notif._id}">
+            <div class="notification-header">
+                <span class="notification-icon ${getNotificationIcon(notif.type)}"></span>
+                <span class="notification-title">${notif.title}</span>
+                <span class="notification-time">${formatTimeAgo(notif.createdAt)}</span>
+            </div>
+            <p class="notification-message">${notif.message}</p>
+            ${!notif.isRead ? `
+                <button class="btn-link" onclick="markAsRead('${notif._id}')">
+                    Mark as read
+                </button>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+function getNotificationIcon(type) {
+    const icons = {
+        'command_grant': 'fas fa-gift text-success',
+        'plan_update': 'fas fa-star text-warning',
+        'system': 'fas fa-info-circle text-info',
+        'payment': 'fas fa-credit-card text-primary',
+        'session': 'fas fa-plug text-secondary'
+    };
+    return icons[type] || 'fas fa-bell';
+}
+
+function formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    
+    const intervals = {
+        year: 31536000,
+        month: 2592000,
+        week: 604800,
+        day: 86400,
+        hour: 3600,
+        minute: 60
+    };
+    
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+        const interval = Math.floor(seconds / secondsInUnit);
+        if (interval >= 1) {
+            return `${interval} ${unit}${interval > 1 ? 's' : ''} ago`;
+        }
+    }
+    
+    return 'Just now';
+}
+
+async function markAsRead(notificationId) {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/user/notifications/${notificationId}/read`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${currentUser.token}`
+            }
+        });
+        
+        if (response.ok) {
+            loadNotifications(); // Reload
+            showNotification('Notification marked as read', 'success');
+        }
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+    }
+}
 
 
 function updateSessionStatus(sessionId, message, status) {
@@ -2937,6 +3140,7 @@ function loadTheme() {
         if (themeText) themeText.textContent = 'Light';
     }
 }
+
 
 // Call loadTheme when page loads
 document.addEventListener('DOMContentLoaded', loadTheme);

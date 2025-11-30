@@ -1085,6 +1085,240 @@ router.post('/sessions/create', authenticateAdmin, async (req, res) => {
     }
 });
 
+// Grant command to specific user
+router.post('/grant-command/user', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId, commandName, commandDescription, expiresAt, reason } = req.body;
+
+        const CommandGrant = require('../../models/CommandGrant');
+        const Notification = require('../../models/Notification');
+        const User = require('../../server/models/User');
+
+        // Validate user exists
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Create command grant
+        const grant = new CommandGrant({
+            userId,
+            commandName,
+            commandDescription,
+            grantedBy: req.user.id,
+            grantType: 'user',
+            expiresAt: expiresAt || null,
+            reason: reason || 'Admin granted custom command'
+        });
+
+        await grant.save();
+
+        // Create notification for user
+        const notification = new Notification({
+            userId,
+            type: 'command_grant',
+            title: '🎁 New Command Granted!',
+            message: `You have been granted access to the "${commandName}" command. ${commandDescription || ''}`,
+            data: {
+                commandName,
+                grantId: grant._id,
+                expiresAt: expiresAt || null
+            },
+            priority: 'high'
+        });
+
+        await notification.save();
+
+        console.log(`✅ Admin ${req.user.email} granted "${commandName}" to user ${user.email}`);
+
+        res.json({
+            success: true,
+            message: `Command "${commandName}" granted to ${user.email}`,
+            data: {
+                grant,
+                notification
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Grant command error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error granting command'
+        });
+    }
+});
+
+
+// Grant command to an entire plan
+router.post('/grant-command/plan', authenticateAdmin, async (req, res) => {
+    try {
+        const { planType, commandName, commandDescription, expiresAt, reason } = req.body;
+
+        const CommandGrant = require('../../models/CommandGrant');
+        const Notification = require('../../models/Notification');
+        const User = require('../../server/models/User');
+
+        // Validate plan type
+        const validPlans = ['free', 'starter', 'professional', 'business', 'enterprise'];
+        if (!validPlans.includes(planType)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid plan type'
+            });
+        }
+
+        // Create command grant
+        const grant = new CommandGrant({
+            planType,
+            commandName,
+            commandDescription,
+            grantedBy: req.user.id,
+            grantType: 'plan',
+            expiresAt: expiresAt || null,
+            reason: reason || `Admin granted command to all ${planType} users`
+        });
+
+        await grant.save();
+
+        // Fetch all plan users
+        const planUsers = await User.find({ subscription: planType });
+
+        // Notifications
+        const notifications = planUsers.map(user => ({
+            userId: user._id,
+            type: 'plan_update',
+            title: '🌟 New Command Available!',
+            message: `The "${commandName}" command is now available for all ${planType} users. ${commandDescription || ''}`,
+            data: {
+                commandName,
+                grantId: grant._id,
+                planType,
+                expiresAt: expiresAt || null
+            },
+            priority: 'medium'
+        }));
+
+        await Notification.insertMany(notifications);
+
+        console.log(`✅ Admin ${req.user.email} granted "${commandName}" to all ${planType} users (${planUsers.length} users)`);
+
+        res.json({
+            success: true,
+            message: `Command "${commandName}" granted to all ${planType} users (${planUsers.length} notified)`,
+            data: {
+                grant,
+                usersNotified: planUsers.length
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Grant command to plan error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error granting command to plan'
+        });
+    }
+});
+
+
+// Get all command grants
+router.get('/command-grants', authenticateAdmin, async (req, res) => {
+    try {
+        const CommandGrant = require('../../models/CommandGrant');
+
+        const grants = await CommandGrant.find()
+            .populate('userId', 'email fullName subscription')
+            .populate('grantedBy', 'email fullName')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: { grants }
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching command grants:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching command grants'
+        });
+    }
+});
+
+
+// Revoke command grant
+router.delete('/command-grants/:grantId', authenticateAdmin, async (req, res) => {
+    try {
+        const CommandGrant = require('../../models/CommandGrant');
+        const Notification = require('../../models/Notification');
+        const User = require('../../server/models/User');
+
+        const grant = await CommandGrant.findById(req.params.grantId);
+
+        if (!grant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Grant not found'
+            });
+        }
+
+        // Deactivate instead of deleting
+        grant.isActive = false;
+        await grant.save();
+
+        // If single user grant
+        if (grant.userId) {
+            await Notification.create({
+                userId: grant.userId,
+                type: 'command_grant',
+                title: 'Command Access Revoked',
+                message: `Access to the "${grant.commandName}" command has been revoked.`,
+                data: {
+                    commandName: grant.commandName,
+                    grantId: grant._id
+                },
+                priority: 'medium'
+            });
+
+        } else if (grant.planType) {
+            // Plan-wide revocation
+            const planUsers = await User.find({ subscription: grant.planType });
+
+            const notifications = planUsers.map(user => ({
+                userId: user._id,
+                type: 'plan_update',
+                title: 'Command Removed',
+                message: `The "${grant.commandName}" command is no longer available for ${grant.planType} users.`,
+                data: {
+                    commandName: grant.commandName,
+                    grantId: grant._id,
+                    planType: grant.planType
+                },
+                priority: 'low'
+            }));
+
+            await Notification.insertMany(notifications);
+        }
+
+        console.log(`✅ Admin ${req.user.email} revoked command grant ${grant._id}`);
+
+        res.json({
+            success: true,
+            message: 'Command grant revoked successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Error revoking command grant:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error revoking command grant'
+        });
+    }
+});
 
 
 module.exports = router;

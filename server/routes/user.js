@@ -338,4 +338,163 @@ router.put('/subscription', authenticate, async (req, res) => {
     }
 });
 
+// Get user's available commands
+router.get('/commands', authenticate, async (req, res) => {
+    try {
+        const User = require('../models/User');
+        const CommandGrant = require('../../models/CommandGrant');
+        const { subscriptionPlans } = require('../server');
+        
+        const user = await User.findById(req.user.id);
+        const plan = subscriptionPlans[user.subscription] || subscriptionPlans.free;
+        
+        // Get plan commands
+        const planCommands = getPlanCommandDetails(plan.allowedCommands);
+        
+        // Get custom granted commands
+        const customGrants = await CommandGrant.find({
+            $or: [
+                { userId: req.user.id, isActive: true },
+                { planType: user.subscription, isActive: true }
+            ],
+            $or: [
+                { expiresAt: null },
+                { expiresAt: { $gt: new Date() } }
+            ]
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                planName: plan.name,
+                planCommands: planCommands,
+                customCommands: customGrants
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching commands:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching commands'
+        });
+    }
+});
+
+// Get user notifications
+router.get('/notifications', authenticate, async (req, res) => {
+    try {
+        const Notification = require('../../models/Notification');
+        
+        const notifications = await Notification.find({
+            userId: req.user.id
+        })
+        .sort({ createdAt: -1 })
+        .limit(50);
+        
+        const unreadCount = await Notification.countDocuments({
+            userId: req.user.id,
+            isRead: false
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                notifications,
+                unreadCount
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching notifications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching notifications'
+        });
+    }
+});
+
+// Mark notification as read
+router.put('/notifications/:id/read', authenticate, async (req, res) => {
+    try {
+        const Notification = require('../../models/Notification');
+        
+        await Notification.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user.id },
+            { isRead: true, readAt: new Date() }
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error updating notification'
+        });
+    }
+});
+
+// Helper function
+function getPlanCommandDetails(allowedCommands) {
+    const commandDetails = {
+        ping: {
+            name: 'ping',
+            description: 'Check if bot is online',
+            usage: '!ping',
+            category: 'Basic'
+        },
+        help: {
+            name: 'help',
+            description: 'Show available commands',
+            usage: '!help',
+            category: 'Basic'
+        },
+        tag: {
+            name: 'tag',
+            description: 'Tag all members in a group',
+            usage: '!tag [message]',
+            category: 'Group'
+        },
+        tagexcept: {
+            name: 'tagexcept',
+            description: 'Tag all except specified members',
+            usage: '!tagexcept @user1 @user2 [message]',
+            category: 'Group'
+        },
+        list: {
+            name: 'list',
+            description: 'List all group members',
+            usage: '!list',
+            category: 'Group'
+        },
+        broadcast: {
+            name: 'broadcast',
+            description: 'Send message to multiple groups',
+            usage: '!broadcast [message]',
+            category: 'Messaging'
+        },
+        auto_reply: {
+            name: 'auto_reply',
+            description: 'Set up automatic replies',
+            usage: '!auto_reply [keyword] [response]',
+            category: 'Automation'
+        },
+        scheduler: {
+            name: 'scheduler',
+            description: 'Schedule messages',
+            usage: '!scheduler [time] [message]',
+            category: 'Automation'
+        },
+        analytics: {
+            name: 'analytics',
+            description: 'View usage analytics',
+            usage: '!analytics',
+            category: 'Statistics'
+        }
+    };
+    
+    if (allowedCommands === 'all') {
+        return Object.values(commandDetails);
+    }
+    
+    return allowedCommands.map(cmd => commandDetails[cmd]).filter(Boolean);
+}
+
 module.exports = router;

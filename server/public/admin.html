@@ -84,6 +84,13 @@
                     <span>Payment Exemptions</span>
                 </a>
             </li>
+
+            <li class="nav-item">
+            <a href="#commands" class="nav-link" data-section="commands">
+                <i class="fas fa-terminal"></i>
+                <span>Command Management</span>
+            </a>
+            </li>
     
         </ul>
     </nav>
@@ -540,6 +547,134 @@
                 </div>
             </div>
         </section>
+
+                <!-- Command Management Section -->
+        <section id="commands-section" class="content-section">
+            <div class="section-header">
+                <h2>🎮 Command Management</h2>
+                <button class="btn-primary" onclick="openGrantCommandModal()">
+                    <i class="fas fa-gift"></i> Grant Command
+                </button>
+            </div>
+
+            <div class="stats-grid mb-4">
+                <div class="stat-card">
+                    <div class="stat-icon bg-success">
+                        <i class="fas fa-terminal"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="totalGrantsCount">0</h3>
+                        <p>Total Grants</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon bg-primary">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="userGrantsCount">0</h3>
+                        <p>User Grants</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon bg-warning">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3 id="planGrantsCount">0</h3>
+                        <p>Plan Grants</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Command</th>
+                            <th>Type</th>
+                            <th>Recipient</th>
+                            <th>Granted By</th>
+                            <th>Expires</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="commandGrantsTable">
+                        <tr>
+                            <td colspan="7" class="text-center">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Grant Command Modal -->
+        <div id="grantCommandModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🎁 Grant Command Access</h2>
+                    <button class="close-btn" onclick="closeGrantCommandModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Grant Type</label>
+                        <select id="grantType" onchange="toggleGrantType()">
+                            <option value="user">Specific User</option>
+                            <option value="plan">Entire Plan</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="userSelectGroup">
+                        <label>Select User</label>
+                        <select id="grantUserId">
+                            <option value="">-- Select User --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="planSelectGroup" style="display: none;">
+                        <label>Select Plan</label>
+                        <select id="grantPlanType">
+                            <option value="free">Free Plan</option>
+                            <option value="starter">Starter Plan</option>
+                            <option value="professional">Professional Plan</option>
+                            <option value="business">Business Plan</option>
+                            <option value="enterprise">Enterprise Plan</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Command Name</label>
+                        <input type="text" id="grantCommandName" placeholder="e.g., premium_tag">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Command Description</label>
+                        <textarea id="grantCommandDescription" rows="3" placeholder="Describe what this command does..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Expiration Date (Optional)</label>
+                        <input type="date" id="grantExpiresAt">
+                        <small class="text-muted">Leave empty for permanent access</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Reason</label>
+                        <input type="text" id="grantReason" placeholder="Why are you granting this command?">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeGrantCommandModal()">Cancel</button>
+                    <button class="btn-primary" onclick="submitGrantCommand()">
+                        <i class="fas fa-gift"></i> Grant Command
+                    </button>
+                </div>
+            </div>
+        </div>
+
           <!-- Payment Exemptions Section -->
         <section id="exemptions-section" class="content-section">
             <div class="section-header">

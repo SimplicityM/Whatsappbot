@@ -190,8 +190,8 @@ const connectDB = async () => {
     // Load models AFTER confirmed connection
     User = require('./models/User');  
     Session = require('./models/Session');  
-    const Usage = require('./models/Usage');  
-    const SavedGroupList = require('./models/SavedGroupList');  
+    Usage = require('../models/Usage'); 
+    SavedGroupList = require('../models/SavedGroupList'); 
 
     const CONFIG = (() => {
   try { return require('./config.json'); } catch (e) { return {}; }

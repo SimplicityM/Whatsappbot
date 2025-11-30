@@ -47,6 +47,10 @@ document.addEventListener('DOMContentLoaded', function() {
         loadOwnerInfo();
         loadUsersExemptionStatus();
     }
+    
+    // ✅ ADD THIS (Optional - only if you want to preload)
+    // Preload command grants for faster switching
+    oadCommandGrants();
 });
 
 // Initialize admin functionality
@@ -584,18 +588,19 @@ function switchSection(sectionName) {
         currentSectionElement.classList.add('active');
     }
 
-    // Update page title
-    const titles = {
-        dashboard: 'Dashboard',
-        sessions: 'Bot Sessions',
-        users: 'Users & Groups',
-        contacts: 'Contacts',
-        messages: 'Messages',
-        reminders: 'Reminders',
-        analytics: 'Analytics',
-        settings: 'Settings',
-        exemptions: 'Payment Exemptions'
-    };
+        // Update page title
+        const titles = {
+            dashboard: 'Dashboard',
+            sessions: 'Bot Sessions',
+            users: 'Users & Groups',
+            contacts: 'Contacts',
+            messages: 'Messages',
+            reminders: 'Reminders',
+            analytics: 'Analytics',
+            settings: 'Settings',
+            exemptions: 'Payment Exemptions',
+            commands: 'Command Management' // ✅ ADD THIS
+        };
 
     const pageTitle = document.getElementById('pageTitle');
     if (pageTitle && titles[sectionName]) {
@@ -620,6 +625,9 @@ function loadSectionData(section) {
         case 'exemptions':
             loadOwnerInfo();
             loadUsersExemptionStatus();
+            break;
+        case 'commands': // ✅ ADD THIS
+            loadCommandGrants();
             break;
         // Add other cases as needed
     }
@@ -1926,6 +1934,252 @@ function createReminder() {
 function saveSettings() {
     showNotification('Settings saved successfully!', 'success');
 }
+
+// ========================================
+// 🎮 COMMAND MANAGEMENT
+// ========================================
+
+// Load command grants
+async function loadCommandGrants() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/command-grants`, {
+            headers: {
+                'Authorization': `Bearer ${currentAdmin.token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            displayCommandGrants(data.data.grants);
+            updateGrantStats(data.data.grants);
+        }
+    } catch (error) {
+        console.error('Error loading command grants:', error);
+        showNotification('Failed to load command grants', 'error');
+    }
+}
+
+// Display command grants table
+function displayCommandGrants(grants) {
+    const tbody = document.getElementById('commandGrantsTable');
+    if (!tbody) return;
+
+    if (!grants || grants.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No command grants found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = grants.map(grant => `
+        <tr>
+            <td>
+                <strong>${grant.commandName}</strong>
+                ${grant.commandDescription ? `<br><small class="text-muted">${grant.commandDescription}</small>` : ''}
+            </td>
+
+            <td>
+                <span class="badge ${grant.grantType === 'user' ? 'badge-primary' : 'badge-warning'}">
+                    ${grant.grantType === 'user' ? 'User' : 'Plan'}
+                </span>
+            </td>
+
+            <td>
+                ${grant.grantType === 'user' 
+                    ? `${grant.userId?.fullName || 'Unknown'}<br><small>${grant.userId?.email || ''}</small>`
+                    : `<strong>${grant.planType?.toUpperCase()}</strong> Plan`
+                }
+            </td>
+
+            <td>
+                ${grant.grantedBy?.fullName || 'System'}<br>
+                <small class="text-muted">${new Date(grant.createdAt).toLocaleDateString()}</small>
+            </td>
+
+            <td>
+                ${grant.expiresAt 
+                    ? new Date(grant.expiresAt).toLocaleDateString()
+                    : '<span class="text-success">Permanent</span>'
+                }
+            </td>
+
+            <td>
+                <span class="badge ${grant.isActive ? 'badge-success' : 'badge-danger'}">
+                    ${grant.isActive ? 'Active' : 'Revoked'}
+                </span>
+            </td>
+
+            <td>
+                ${grant.isActive ? `
+                    <button class="btn-sm btn-danger" onclick="revokeCommandGrant('${grant._id}')">
+                        <i class="fas fa-ban"></i> Revoke
+                    </button>
+                ` : '<span class="text-muted">N/A</span>'}
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Update grant statistics
+function updateGrantStats(grants) {
+    const totalEl = document.getElementById('totalGrantsCount');
+    const userEl = document.getElementById('userGrantsCount');
+    const planEl = document.getElementById('planGrantsCount');
+
+    if (totalEl) totalEl.textContent = grants.length;
+    if (userEl) userEl.textContent = grants.filter(g => g.grantType === 'user').length;
+    if (planEl) planEl.textContent = grants.filter(g => g.grantType === 'plan').length;
+}
+
+// Open modal
+function openGrantCommandModal() {
+    const modal = document.getElementById('grantCommandModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        loadUsersForGrant();
+    }
+}
+
+// Close modal
+function closeGrantCommandModal() {
+    const modal = document.getElementById('grantCommandModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.getElementById('grantCommandName').value = '';
+        document.getElementById('grantCommandDescription').value = '';
+        document.getElementById('grantExpiresAt').value = '';
+        document.getElementById('grantReason').value = '';
+    }
+}
+
+// Toggle between user / plan
+function toggleGrantType() {
+    const grantType = document.getElementById('grantType').value;
+    const userGroup = document.getElementById('userSelectGroup');
+    const planGroup = document.getElementById('planSelectGroup');
+
+    if (grantType === 'user') {
+        userGroup.style.display = 'block';
+        planGroup.style.display = 'none';
+    } else {
+        userGroup.style.display = 'none';
+        planGroup.style.display = 'block';
+    }
+}
+
+// Load users for dropdown
+async function loadUsersForGrant() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/users`, {
+            headers: {
+                'Authorization': `Bearer ${currentAdmin.token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            const select = document.getElementById('grantUserId');
+            select.innerHTML = '<option value="">-- Select User --</option>' +
+                data.data.users.map(user => `
+                    <option value="${user._id}">
+                        ${user.fullName} (${user.email})
+                    </option>
+                `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+// Submit command grant
+async function submitGrantCommand() {
+
+    const grantType = document.getElementById('grantType').value;
+    const commandName = document.getElementById('grantCommandName').value;
+    const commandDescription = document.getElementById('grantCommandDescription').value;
+    const expiresAt = document.getElementById('grantExpiresAt').value;
+    const reason = document.getElementById('grantReason').value;
+
+    if (!commandName) {
+        showNotification('Please enter a command name', 'error');
+        return;
+    }
+
+    let endpoint;
+    let payload;
+
+    if (grantType === 'user') {
+        const userId = document.getElementById('grantUserId').value;
+
+        if (!userId) {
+            showNotification('Please select a user', 'error');
+            return;
+        }
+
+        endpoint = '/api/admin/grant-command/user';
+        payload = { userId, commandName, commandDescription, expiresAt, reason };
+
+    } else {
+        const planType = document.getElementById('grantPlanType').value;
+
+        endpoint = '/api/admin/grant-command/plan';
+        payload = { planType, commandName, commandDescription, expiresAt, reason };
+    }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentAdmin.token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(data.message, 'success');
+            closeGrantCommandModal();
+            loadCommandGrants();
+        } else {
+            showNotification(data.message || 'Failed to grant command', 'error');
+        }
+
+    } catch (error) {
+        console.error('Error granting command:', error);
+        showNotification('Error granting command', 'error');
+    }
+}
+
+// Revoke command grant
+async function revokeCommandGrant(grantId) {
+
+    if (!confirm('Are you sure you want to revoke this command grant?')) return;
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/admin/command-grants/${grantId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${currentAdmin.token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('Command grant revoked successfully', 'success');
+            loadCommandGrants();
+        } else {
+            showNotification(data.message || 'Failed to revoke command', 'error');
+        }
+
+    } catch (error) {
+        console.error('Error revoking command grant:', error);
+        showNotification('Error revoking command grant', 'error');
+    }
+}
+
 
 // ==================== ADD ADMIN FUNCTIONALITY ====================
 

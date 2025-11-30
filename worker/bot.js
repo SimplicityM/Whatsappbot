@@ -1976,91 +1976,91 @@ case 'status': {
 }
 
 
-case 'listall': {
-    const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
+        case 'listall': {
+            const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
 
-    if (!isRefresh) {
-        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
-            .lean()
-            .catch(() => null);
+            if (!isRefresh) {
+                const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                    .lean()
+                    .catch(() => null);
 
-        if (cached && cached.groups && cached.groups.length) {
-            let out = '📋 *All Groups (Cached):*\n\n';
-            cached.groups.forEach((g, i) => {
+                if (cached && cached.groups && cached.groups.length) {
+                    let out = '📋 *All Groups (Cached):*\n\n';
+                    cached.groups.forEach((g, i) => {
+                        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+                    });
+                    out += '\n🔄 To refresh: `!listall refresh`';
+                    await safeSend(message.from, out);
+                    break;
+                }
+            }
+
+            await safeSend(
+                message.from,
+                '⏳ Scanning ALL your groups… (may take 10–20s on 50+ groups)…'
+            );
+
+            const chats = await client.getChats();
+
+            const allGroups = chats
+                .filter(c => c.isGroup)
+                .map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId: sessionId + "_all" },
+                { groups: allGroups, updatedAt: new Date() },
+                { upsert: true }
+            );
+
+            let out = '*📋 Updated List of ALL Groups:*\n\n';
+            allGroups.forEach((g, i) => {
                 out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
             });
-            out += '\n🔄 To refresh: `!listall refresh`';
+
+            out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
             await safeSend(message.from, out);
+
             break;
         }
-    }
 
-    await safeSend(
-        message.from,
-        '⏳ Scanning ALL your groups… (may take 10–20s on 50+ groups)…'
-    );
+            case 'syncmembers': {
+        // usage: !syncmembers <groupIndex>
+        if (!isSelfChat) return;
+        const idx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
+        const resolved = await resolveTargetGroupArg(idx);
+        if (!resolved.group) { await safeSend(message.from, '❌ No target group found.'); break; }
 
-    const chats = await client.getChats();
+        const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
+        if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
 
-    const allGroups = chats
-        .filter(c => c.isGroup)
-        .map(c => ({
-            name: c.name || "Unnamed Group",
-            groupId: c.id._serialized
-        }));
+        let participants = [];
+        try {
+            if (typeof chat.getParticipants === 'function') {
+            participants = await chat.getParticipants();
+            } else if (Array.isArray(chat.participants) && chat.participants.length) {
+            participants = chat.participants;
+            }
+        } catch (e) {
+            participants = [];
+        }
 
-    await SavedGroupList.findOneAndUpdate(
-        { sessionId: sessionId + "_all" },
-        { groups: allGroups, updatedAt: new Date() },
-        { upsert: true }
-    );
-
-    let out = '*📋 Updated List of ALL Groups:*\n\n';
-    allGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
-    });
-
-    out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
-    await safeSend(message.from, out);
-
-    break;
-}
-
-      case 'syncmembers': {
-  // usage: !syncmembers <groupIndex>
-  if (!isSelfChat) return;
-  const idx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-  const resolved = await resolveTargetGroupArg(idx);
-  if (!resolved.group) { await safeSend(message.from, '❌ No target group found.'); break; }
-
-  const chat = await client.getChatById(resolved.group.groupId).catch(()=>null);
-  if (!chat) { await safeSend(message.from, 'Could not fetch group chat.'); break; }
-
-  let participants = [];
-  try {
-    if (typeof chat.getParticipants === 'function') {
-      participants = await chat.getParticipants();
-    } else if (Array.isArray(chat.participants) && chat.participants.length) {
-      participants = chat.participants;
-    }
-  } catch (e) {
-    participants = [];
-  }
-
-  if (participants && participants.length) {
-    const jids = participants.map(p => p.id?._serialized || p);
-    await setMembersForGroup(sessionId, resolved.group.groupId, jids);
-    await safeSend(message.from, `✅ Synced ${jids.length} members for ${resolved.group.name}.`);
-  } else {
-    await safeSend(message.from,
-      `⚠ Could not read participant list directly. This happens for Community-subgroups or when server-side restrictions apply.\n` +
-      `Suggestions:\n` +
-      `• Promote the bot to Admin and run !syncmembers again.\n` +
-      `• Or ask active members to send a message in the group so the bot collects them automatically.\n` +
-      `I will still collect members automatically as they send messages.` );
-  }
-  break;
-}
+        if (participants && participants.length) {
+            const jids = participants.map(p => p.id?._serialized || p);
+            await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+            await safeSend(message.from, `✅ Synced ${jids.length} members for ${resolved.group.name}.`);
+        } else {
+            await safeSend(message.from,
+            `⚠ Could not read participant list directly. This happens for Community-subgroups or when server-side restrictions apply.\n` +
+            `Suggestions:\n` +
+            `• Promote the bot to Admin and run !syncmembers again.\n` +
+            `• Or ask active members to send a message in the group so the bot collects them automatically.\n` +
+            `I will still collect members automatically as they send messages.` );
+        }
+        break;
+        }
 
 
       /* ---------- SET DEFAULT ACTIVE GROUP: !use ---------- */
@@ -3676,6 +3676,87 @@ function start(count = 1) {
     const sid = `session-${Date.now()}-${i}`;
     createSession(sid);
   }
+}
+
+// Add this near the top with other helper functions
+async function canUseCommand(userId, commandName, userSubscription) {
+    try {
+        const User = require('./models/User');
+        const CommandGrant = require('./models/CommandGrant');
+        const { subscriptionPlans } = require('../server/server');
+        
+        // Get user
+        const user = await User.findById(userId);
+        if (!user) return false;
+        
+        // Check if user is exempt (admin, owner, etc.)
+        if (user.isExemptFromPayment() || user.isBotOwner()) {
+            return true;
+        }
+        
+        // Get plan commands
+        const plan = subscriptionPlans[userSubscription] || subscriptionPlans.free;
+        
+        // Check if command is in plan
+        if (plan.allowedCommands === 'all') {
+            return true;
+        }
+        
+        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(commandName)) {
+            return true;
+        }
+        
+        // Check for custom grants
+        const now = new Date();
+        const customGrant = await CommandGrant.findOne({
+            $or: [
+                { userId: userId, commandName: commandName },
+                { planType: userSubscription, commandName: commandName }
+            ],
+            isActive: true,
+            $or: [
+                { expiresAt: null },
+                { expiresAt: { $gt: now } }
+            ]
+        });
+        
+        return !!customGrant;
+        
+    } catch (error) {
+        console.error('Error checking command permission:', error);
+        return false;
+    }
+}
+
+// Update your command handler to use this check
+// Find where commands are processed and add this check:
+async function handleCommand(message, sessionId, userId, userSubscription) {
+    const text = message.body.trim();
+    if (!text.startsWith(COMMAND_PREFIX)) return;
+    
+    const parts = text.slice(COMMAND_PREFIX.length).split(' ');
+    const command = parts[0].toLowerCase();
+    
+    // Check permission
+    const hasPermission = await canUseCommand(userId, command, userSubscription);
+    
+    if (!hasPermission) {
+        await message.reply(`❌ You don't have access to the "${command}" command.\n\n` +
+            `This command is not included in your current plan.\n` +
+            `Upgrade your subscription or contact admin for access.`);
+        return;
+    }
+    
+    // Process command...
+    switch(command) {
+        case 'tag':
+            await handleTagCommand(message, sessionId);
+            break;
+        case 'tagexcept':
+            await handleTagExceptCommand(message, sessionId);
+            break;
+        // ... other commands
+    }
 }
 
 // graceful shutdown
