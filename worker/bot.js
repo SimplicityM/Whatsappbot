@@ -1087,22 +1087,24 @@ client.on('message_create', async (message) => {
     // only process commands (ignore status & empty)
     if (!message.body || message.from === 'status@broadcast') return;
 
-    // Track daily usage
-const userMatch = sessionId.match(/^session-([^-]+)-/);
-const userId = userMatch ? userMatch[1] : null;
-if (userId) {
-    await trackDailyUsage(userId, 'message');
-}
+    // ✅ Extract userId ONCE - reused throughout this handler
+        const userMatch = sessionId.match(/^session-([^-]+)-/);
+        const userId = userMatch ? userMatch[1] : null;
+    
+        // Track daily usage
+        if (userId) {
+            await trackDailyUsage(userId, 'message');
+        }
 
     // ✅ Track message processing
-try {
+    try {
     const sessionDoc = await Session.findOne({ sessionId });
     if (sessionDoc) {
         await sessionDoc.updateUsage('messagesProcessed', 1);
     }
-} catch (err) {
+    } catch (err) {
     console.error('Error updating message usage:', err);
-}
+    }
 
     // ensure selfId is set
     if (!client.info || !client.info.wid) {
@@ -1237,10 +1239,7 @@ try {
     // --------------------------------------------------
     // 🟢 COMMAND PERMISSION CHECK
     // --------------------------------------------------
-    // Get userId from sessionId (format: session-<userId>-<timestamp>)
-    const userMatch = sessionId.match(/^session-([^-]+)-/);
-    const userId = userMatch ? userMatch[1] : null;
-
+    
     if (userId) {
         try {
             // Fetch user document from database

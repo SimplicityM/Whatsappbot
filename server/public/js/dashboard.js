@@ -820,6 +820,175 @@ function renderFilteredSessions(sessions) {
     userSessions = originalSessions;
 }
 
+// async function createNewSession() {
+//     console.log('🔍 DEBUG: Starting createNewSession');
+    
+//     if (!currentUser) {
+//         showNotification('Please log in to create a session', 'error');
+//         return;
+//     }
+
+//     try {
+//         showLoading(true);
+//         const userId = currentUser.user.id;
+//         console.log('🔄 Creating session for user ID:', userId);
+        
+//         // Enhanced socket connection check
+//         if (!socket || !socket.connected) {
+//             console.error('❌ Socket not connected! Attempting to reconnect...');
+//             connectToServer();
+//             await new Promise(resolve => setTimeout(resolve, 2000));
+            
+//             if (!socket || !socket.connected) {
+//                 showNotification('Connection error. Please refresh the page.', 'error');
+//                 return;
+//             }
+//         }
+        
+//         // Clear any existing QR timeouts
+//         if (window.currentQRTimeout) {
+//             clearTimeout(window.currentQRTimeout);
+//             window.currentQRTimeout = null;
+//         }
+        
+//         // Set up QR received flag
+//         let qrReceived = false;
+//         let currentSessionId = null;
+        
+//         // Create unique event handler for this session creation
+//         const sessionQRHandler = (data) => {
+//             console.log('🎯 SESSION QR EVENT:', data);
+            
+//             // Only handle QR for the current session being created
+//             if (currentSessionId && data.sessionId === currentSessionId && data.qr) {
+//                 qrReceived = true;
+                
+//                 // Clear timeout when QR is received
+//                 if (window.currentQRTimeout) {
+//                     clearTimeout(window.currentQRTimeout);
+//                     window.currentQRTimeout = null;
+//                     console.log('✅ QR timeout cleared - QR received');
+//                 }
+                
+//                 displayQRCode(data.qr, data.sessionId);
+                
+//                 // Remove this specific handler after use
+//                 socket.off('qrCode', sessionQRHandler);
+//                 console.log('🧹 Removed session-specific QR handler');
+//             }
+//         };
+        
+//         // Ensure user is in socket room
+//         socket.emit('join-user-room', userId);
+//         console.log('👤 Joined socket room: user-' + userId);
+        
+//         // Make API call to create session
+//         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/create`, {
+//             method: 'POST',
+//             headers: {
+//                 'Authorization': `Bearer ${currentUser.token}`,
+//                 'Content-Type': 'application/json'
+//             },
+//             body: JSON.stringify({})
+//         });
+        
+//         const data = await response.json();
+//         console.log('📡 API Response:', data);
+        
+//         if (data.success) {
+//             currentSessionId = data.data.sessionId;
+//             console.log('✅ Session created via API:', currentSessionId);
+            
+//             // Add session-specific QR handler AFTER getting session ID
+//             socket.on('qrCode', sessionQRHandler);
+            
+//             // Add the new session to the array immediately
+//             const newSession = {
+//                 sessionId: currentSessionId,
+//                 status: 'waiting_qr',
+//                 createdAt: new Date().toISOString(),
+//                 messageCount: 0,
+//                 phone: null
+//             };
+            
+//             userSessions.push(newSession);
+//             console.log('➕ Added new session to array, total sessions:', userSessions.length);
+            
+//             // Update the display immediately
+//             renderUserSessions();
+            
+//             showNotification('New session created! Waiting for QR code...', 'success');
+//             showQRModal();
+            
+//             // Show loading state in modal
+//             const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+//             if (qrCodeDisplay) {
+//                 qrCodeDisplay.innerHTML = `
+//                     <div style="text-align: center; padding: 20px;">
+//                         <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
+//                         <p>Generating QR Code...</p>
+//                         <p>Session: ${currentSessionId}</p>
+//                         <p style="font-size: 12px; color: #666;">Socket ID: ${socket.id}</p>
+//                         <p style="font-size: 12px; color: #666;">User Room: user-${userId}</p>
+//                         <div class="loading-spinner"></div>
+//                     </div>
+//                 `;
+//             }
+            
+//             // Set up timeout for QR code generation
+//             window.currentQRTimeout = setTimeout(() => {
+//                 // Only show timeout if QR wasn't received and modal is still open
+//                 const qrModal = document.getElementById('qrModal');
+//                 const qrDisplay = document.getElementById('qrCodeDisplay');
+                
+//                 if (!qrReceived && qrModal && qrModal.classList.contains('active') && qrDisplay) {
+//                     console.warn('⚠️ QR code timeout after 45 seconds');
+//                     qrDisplay.innerHTML = `
+//                         <div style="text-align: center; padding: 20px;">
+//                             <i class="fas fa-clock" style="font-size: 48px; color: #f39c12; margin-bottom: 10px;"></i>
+//                             <h4>QR Code Timeout</h4>
+//                             <p>The QR code took too long to generate or has expired.</p>
+//                             <p style="font-size: 14px; color: #666;">This usually happens when:</p>
+//                             <ul style="text-align: left; color: #666; font-size: 14px; max-width: 300px; margin: 10px auto;">
+//                                 <li>Server is overloaded</li>
+//                                 <li>WhatsApp service is busy</li>
+//                                 <li>Network connectivity issues</li>
+//                                 <li>QR code expired (they expire every 20 seconds)</li>
+//                             </ul>
+//                             <div style="margin-top: 20px;">
+//                                 <button onclick="closeQRModal(); setTimeout(() => createNewSession(), 500);" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+//                                     <i class="fas fa-redo"></i> Try Again
+//                                 </button>
+//                                 <button onclick="closeQRModal()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+//                                     <i class="fas fa-times"></i> Cancel
+//                                 </button>
+//                             </div>
+//                             <p style="font-size: 12px; color: #999; margin-top: 15px;">
+//                                 Session: ${currentSessionId}<br>
+//                                 Socket: ${socket?.connected ? 'Connected' : 'Disconnected'}<br>
+//                                 Room: user-${userId}
+//                             </p>
+//                         </div>
+//                     `;
+//                 }
+                
+//                 // Clean up handler
+//                 socket.off('qrCode', sessionQRHandler);
+//                 window.currentQRTimeout = null;
+//             }, 45000); // 45 seconds timeout
+            
+//         } else {
+//             console.error('❌ Session creation failed:', data.message);
+//             showNotification(data.message || 'Failed to create session', 'error');
+//         }
+//     } catch (error) {
+//         console.error('❌ Error creating session:', error);
+//         showNotification('Error creating session: ' + error.message, 'error');
+//     } finally {
+//         showLoading(false);
+//     }
+// }
+
 async function createNewSession() {
     console.log('🔍 DEBUG: Starting createNewSession');
     
@@ -828,9 +997,27 @@ async function createNewSession() {
         return;
     }
 
+    // ✅ Show loading modal IMMEDIATELY (before any async operations)
+    const loadingModal = document.createElement('div');
+    loadingModal.className = 'modal active';
+    loadingModal.id = 'sessionLoadingModal';
+    loadingModal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Creating Session</h2>
+            </div>
+            <div class="modal-body" style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px;">Initializing WhatsApp session...</p>
+                <p style="color: #666; font-size: 14px;">This may take a few moments</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(loadingModal);
+
     try {
-        showLoading(true);
-        const userId = currentUser.user.id;
+        // Support both user ID formats
+        const userId = currentUser.user?.id || currentUser._id || currentUser.id;
         console.log('🔄 Creating session for user ID:', userId);
         
         // Enhanced socket connection check
@@ -840,6 +1027,7 @@ async function createNewSession() {
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             if (!socket || !socket.connected) {
+                loadingModal.remove();
                 showNotification('Connection error. Please refresh the page.', 'error');
                 return;
             }
@@ -892,12 +1080,21 @@ async function createNewSession() {
             body: JSON.stringify({})
         });
         
+        // ✅ Handle response properly
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to create session');
+        }
+
         const data = await response.json();
         console.log('📡 API Response:', data);
         
         if (data.success) {
             currentSessionId = data.data.sessionId;
             console.log('✅ Session created via API:', currentSessionId);
+            
+            // Remove loading modal
+            loadingModal.remove();
             
             // Add session-specific QR handler AFTER getting session ID
             socket.on('qrCode', sessionQRHandler);
@@ -978,14 +1175,23 @@ async function createNewSession() {
             }, 45000); // 45 seconds timeout
             
         } else {
-            console.error('❌ Session creation failed:', data.message);
-            showNotification(data.message || 'Failed to create session', 'error');
+            throw new Error(data.message || 'Session creation failed');
         }
     } catch (error) {
-        console.error('❌ Error creating session:', error);
-        showNotification('Error creating session: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
+        console.error('❌ Session creation failed:', error.message);
+        
+        // Remove loading modal if it exists
+        const existingModal = document.getElementById('sessionLoadingModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // ✅ Better error message for DB connection issues
+        if (error.message.includes('Database connection')) {
+            showNotification('Server is starting up. Please wait 30 seconds and try again.', 'warning');
+        } else {
+            showNotification(error.message || 'Failed to create session', 'error');
+        }
     }
 }
 

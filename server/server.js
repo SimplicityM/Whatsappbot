@@ -118,38 +118,43 @@ const connectDB = async () => {
     if (!mongoURI) throw new Error('MONGODB_URI not defined');
 
     console.log('🔄 Connecting to MongoDB...');
-    console.log('📍 MongoDB URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@')); // Log sanitized URI
+    console.log('📍 MongoDB URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
 
     // Set global mongoose settings BEFORE connecting
     mongoose.set('bufferCommands', false);
     mongoose.set('strictQuery', false);
 
     await mongoose.connect(mongoURI, {
-  serverSelectionTimeoutMS: 60000,  // 60 seconds
-  socketTimeoutMS: 75000,            // ✅ Increased from 60s to 75s
-  connectTimeoutMS: 60000,
-  maxPoolSize: 10,
-  minPoolSize: 2,
-  retryWrites: true,
-  w: 'majority',
-  bufferCommands: false,             // ✅ Explicitly set here too
-  autoIndex: false                   // ✅ Disable auto-indexing in production
-});
+      serverSelectionTimeoutMS: 60000,
+      socketTimeoutMS: 75000,
+      connectTimeoutMS: 60000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      retryWrites: true,
+      w: 'majority',
+      bufferCommands: false,
+      autoIndex: false
+    });
 
     console.log('🟢 Initial MongoDB connection established');
 
-    // Wait for connection to be fully ready
+    // ✅ IMPROVED: Wait for connection with better retry logic
     let attempts = 0;
-    while (mongoose.connection.readyState !== 1 && attempts < 10) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+    const maxAttempts = 20; // Increased from 10
+    
+    while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
+      console.log(`⏳ Waiting for DB ready... Attempt ${attempts + 1}/${maxAttempts} (State: ${mongoose.connection.readyState})`);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second intervals
       attempts++;
     }
 
     if (mongoose.connection.readyState !== 1) {
-      throw new Error('MongoDB connection not ready after waiting');
+      throw new Error(`MongoDB connection not ready after ${maxAttempts} attempts. ReadyState: ${mongoose.connection.readyState}`);
     }
 
-    // Verify DB connection with ping - with safety check
+    console.log('✅ MongoDB readyState confirmed: 1 (connected)');
+
+    // Verify DB connection with ping
     if (mongoose.connection.db) {
       await mongoose.connection.db.admin().ping();
       console.log('✅ MongoDB ping successful');
@@ -157,11 +162,11 @@ const connectDB = async () => {
       console.log('⚠️ Skipping ping - connection.db not available yet');
     }
     
-    // Wait for connection to stabilize
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // ✅ Additional stabilization wait
+    await new Promise(resolve => setTimeout(resolve, 3000));
     console.log('✅ MongoDB connection stabilized');
 
-    // ----- MongoDB Connection Event Handlers -----
+    // MongoDB Connection Event Handlers
     mongoose.connection.on('connected', () => {
       console.log("🟢 MongoDB connected.");
     });
@@ -181,27 +186,32 @@ const connectDB = async () => {
     mongoose.connection.on('reconnectFailed', () => {
       console.error("❌ MongoDB reconnection failed");
     });
-    // -----------------------------------------
 
     // Load models AFTER confirmed connection
     User = require('./models/User');
     Session = require('./models/Session');
 
-    // Assign globally if needed
+    //assign globally if needed
     global.User = User;
     global.Session = Session;
 
     console.log('✅ Models loaded');
 
-    // Test database operations before proceeding
+    // Test database operations
     try {
       await User.countDocuments();
       await Session.countDocuments();
       console.log('✅ Database operations verified');
-    } catch (dbTestError) {
-      console.error('❌ Database operation test failed:', dbTestError);
-      throw dbTestError;
+    } catch (dbError) {
+      console.error('❌ Database operation test failed:', dbError);
+      throw dbError;
     }
+
+  } catch (error) {
+    console.error('❌ MongoDB connection failed:', error);
+    throw error;
+  }
+};
 
     // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
