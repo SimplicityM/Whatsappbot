@@ -37,7 +37,7 @@ app.use(cors({
 }));
 
 // ⚠️ Don't import models here - they'll be imported after DB connection
-let User, Session;
+let User, Session, Usage, SavedGroupList;
 
 const server = http.createServer(app);
 
@@ -188,12 +188,17 @@ const connectDB = async () => {
     });
 
     // Load models AFTER confirmed connection
-    User = require('./models/User');
-    Session = require('./models/Session');
+    User = require('./models/User');  
+    Session = require('./models/Session');  
+    const Usage = require('../models/Usage');  
+    const SavedGroupList = require('../models/SavedGroupList');  
+
 
     //assign globally if needed
     global.User = User;
     global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
 
     console.log('✅ Models loaded');
 
