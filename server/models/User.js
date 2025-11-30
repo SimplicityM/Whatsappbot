@@ -198,17 +198,23 @@ userSchema.methods.isSystemAdmin = function() {
 
 // Check if subscription is active (enhanced with exemptions)
 userSchema.methods.isSubscriptionActive = function() {
-    // System admin doesn't need subscription
-    if (this.role === 'system_admin') return true;
+    // System admin always active
+    if (this.role === 'system_admin') {
+        return true;
+    }
     
-    // Exempt users don't need active subscriptions
-    if (this.isExemptFromPayment()) return true;
+    // Owner and exempt users always active
+    if (this.isExemptFromPayment() || this.isBotOwner()) {
+        return true;
+    }
     
-    // Owner is always active
-    if (this.isBotOwner()) return true;
+    // Check if subscription hasn't expired
+    const isNotExpired = this.subscriptionExpiry && this.subscriptionExpiry > new Date();
     
-    // Regular subscription check
-    return this.subscriptionExpiry > new Date() && this.paymentStatus === 'paid';
+    // Check payment status - include 'trial' for free users
+    const hasValidPayment = this.paymentStatus === 'paid' || this.paymentStatus === 'trial';
+    
+    return isNotExpired && hasValidPayment;
 };
 
 // Get subscription limits (enhanced with exemptions)

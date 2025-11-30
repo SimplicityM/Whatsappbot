@@ -108,18 +108,16 @@
             <div class="plan-details">
                 <h3 id="planName">Loading...</h3>
                 <div class="price-display">
-                    ₦<span id="planPrice">0</span>
+                    $<span id="planPrice">0</span>
                 </div>
                 <div id="planFeatures"></div>
             </div>
 
-            <div class="duration-selector">
-                <label for="duration">Select Duration:</label>
-                <select id="duration" onchange="updatePrice()">
-                    <option value="1">1 Month</option>
-                    <option value="3">3 Months (Save 10%)</option>
-                    <option value="6">6 Months (Save 15%)</option>
-                    <option value="12">12 Months (Save 20%)</option>
+                    <div class="duration-selector">
+                <label for="billingCycle">Select Billing Cycle:</label>
+                <select id="billingCycle" onchange="updatePrice()">
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly (Save 20%)</option>
                 </select>
             </div>
 
@@ -213,46 +211,49 @@
             }
         }
 
-        function displayPlanDetails() {
-            document.getElementById('planName').textContent = currentPlan.name;
-            document.getElementById('planPrice').textContent = currentPlan.amount.toFixed(2);
+                        function displayPlanDetails() {
+                    document.getElementById('planName').textContent = currentPlan.name;
+                    // Display monthly price by default
+                    document.getElementById('planPrice').textContent = currentPlan.monthly.amount.toFixed(2);
 
-            const featuresHtml = currentPlan.features.map(feature => 
-                `<li>✓ ${feature}</li>`
-            ).join('');
-            document.getElementById('planFeatures').innerHTML = `<ul>${featuresHtml}</ul>`;
-        }
+                    const featuresHtml = currentPlan.features.map(feature => 
+                        `<li>✓ ${feature}</li>`
+                    ).join('');
+                    document.getElementById('planFeatures').innerHTML = `<ul>${featuresHtml}</ul>`;
+                }
 
-        function updatePrice() {
-            const duration = parseInt(document.getElementById('duration').value);
-            const basePrice = currentPlan.amount;
-            let discount = 0;
-
-            switch(duration) {
-                case 3: discount = 0.10; break;
-                case 6: discount = 0.15; break;
-                case 12: discount = 0.20; break;
+                function updatePrice() {
+                const billingCycle = document.getElementById('billingCycle').value;
+                
+                // Get price based on billing cycle
+                let price = 0;
+                if (billingCycle === 'monthly') {
+                    price = currentPlan.monthly.amount;
+                } else if (billingCycle === 'yearly') {
+                    price = currentPlan.yearly.amount;
+                }
+                
+                document.getElementById('planPrice').textContent = price.toFixed(2);
             }
-
-            const totalPrice = basePrice * duration * (1 - discount);
-            document.getElementById('planPrice').textContent = totalPrice.toFixed(2);
-        }
-
-        async function initiatePayment() {
+                async function initiatePayment() {
             const payButton = document.getElementById('payButton');
             payButton.disabled = true;
             payButton.textContent = 'Processing...';
 
             try {
-                const duration = parseInt(document.getElementById('duration').value);
+                // ✅ Get billing cycle (monthly or yearly)
+                const billingCycle = document.getElementById('billingCycle').value;
                 const amount = parseFloat(document.getElementById('planPrice').textContent);
+                
+                // ✅ Get duration based on billing cycle
+                const duration = billingCycle === 'yearly' ? 12 : 1;
 
                 // Make Flutterwave payment
                 FlutterwaveCheckout({
                     public_key: CONFIG.FLUTTERWAVE_PUBLIC_KEY,
                     tx_ref: 'WA-BOT-' + Date.now(),
                     amount: amount,
-                    currency: "NGN",
+                    currency: "USD",  // ✅ Changed from NGN to USD
                     payment_options: "card, banktransfer, ussd",
                     customer: {
                         email: userData.data.email,
@@ -261,12 +262,13 @@
                     },
                     customizations: {
                         title: "WhatsApp Bot Subscription",
-                        description: `${currentPlan.name} - ${duration} month(s)`,
+                        description: `${currentPlan.name} - ${billingCycle === 'yearly' ? 'Yearly' : 'Monthly'}`,
                         logo: window.location.origin + "/images/logo.png"
                     },
                     meta: {
                         userId: userData.data._id,
                         subscription: planId,
+                        billingCycle: billingCycle,  // ✅ Add billing cycle
                         duration: duration
                     },
                     callback: function(data) {

@@ -12,10 +12,22 @@ const BlacklistedNumber = require('../models/BlacklistedNumber');
 
 // Subscription plans
 const SUBSCRIPTION_PLANS = {
-    starter: { amount: 700, name: 'Starter Plan' }, // Amount in kobo ($7)
-    professional: { amount: 1500, name: 'Professional Plan' }, // $15
-    business: { amount: 2200, name: 'Business Plan' }, // $22
-    enterprise: { amount: 3800, name: 'Enterprise Plan' } // $38
+    starter: { 
+        monthly: { amount: 700, duration: 1 },      // $7/month for 1 month
+        yearly: { amount: 6720, duration: 12 }      // $67.20/year for 12 months (20% off)
+    },
+    professional: { 
+        monthly: { amount: 1500, duration: 1 },     // $15/month for 1 month
+        yearly: { amount: 14400, duration: 12 }     // $144/year for 12 months (20% off)
+    },
+    business: { 
+        monthly: { amount: 2200, duration: 1 },     // $22/month for 1 month
+        yearly: { amount: 21120, duration: 12 }     // $211.20/year for 12 months (20% off)
+    },
+    enterprise: { 
+        monthly: { amount: 3800, duration: 1 },     // $38/month for 1 month
+        yearly: { amount: 36480, duration: 12 }     // $364.80/year for 12 months (20% off)
+    }
 };
 
 // Plans endpoint
@@ -23,9 +35,20 @@ router.get('/plans', (req, res) => {
     try {
         const plans = Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
             id: key,
-            name: plan.name,
-            amount: plan.amount / 100, // Convert to naira
-            currency: 'NGN',
+            name: key.charAt(0).toUpperCase() + key.slice(1) + ' Plan',
+            monthly: {
+                amount: plan.monthly.amount / 100, // ✅ Convert cents to dollars for display
+                amountInCents: plan.monthly.amount, // ✅ Keep cents for payment processing
+                duration: plan.monthly.duration,
+                currency: 'USD'
+            },
+            yearly: plan.yearly ? {
+                amount: plan.yearly.amount / 100, // ✅ Convert cents to dollars for display
+                amountInCents: plan.yearly.amount, // ✅ Keep cents for payment processing
+                duration: plan.yearly.duration,
+                currency: 'USD',
+                savings: '20%'
+            } : null,
             features: getSubscriptionFeatures(key)
         }));
 
@@ -115,58 +138,72 @@ router.post('/verify-flutterwave', authenticate, async (req, res) => {
 
         const { data } = response.data;
 
-        if (data.status === 'successful' && data.amount >= data.charged_amount) {
-            const { meta } = data;
-            const userId = meta.userId;
-            const subscription = meta.subscription;
-            const duration = parseInt(meta.duration);
+     if (data.status === 'successful' && data.amount >= data.charged_amount) {
+    const { meta } = data;
+    const userId = meta.userId;
+    const subscription = meta.subscription;
+    const billingCycle = meta.billingCycle || 'monthly'; // 'monthly' or 'yearly'
 
-            // Check if transaction already processed (prevent duplicate processing)
-            const Transaction = require('../models/Transaction');
-            const existingTransaction = await Transaction.findOne({ transactionId: transaction_id });
-            
-            if (existingTransaction) {
-                return res.json({
-                    success: true,
-                    message: 'Payment already verified.',
-                    data: {
-                        reference: tx_ref,
-                        amount: data.amount,
-                        subscription: existingTransaction.subscription,
-                        duration: existingTransaction.duration,
-                        alreadyProcessed: true
-                    }
-                });
+    // Check if transaction already processed
+    const Transaction = require('../models/Transaction');
+    const existingTransaction = await Transaction.findOne({ transactionId: transaction_id });
+    
+    if (existingTransaction) {
+        return res.json({
+            success: true,
+            message: 'Payment already verified.',
+            data: {
+                reference: tx_ref,
+                amount: data.amount,
+                subscription: existingTransaction.subscription,
+                duration: existingTransaction.duration,
+                alreadyProcessed: true
             }
+        });
+    }
 
-            // Update user subscription
-            const user = await User.findById(userId);
-            if (user) {
-                user.subscription = subscription;
-                user.paymentStatus = 'paid';
-                user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
-                user.status = 'approved';
-                await user.save();
+    // Get plan details based on billing cycle
+    const planDetails = SUBSCRIPTION_PLANS[subscription]?.[billingCycle];
+    
+    if (!planDetails) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid subscription plan or billing cycle.'
+        });
+    }
 
-                // Save transaction record
-                await Transaction.create({
-                    userId: userId,
-                    transactionId: transaction_id,
-                    txRef: tx_ref,
-                    amount: data.amount,
-                    currency: data.currency || 'NGN',
-                    status: data.status,
-                    subscription: subscription,
-                    duration: duration,
-                    paymentMethod: data.payment_type || 'card',
-                    customerEmail: data.customer?.email || user.email,
-                    customerName: data.customer?.name || user.fullName,
-                    flutterwaveRef: data.flw_ref,
-                    createdAt: new Date(data.created_at || Date.now())
-                });
+    // Update user subscription
+    const user = await User.findById(userId);
+    if (user) {
+        user.subscription = subscription;
+        user.paymentStatus = 'paid';
+        
+        // Calculate expiry based on duration (in months)
+        const durationInDays = Math.round(planDetails.duration * 30);
+        user.subscriptionExpiry = new Date(Date.now() + durationInDays * 24 * 60 * 60 * 1000);
+        user.status = 'approved';
+        await user.save();
 
-                console.log(`✅ Payment verified and saved for user ${user.email}: ${tx_ref}`);
+        // Save transaction record
+        await Transaction.create({
+            userId: userId,
+            transactionId: transaction_id,
+            txRef: tx_ref,
+            amount: data.amount,
+            currency: data.currency || 'USD',
+            status: data.status,
+            subscription: subscription,
+            billingCycle: billingCycle,
+            duration: planDetails.duration,
+            paymentMethod: data.payment_type || 'card',
+            customerEmail: data.customer?.email || user.email,
+            customerName: data.customer?.name || user.fullName,
+            flutterwaveRef: data.flw_ref,
+            createdAt: new Date(data.created_at || Date.now())
+        });
 
+        console.log(`✅ Payment verified: ${user.email} - ${subscription} (${billingCycle}) - ${durationInDays} days`);
+        
                 // Restore bot session if available
                 try {
                     const { restoreUserSessionAfterPayment } = require('../bot.js');
