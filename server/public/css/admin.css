@@ -1390,6 +1390,57 @@ body {
   }
 }
 
+/* ========================================
+   MOBILE OVERLAY (ADD THIS)
+   ======================================== */
+.mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999; /* Below sidebar (1000) */
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+    .mobile-overlay {
+        display: block;
+    }
+    
+    /* Ensure sidebar slides smoothly */
+    .admin-sidebar {
+        transform: translateX(-100%);
+        width: 280px;
+        transition: transform 0.3s ease-in-out;
+        z-index: 1000; /* Above overlay */
+    }
+    
+    .admin-sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    .admin-main {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .mobile-menu-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
 @media (max-width: 480px) {
   .sidebar-header {
     padding: var(--space-4);
