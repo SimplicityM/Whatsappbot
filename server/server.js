@@ -59,9 +59,9 @@ const workerSocket = require('socket.io-client')(WORKER_URL, {
 });
 app.set('workerSocket', workerSocket);
 
-workerSocket.on('connect', () => {
-  console.log('🔌 Server: connected to worker at', WORKER_URL);
-});
+// workerSocket.on('connect', () => {
+//   console.log('🔌 Server: connected to worker at', WORKER_URL);
+// });
 
 workerSocket.on('connect_error', (err) => {
   console.error('❌ Server: worker connect_error', err.message);
@@ -109,7 +109,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
 const connectDB = async () => {
@@ -992,60 +992,121 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {
-        const { timeframe = 'today' } = req.query;
+
+        // ================================
+        // 1️⃣  DATABASE READY GUARD
+        // ================================
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(503).json({
+                success: false,
+                message: "Database temporarily unavailable"
+            });
+        }
+
+        // ================================
+        // 2️⃣  MODEL LOAD GUARDS
+        // (Prevents "Usage is not defined" / "SavedGroupList is undefined")
+        // ================================
+        if (!global.Usage && typeof Usage === "undefined") {
+            return res.status(500).json({
+                success: false,
+                message: "Usage model not loaded"
+            });
+        }
+
+        if (!global.SavedGroupList && typeof SavedGroupList === "undefined") {
+            return res.status(500).json({
+                success: false,
+                message: "SavedGroupList model not loaded"
+            });
+        }
+
+        // ================================
+        // 3️⃣  GET USER SESSIONS
+        // ================================
         const sessions = await Session.find({ userId: req.user.id });
 
-        // Calculate total usage from all sessions
+        if (!sessions || sessions.length === 0) {
+            return res.json({
+                success: true,
+                data: {
+                    totalMessages: 0,
+                    totalGroups: 0,
+                    commandsUsed: 0,
+                    messagesToday: 0,
+                    groupsManaged: 0
+                }
+            });
+        }
+
+        // ================================
+        // 4️⃣ CALCULATE SESSION USAGE
+        // ================================
         let totalMessages = 0;
         let totalCommands = 0;
         let totalGroups = 0;
 
         for (const session of sessions) {
-            totalMessages += session.usage.messagesProcessed || 0;
-            totalCommands += session.usage.commandsExecuted || 0;
-            totalGroups += session.usage.groupsTagged || 0;
+            totalMessages += session.usage?.messagesProcessed || 0;
+            totalCommands += session.usage?.commandsExecuted || 0;
+            totalGroups += session.usage?.groupsTagged || 0;
         }
 
-        // Get messages today from Usage model
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const todayUsage = await Usage.findOne({ 
-            userId: req.user.id, 
-            date: today 
+        // ================================
+        // 5️⃣ GET TODAY'S USAGE
+        // ================================
+        const today = new Date().toISOString().split('T')[0];
+
+        const todayUsage = await Usage.findOne({
+            userId: req.user.id,
+            date: today
         });
 
-        // Get admin groups count from SavedGroupList
-        const adminGroupsCount = await SavedGroupList.aggregate([
-            { 
-                $match: { 
-                    sessionId: { 
-                        $in: sessions.map(s => s.sessionId) 
-                    } 
-                } 
-            },
-            { $unwind: '$groups' },
-            { $group: { _id: null, count: { $sum: 1 } } }
-        ]);
+        // ================================
+        // 6️⃣ GET GROUPS MANAGED (SAFE AGGREGATION)
+        // ================================
+        let adminGroupsCount = [];
 
+        try {
+            adminGroupsCount = await SavedGroupList.aggregate([
+                {
+                    $match: {
+                        sessionId: { $in: sessions.map(s => s.sessionId) }
+                    }
+                },
+                { $unwind: "$groups" },
+                { $group: { _id: null, count: { $sum: 1 } } }
+            ]);
+        } catch (err) {
+            console.error("Aggregation error:", err.message);
+            adminGroupsCount = [];
+        }
+
+        // ================================
+        // 7️⃣ FINAL STATS
+        // ================================
         const stats = {
-            totalMessages: totalMessages,
-            totalGroups: totalGroups,
+            totalMessages,
+            totalGroups,
             commandsUsed: totalCommands,
             messagesToday: todayUsage?.messagesCount || 0,
             groupsManaged: adminGroupsCount[0]?.count || 0
         };
-        
-        res.json({
+
+        return res.json({
             success: true,
             data: stats
         });
+
     } catch (error) {
-        console.error('Statistics error:', error && error.stack ? error.stack : error);
+        console.error("Statistics error:", error.stack || error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching statistics'
+            message: "Error fetching statistics"
         });
     }
 });
+
 
 
 // Public stats API
