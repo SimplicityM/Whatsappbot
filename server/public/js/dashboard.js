@@ -16,6 +16,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // ✅ LOAD THEME FIRST (before anything else)
+    loadTheme();
+    
     // Then continue with your existing initialization
     initializeDashboard();
     setupEventListeners();
@@ -2349,18 +2352,134 @@ function switchTab(tabName) {
     if (activeContent) activeContent.classList.add('active');
 }
 
+// ========================================
+// 🔧 MOBILE MENU TOGGLE (FIXED)
+// ========================================
 function toggleMobileMenu() {
     const sidebar = document.querySelector('.admin-sidebar');
+    const overlay = document.getElementById('mobileOverlay');
+    
     if (sidebar) {
         sidebar.classList.toggle('mobile-open');
+        
+        // Create overlay if it doesn't exist
+        if (!overlay && sidebar.classList.contains('mobile-open')) {
+            const newOverlay = document.createElement('div');
+            newOverlay.id = 'mobileOverlay';
+            newOverlay.className = 'mobile-overlay';
+            newOverlay.onclick = toggleMobileMenu; // Close on click
+            document.body.appendChild(newOverlay);
+            
+            // Prevent body scroll when menu is open
+            document.body.style.overflow = 'hidden';
+        } else if (overlay) {
+            overlay.remove();
+            document.body.style.overflow = '';
+        }
     }
 }
 
+// ========================================
+// 🔧 SIDEBAR TOGGLE (Desktop)
+// ========================================
 function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('sidebar') || document.querySelector('.admin-sidebar');
     if (sidebar) sidebar.classList.toggle('collapsed');
 }
 
+// ========================================
+// 🌙 THEME TOGGLE (FIXED)
+// ========================================
+function toggleTheme() {
+    const body = document.body;
+    const themeIcon = document.getElementById('themeIcon');
+    const themeText = document.getElementById('themeText');
+    
+    body.classList.toggle('dark-theme');
+    
+    if (body.classList.contains('dark-theme')) {
+        if (themeIcon) themeIcon.className = 'fas fa-sun';
+        if (themeText) themeText.textContent = 'Light';
+        localStorage.setItem('theme', 'dark');
+        console.log('🌙 Dark theme enabled');
+    } else {
+        if (themeIcon) themeIcon.className = 'fas fa-moon';
+        if (themeText) themeText.textContent = 'Dark';
+        localStorage.setItem('theme', 'light');
+        console.log('☀️ Light theme enabled');
+    }
+}
+
+// ========================================
+// 🌙 LOAD SAVED THEME (FIXED)
+// ========================================
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    console.log('🎨 Loading saved theme:', savedTheme);
+    
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-theme');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        if (themeIcon) themeIcon.className = 'fas fa-sun';
+        if (themeText) themeText.textContent = 'Light';
+        console.log('🌙 Dark theme loaded from localStorage');
+    }
+}
+
+// ========================================
+// 🚪 LOGOUT (FIXED)
+// ========================================
+function logout() {
+    console.log('🚪 Logging out...');
+    
+    try {
+        // Disconnect socket if connected
+        if (socket && socket.connected) {
+            socket.disconnect();
+            console.log('🔌 Socket disconnected');
+        }
+        
+        // Clear all localStorage items
+        localStorage.removeItem('userSession');
+        localStorage.removeItem('authToken');
+        console.log('🗑️ Session data cleared');
+        
+        // Show notification
+        showNotification('Logged out successfully', 'success');
+        
+        // Redirect after a short delay
+        setTimeout(() => {
+            window.location.href = '/index.html';
+        }, 500);
+        
+    } catch (error) {
+        console.error('❌ Logout error:', error);
+        // Force redirect even if error occurs
+        window.location.href = '/index.html';
+    }
+}
+
+// ========================================
+// 🔄 REFRESH DATA
+// ========================================
+function refreshData() {
+    console.log('🔄 Refreshing data...');
+    showNotification('Refreshing data...', 'info');
+    
+    loadUserSessions();
+    loadSubscriptionInfo();
+    loadUserStatistics();
+    loadPaymentHistory();
+    
+    setTimeout(() => {
+        showNotification('Data refreshed!', 'success');
+    }, 1000);
+}
+
+// ========================================
+// 📊 INITIALIZE ALL SECTIONS
+// ========================================
 function initializeAllSections() {
     // Initialize all sections with default data
     loadUserSessions();
@@ -2370,6 +2489,9 @@ function initializeAllSections() {
     loadUserSettings();
 }
 
+// ========================================
+// ⏰ AUTO REFRESH
+// ========================================
 function startAutoRefresh() {
     // Auto-refresh data every 30 seconds
     setInterval(() => {
@@ -2378,15 +2500,6 @@ function startAutoRefresh() {
             loadUserStatistics();
         }
     }, CONFIG.REFRESH_INTERVAL);
-}
-
-function logout() {
-    if (socket) {
-        socket.disconnect();
-    }
-    
-    localStorage.removeItem('userSession');
-    window.location.href = '/index.html';
 }
 
 // Close modals when clicking outside
@@ -2618,3 +2731,18 @@ function loadTheme() {
 
 // Call loadTheme when page loads
 document.addEventListener('DOMContentLoaded', loadTheme);
+
+// ========================================
+// 🌐 EXPOSE FUNCTIONS TO GLOBAL SCOPE
+// ========================================
+window.logout = logout;
+window.toggleTheme = toggleTheme;
+window.toggleMobileMenu = toggleMobileMenu;
+window.toggleSidebar = toggleSidebar;
+window.refreshData = refreshData;
+window.createNewSession = createNewSession;
+window.upgradeSubscription = upgradeSubscription;
+window.closeQRModal = closeQRModal;
+window.showNotification = showNotification;
+
+console.log('✅ All global functions exposed');
