@@ -1858,19 +1858,6 @@ async function loadUpgradePlans() {
 function getStaticPlans() {
     return [
         {
-            id: 'free',
-            name: 'Free Plan',
-            amount: 0,  // ✅ Free
-            allowedCommands: ['ping', 'status', 'tag', 'list', 'help'],
-            features: [
-                'Basic tagging (!tagall limited use)',
-                'Access to !list',
-                'Basic bot status',
-                'Help menu',
-                '1 active session'  // ✅ Correct
-            ]
-        },
-        {
             id: 'starter',
             name: 'Starter Plan',
             amount: 700,  // ✅ $7 in cents (was 7)
