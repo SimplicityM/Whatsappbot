@@ -218,14 +218,15 @@ userSchema.methods.getSubscriptionLimits = function() {
         return { sessions: -1, commands: -1, groups: -1 }; // unlimited
     }
     
-    const limits = {
-        starter: { sessions: 5, commands: 100, groups: 10 },
-        professional: { sessions: 25, commands: 500, groups: 50 },
-        business: { sessions: 100, commands: 2000, groups: 200 },
+        const limits = {
+        free: { sessions: 1, commands: 50, groups: 5 },
+        starter: { sessions: 1, commands: 100, groups: 10 },
+        professional: { sessions: 1, commands: 500, groups: 50 },
+        business: { sessions: 1, commands: 2000, groups: 200 },
         enterprise: { sessions: -1, commands: -1, groups: -1 } // unlimited
     };
-    
-    return limits[this.subscription] || limits.starter;
+
+    return limits[this.subscription] || limits.free;
 };
 
 // Update usage statistics

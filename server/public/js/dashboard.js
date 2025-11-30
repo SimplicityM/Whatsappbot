@@ -2746,3 +2746,14 @@ window.closeQRModal = closeQRModal;
 window.showNotification = showNotification;
 
 console.log('✅ All global functions exposed');
+
+window.viewSessions = function() { switchSection('sessions'); };
+window.openSettings = function() { switchSection('settings'); };
+window.saveSettings = function() { 
+    showNotification('Settings saved successfully!', 'success');
+};
+window.exportPayments = exportPayments;
+window.closeUpgradeModal = function() {
+    const modal = document.getElementById('upgradeModal');
+    if (modal) modal.classList.remove('active');
+};

@@ -241,7 +241,7 @@ const activeClients = new Map();
 const subscriptionPlans = {
   free: {
     name: 'Free Plan',
-    maxSessions: 1,
+    maxSessions: 1, // ✅ 1 session only
     amount: 0, // Free
     allowedCommands: ['ping', 'help','list','tag', 'status'],
     features: ['basic_messaging','limited_commands'],
@@ -249,52 +249,52 @@ const subscriptionPlans = {
     limits: {
       dailyMessages: 50,
       monthlyMessages: 1000,
-      groupsPerSession: 1
+      groupsPerSession: 5
     }
   },
   starter: {
     name: 'Starter Plan',
-    maxSessions: 5,
-    amount: 2900, // $7/month (in kobo)
+    maxSessions: 1, // ✅ Changed from 5 to 1
+    amount: 700, // $7/month (in cents)
     allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'tag', 'tagexcept'],
     features: ['basic_messaging', 'broadcast', 'auto_reply', 'group_tagging'],
     description: 'Essential features for small businesses',
     limits: {
       dailyMessages: 500,
       monthlyMessages: 10000,
-      groupsPerSession: 1
+      groupsPerSession: 10
     }
   },
   professional: {
     name: 'Professional Plan',
-    maxSessions: 25,
-    amount: 7900, // $15/month (in kobo)
+    maxSessions: 1, // ✅ Changed from 25 to 1
+    amount: 1500, // $15/month (in cents)
     allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'tag', 'tagexcept', 'list'],
     features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'group_tagging', 'advanced_commands'],
     description: 'Advanced features for growing businesses',
     limits: {
       dailyMessages: 2000,
       monthlyMessages: 50000,
-      groupsPerSession: 1
+      groupsPerSession: 50
     }
   },
   business: {
     name: 'Business Plan',
-    maxSessions: 100,
-    amount: 14900, // $22/month (in kobo)
+    maxSessions: 1, // ✅ Changed from 100 to 1
+    amount: 2200, // $22/month (in cents)
     allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export'],
     features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands', 'group_tagging', 'advanced_commands', 'priority_support', 'data_export'],
     description: 'Comprehensive solution for established businesses',
     limits: {
       dailyMessages: 10000,
       monthlyMessages: 250000,
-      groupsPerSession: 1
+      groupsPerSession: 200
     }
   },
   enterprise: {
     name: 'Enterprise Plan',
-    maxSessions: -1, // Unlimited
-    amount: 27900, // $38/month (in kobo)
+    maxSessions: -1, // ✅ Unlimited (unchanged)
+    amount: 3800, // $38/month (in cents)
     allowedCommands: 'all', // All commands available
     features: ['all_features', 'unlimited_messaging', 'dedicated_support', 'custom_integrations', 'white_label', 'api_access', 'advanced_analytics', 'multi_user_access'],
     description: 'Full-featured solution for large organizations',
