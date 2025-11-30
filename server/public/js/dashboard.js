@@ -1860,20 +1860,20 @@ function getStaticPlans() {
         {
             id: 'free',
             name: 'Free Plan',
-            amount: 0,
+            amount: 0,  // ✅ Free
             allowedCommands: ['ping', 'status', 'tag', 'list', 'help'],
             features: [
                 'Basic tagging (!tagall limited use)',
                 'Access to !list',
                 'Basic bot status',
                 'Help menu',
-                '1 active session'
+                '1 active session'  // ✅ Correct
             ]
         },
         {
             id: 'starter',
             name: 'Starter Plan',
-            amount: 2900,
+            amount: 700,  // ✅ $7 in cents (was 7)
             allowedCommands: [
                 'ping', 'status', 'tag', 'list', 'help',
                 'tagall', 'tagallexcept'
@@ -1882,14 +1882,14 @@ function getStaticPlans() {
                 'All Free features',
                 'Tag all members',
                 'Tag all except selected users',
-                '5 active sessions',
+                '1 active session',  // ✅ Changed from 5
                 'Standard support'
             ]
         },
         {
             id: 'professional',
             name: 'Professional Plan',
-            amount: 7900,
+            amount: 1500,  // ✅ $15 in cents (was 15)
             allowedCommands: [
                 'ping', 'status', 'tag', 'list', 'help',
                 'tagall', 'tagallexcept',
@@ -1899,14 +1899,14 @@ function getStaticPlans() {
                 'All Starter features',
                 'Event & meeting scheduling',
                 'Reminder management',
-                '25 active sessions',
+                '1 active session',  // ✅ Changed from 25
                 'Priority support'
             ]
         },
         {
             id: 'business',
             name: 'Business Plan',
-            amount: 14900,
+            amount: 2200,  // ✅ $22 in cents (was 22)
             allowedCommands: [
                 'ping', 'status', 'tag', 'list', 'help',
                 'tagall', 'tagallexcept',
@@ -1919,13 +1919,13 @@ function getStaticPlans() {
                 'Sudo commands',
                 'System monitoring',
                 'Broadcast messaging',
-                '100 active sessions'
+                '1 active session'  // ✅ Changed from 100
             ]
         },
         {
             id: 'enterprise',
             name: 'Enterprise Plan',
-            amount: 27900,
+            amount: 3800,  // ✅ $38 in cents (was 38)
             allowedCommands: ['*'], // all commands unlocked
             features: [
                 'All Business features',
@@ -1949,7 +1949,7 @@ function renderUpgradePlans(plans) {
         <div class="plan-card-upgrade">
             <div class="plan-header">
                 <h4>${plan.name}</h4>
-                <span class="plan-price">₦${(plan.amount / 100).toLocaleString()}/month</span>
+                <span class="plan-price">$${(plan.amount / 100).toLocaleString()}/month</span>
             </div>
             <div class="plan-features">
                 ${plan.features.map(feature => `
@@ -1979,7 +1979,7 @@ function renderAvailablePlans(plans) {
         <div class="plan-card-upgrade">
             <div class="plan-header">
                 <h4>${plan.name}</h4>
-                <span class="plan-price">₦${(plan.amount / 100).toLocaleString()}/month</span>
+                <span class="plan-price">$${(plan.amount / 100).toLocaleString()}/month</span>
             </div>
             <div class="plan-features">
                 ${plan.features.map(feature => `
@@ -2018,7 +2018,7 @@ function renderCurrentPlan(plan) {
     };
 
     if (elements.name) elements.name.textContent = plan.name;
-    if (elements.price) elements.price.textContent = `₦${plan.price.toLocaleString()}`;
+    if (elements.price) elements.price.textContent = `$${plan.price.toLocaleString()}`;
 
     if (elements.features) {
         elements.features.innerHTML = plan.features.map(feature => `

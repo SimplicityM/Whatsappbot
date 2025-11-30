@@ -5989,6 +5989,63 @@ input:checked + .slider:before {
 }
 
 
+/* ========================================
+   MOBILE RESPONSIVE - HEADER ACTIONS
+   ======================================== */
+
+/* Ensure header actions are visible on mobile */
+@media (max-width: 768px) {
+    .header-actions {
+        display: flex !important;
+        gap: 8px;
+    }
+    
+    /* Make action buttons smaller on mobile */
+    .action-btn {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+    
+    /* Hide text, show only icons on very small screens */
+    @media (max-width: 480px) {
+        .action-btn span {
+            display: none;
+        }
+        
+        .action-btn {
+            padding: 10px;
+            min-width: 40px;
+            justify-content: center;
+        }
+        
+        .action-btn i {
+            margin-right: 0;
+        }
+    }
+    
+    /* Ensure theme toggle is always visible */
+    #themeToggle {
+        display: flex !important;
+        align-items: center;
+        gap: 6px;
+    }
+}
+
+/* Make sure header-right doesn't overflow */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+
 
 
 
