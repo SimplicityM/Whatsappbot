@@ -109,7 +109,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const { authenticate, authenticateAdmin } = require('../middleware/auth');
+const { authenticate, authenticateAdmin } = require('./middleware/auth');
 
 // DB connection
 const connectDB = async () => {
@@ -192,6 +192,11 @@ const connectDB = async () => {
     Session = require('./models/Session');  
     const Usage = require('./models/Usage');  
     const SavedGroupList = require('./models/SavedGroupList');  
+
+    const CONFIG = (() => {
+  try { return require('./config.json'); } catch (e) { return {}; }
+})();
+
 
 
     //assign globally if needed
@@ -1034,7 +1039,7 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             data: stats
         });
     } catch (error) {
-        console.error('Statistics error:', error);
+        console.error('Statistics error:', error && error.stack ? error.stack : error);
         res.status(500).json({
             success: false,
             message: 'Error fetching statistics'
@@ -1074,12 +1079,12 @@ app.get('/api/public/recent-activity', async (req, res) => {
 
 // Serve robots.txt
 app.get('/robots.txt', (req, res) => {
-    res.sendFile(path.join(__dirname, 'Public', 'robots.txt'));
+    res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
 });
 
 // Serve sitemap.xml
 app.get('/sitemap.xml', (req, res) => {
-    res.sendFile(path.join(__dirname, 'Public', 'sitemap.xml'));
+    res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
 });
 
 // Add security headers for SEO
