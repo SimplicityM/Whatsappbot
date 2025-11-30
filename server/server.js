@@ -136,21 +136,25 @@ const connectDB = async () => {
     console.log('🔄 Connecting to MongoDB...');
     console.log('📍 MongoDB URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
 
-    // Set global mongoose settings BEFORE connecting
-    mongoose.set('bufferCommands', false);
-    mongoose.set('strictQuery', false);
+            // Global mongoose configs
+        mongoose.set('strictQuery', false);
+        mongoose.set('bufferCommands', true);  // LET MONGO RECONNECT SAFELY
 
-    await mongoose.connect(mongoURI, {
-      serverSelectionTimeoutMS: 60000,
-      socketTimeoutMS: 75000,
-      connectTimeoutMS: 60000,
-      maxPoolSize: 10,
-      minPoolSize: 2,
-      retryWrites: true,
-      w: 'majority',
-      bufferCommands: false,
-      autoIndex: false
-    });
+        await mongoose.connect(mongoURI, {
+        serverSelectionTimeoutMS: 30000,
+        socketTimeoutMS: 60000,
+        connectTimeoutMS: 30000,
+
+        maxPoolSize: 20,
+        minPoolSize: 5,
+
+        retryWrites: true,
+        w: 'majority',
+
+        bufferCommands: true,   // VERY IMPORTANT
+        autoIndex: false
+        });
+
 
     console.log('🟢 Initial MongoDB connection established');
 
