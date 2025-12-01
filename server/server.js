@@ -219,27 +219,20 @@ const connectDB = async () => {
     if (!mongoURI) throw new Error("MONGODB_URI not defined");
 
     console.log("🔄 Connecting to MongoDB…");
-    console.log(
-      "📍 MongoDB URI:",
-      mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@")
-    );
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
 
-    /** ===== GLOBAL MONGOOSE SETTINGS ===== **/
+    // GLOBAL MONGOOSE SETTINGS
     mongoose.set("strictQuery", false);
     mongoose.set("bufferCommands", true);
     mongoose.set("autoIndex", false);
 
-    /** ===== CONNECTION EVENTS ===== **/
+    // CONNECTION EVENTS
     mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
     mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
-    mongoose.connection.on("disconnected", () =>
-      console.warn("⚠️ MongoDB disconnected — retrying automatically…")
-    );
-    mongoose.connection.on("error", (err) =>
-      console.error("❌ MongoDB error:", err.message)
-    );
+    mongoose.connection.on("disconnected", () => console.warn("⚠️ MongoDB disconnected — retrying automatically…"));
+    mongoose.connection.on("error", (err) => console.error("❌ MongoDB error:", err.message));
 
-    /** ===== CONNECT ===== **/
+    // CONNECT
     await mongoose.connect(mongoURI, {
       maxPoolSize: 20,
       minPoolSize: 5,
@@ -253,92 +246,310 @@ const connectDB = async () => {
 
     console.log("🟢 Initial MongoDB connection established");
 
-    /** ===== WAIT FOR READY ===== **/
+    // WAIT UNTIL READY
     let attempts = 0;
-    const maxAttempts = 15;
-
-    while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
-      console.log(
-        `⏳ Waiting for DB ready… Attempt ${attempts + 1}/${maxAttempts} (State: ${
-          mongoose.connection.readyState
-        })`
-      );
-      await new Promise((resolve) => setTimeout(resolve, 800));
+    while (mongoose.connection.readyState !== 1 && attempts < 15) {
+      console.log(`⏳ Waiting for DB ready… Attempt ${attempts + 1}/15`);
+      await new Promise(res => setTimeout(res, 800));
       attempts++;
     }
 
     if (mongoose.connection.readyState !== 1) {
-      throw new Error(
-        `MongoDB did not stabilize. Final readyState: ${mongoose.connection.readyState}`
-      );
+      throw new Error(`MongoDB readyState stuck at ${mongoose.connection.readyState}`);
     }
 
-    console.log("✅ MongoDB readyState confirmed: 1 (connected)");
+    console.log("✅ MongoDB readyState confirmed: connected");
 
-   /** ===== VERIFY WITH A PING ===== **/
-    if (mongoose.connection.db) {
-      await mongoose.connection.db.admin().ping();
-      console.log("✅ MongoDB ping successful");
-    } else {
-      console.warn("⚠️ Skipping ping — connection.db not ready");
-    }
+    // VERIFY PING
+    await mongoose.connection.db.admin().ping();
+    console.log("✅ MongoDB ping successful");
 
-    /** ===== EXTRA STABILIZATION DELAY ===== **/
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise(res => setTimeout(res, 2000));
     console.log("✅ MongoDB connection stabilized");
 
-    /** ===== LOAD MODELS ===== **/
-    try {
-      const User = require("./models/User");
-      const Session = require("./models/Session");
-      const Usage = require("./models/Usage");
-      const SavedGroupList = require("./models/SavedGroupList");
+    // LOAD MODELS
+    const User = require("./models/User");
+    const Session = require("./models/Session");
+    const Usage = require("./models/Usage");
+    const SavedGroupList = require("./models/SavedGroupList");
 
-      // Assign to global scope for routes that need them
-      global.User = User;
-      global.Session = Session;
-      global.Usage = Usage;
-      global.SavedGroupList = SavedGroupList;
+    global.User = User;
+    global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
 
-      console.log("✅ Models loaded and assigned to global scope");
+    console.log("✅ Models loaded globally");
 
-      // Verify models are accessible
-      if (!global.User || !global.Session || !global.Usage || !global.SavedGroupList) {
-        throw new Error("Failed to assign models to global scope");
-      }
+    // TEST MODELS — MUST USE *global* variables
+    await global.User.countDocuments();
+    await global.Session.countDocuments();
+    console.log("✅ Database operations verified");
 
-      console.log("✅ Models verified and ready");
-    } catch (modelError) {
-      console.error("❌ Failed to load models:", modelError);
-      throw modelError;
-    }
-
-    /** ===== TEST DATABASE OPERATIONS ===== **/
-    try {
-      await User.countDocuments();
-      await Session.countDocuments();
-      console.log("✅ Database operations verified");
-    } catch (dbError) {
-      console.error("❌ Database operation test failed:", dbError);
-      throw dbError;
-    }
-
-    /** ===== START TRIAL MONITORING ===== **/
+    // START TRIAL MONITORING
     const { checkExpiredTrials } = require("./utils/trialMonitor");
     checkExpiredTrials();
     console.log("✅ Trial monitoring started");
 
-    /** ===== START SESSION CLEANUP ===== **/
-    const { startSessionCleanup } = require('./utils/sessionCleanup');
-    startSessionCleanup();
-    console.log('✅ Session cleanup started');
-
     return true;
+
   } catch (err) {
     console.error("❌ MongoDB connection failed:", err);
     throw err;
   }
 };
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) throw new Error("MONGODB_URI not defined");
+
+    console.log("🔄 Connecting to MongoDB…");
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
+
+    // GLOBAL MONGOOSE SETTINGS
+    mongoose.set("strictQuery", false);
+    mongoose.set("bufferCommands", true);
+    mongoose.set("autoIndex", false);
+
+    // CONNECTION EVENTS
+    mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
+    mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
+    mongoose.connection.on("disconnected", () => console.warn("⚠️ MongoDB disconnected — retrying automatically…"));
+    mongoose.connection.on("error", (err) => console.error("❌ MongoDB error:", err.message));
+
+    // CONNECT
+    await mongoose.connect(mongoURI, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
+      retryWrites: true,
+      w: "majority",
+      bufferCommands: true
+    });
+
+    console.log("🟢 Initial MongoDB connection established");
+
+    // WAIT UNTIL READY
+    let attempts = 0;
+    while (mongoose.connection.readyState !== 1 && attempts < 15) {
+      console.log(`⏳ Waiting for DB ready… Attempt ${attempts + 1}/15`);
+      await new Promise(res => setTimeout(res, 800));
+      attempts++;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error(`MongoDB readyState stuck at ${mongoose.connection.readyState}`);
+    }
+
+    console.log("✅ MongoDB readyState confirmed: connected");
+
+    // VERIFY PING
+    await mongoose.connection.db.admin().ping();
+    console.log("✅ MongoDB ping successful");
+
+    await new Promise(res => setTimeout(res, 2000));
+    console.log("✅ MongoDB connection stabilized");
+
+    // LOAD MODELS
+    const User = require("./models/User");
+    const Session = require("./models/Session");
+    const Usage = require("./models/Usage");
+    const SavedGroupList = require("./models/SavedGroupList");
+
+    global.User = User;
+    global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
+
+    console.log("✅ Models loaded globally");
+
+    // TEST MODELS — MUST USE *global* variables
+    await global.User.countDocuments();
+    await global.Session.countDocuments();
+    console.log("✅ Database operations verified");
+
+    // START TRIAL MONITORING
+    const { checkExpiredTrials } = require("./utils/trialMonitor");
+    checkExpiredTrials();
+    console.log("✅ Trial monitoring started");
+
+    return true;
+
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    throw err;
+  }
+};
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) throw new Error("MONGODB_URI not defined");
+
+    console.log("🔄 Connecting to MongoDB…");
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
+
+    // GLOBAL MONGOOSE SETTINGS
+    mongoose.set("strictQuery", false);
+    mongoose.set("bufferCommands", true);
+    mongoose.set("autoIndex", false);
+
+    // CONNECTION EVENTS
+    mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
+    mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
+    mongoose.connection.on("disconnected", () => console.warn("⚠️ MongoDB disconnected — retrying automatically…"));
+    mongoose.connection.on("error", (err) => console.error("❌ MongoDB error:", err.message));
+
+    // CONNECT
+    await mongoose.connect(mongoURI, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
+      retryWrites: true,
+      w: "majority",
+      bufferCommands: true
+    });
+
+    console.log("🟢 Initial MongoDB connection established");
+
+    // WAIT UNTIL READY
+    let attempts = 0;
+    while (mongoose.connection.readyState !== 1 && attempts < 15) {
+      console.log(`⏳ Waiting for DB ready… Attempt ${attempts + 1}/15`);
+      await new Promise(res => setTimeout(res, 800));
+      attempts++;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error(`MongoDB readyState stuck at ${mongoose.connection.readyState}`);
+    }
+
+    console.log("✅ MongoDB readyState confirmed: connected");
+
+    // VERIFY PING
+    await mongoose.connection.db.admin().ping();
+    console.log("✅ MongoDB ping successful");
+
+    await new Promise(res => setTimeout(res, 2000));
+    console.log("✅ MongoDB connection stabilized");
+
+    // LOAD MODELS
+    const User = require("./models/User");
+    const Session = require("./models/Session");
+    const Usage = require("./models/Usage");
+    const SavedGroupList = require("./models/SavedGroupList");
+
+    global.User = User;
+    global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
+
+    console.log("✅ Models loaded globally");
+
+    // TEST MODELS — MUST USE *global* variables
+    await global.User.countDocuments();
+    await global.Session.countDocuments();
+    console.log("✅ Database operations verified");
+
+    // START TRIAL MONITORING
+    const { checkExpiredTrials } = require("./utils/trialMonitor");
+    checkExpiredTrials();
+    console.log("✅ Trial monitoring started");
+
+    return true;
+
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    throw err;
+  }
+};
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) throw new Error("MONGODB_URI not defined");
+
+    console.log("🔄 Connecting to MongoDB…");
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
+
+    // GLOBAL MONGOOSE SETTINGS
+    mongoose.set("strictQuery", false);
+    mongoose.set("bufferCommands", true);
+    mongoose.set("autoIndex", false);
+
+    // CONNECTION EVENTS
+    mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
+    mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
+    mongoose.connection.on("disconnected", () => console.warn("⚠️ MongoDB disconnected — retrying automatically…"));
+    mongoose.connection.on("error", (err) => console.error("❌ MongoDB error:", err.message));
+
+    // CONNECT
+    await mongoose.connect(mongoURI, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
+      retryWrites: true,
+      w: "majority",
+      bufferCommands: true
+    });
+
+    console.log("🟢 Initial MongoDB connection established");
+
+    // WAIT UNTIL READY
+    let attempts = 0;
+    while (mongoose.connection.readyState !== 1 && attempts < 15) {
+      console.log(`⏳ Waiting for DB ready… Attempt ${attempts + 1}/15`);
+      await new Promise(res => setTimeout(res, 800));
+      attempts++;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error(`MongoDB readyState stuck at ${mongoose.connection.readyState}`);
+    }
+
+    console.log("✅ MongoDB readyState confirmed: connected");
+
+    // VERIFY PING
+    await mongoose.connection.db.admin().ping();
+    console.log("✅ MongoDB ping successful");
+
+    await new Promise(res => setTimeout(res, 2000));
+    console.log("✅ MongoDB connection stabilized");
+
+    // LOAD MODELS
+    const User = require("./models/User");
+    const Session = require("./models/Session");
+    const Usage = require("./models/Usage");
+    const SavedGroupList = require("./models/SavedGroupList");
+
+    global.User = User;
+    global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
+
+    console.log("✅ Models loaded globally");
+
+    // TEST MODELS — MUST USE *global* variables
+    await global.User.countDocuments();
+    await global.Session.countDocuments();
+    console.log("✅ Database operations verified");
+
+    // START TRIAL MONITORING
+    const { checkExpiredTrials } = require("./utils/trialMonitor");
+    checkExpiredTrials();
+    console.log("✅ Trial monitoring started");
+
+    return true;
+
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    throw err;
+  }
+};
+
 
 // In server.js, after models are loaded (around line 231)
 const { startSessionCleanup } = require('./utils/sessionCleanup');
