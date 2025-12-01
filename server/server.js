@@ -1439,14 +1439,15 @@ app.get('/api/sessions/status/:sessionId', authenticate, async (req, res) => {
             message: 'Error checking session status'
         });
     }
-    });
-
-    const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    serverStarted = true; // Mark as started
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log('✅ All systems ready!');
+    
 });
+        const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+        serverStarted = true; // Mark as started
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log('✅ All systems ready!');
+    });
+}:
 
 
 // Export for use in other modules
