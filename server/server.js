@@ -234,10 +234,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
   }
 };
 
-
-   
-
-        app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
+    app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
         try {
         console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
         const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
