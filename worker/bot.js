@@ -245,7 +245,6 @@ async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHU
 // ---------------- CONFIG (adjust as needed) ----------------
 const SESSION_DIR = path.join(__dirname, 'sessions');
 const MEDIA_DIR = path.join(__dirname, 'media');
-const COMMAND_PREFIX = '!';
 const CHAT_SYNC_THRESHOLD = 20; // number of chats to consider "synced"
 const CHAT_SYNC_WAIT_ITER = 40; // iterations (500ms each) to wait for chat sync (~20s)
 const SCHEDULER_POLL_MS = 30 * 1000; // 30s
