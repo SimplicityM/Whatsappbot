@@ -1310,9 +1310,30 @@ const startServer = async () => {
     try {
       console.log(`🔄 Connection attempt ${6 - retries}/5...`);
       await connectDB();
-      connected = true;
+      connected = true;  
+       
+    } catch (error) {
+      retries--;
+      console.error(`❌ Failed to start server (${retries} retries left):`, error.message);
+      
+      if (retries === 0) {
+        console.error('❌ All connection attempts failed. Exiting...');
+        console.error('💡 Please check:');
+        console.error('   1. MONGODB_URI environment variable is set correctly');
+        console.error('   2. MongoDB Atlas Network Access allows your IP (0.0.0.0/0)');
+        console.error('   3. Database user credentials are correct');
+        console.error('   4. Your internet connection is stable');
+        process.exit(1);
+      }
+      
+      console.log(`⏳ Retrying in 5 seconds...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+};
 
-       // Register auth routes AFTER models are loaded
+
+ // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
     console.log('✅ Auth routes registered');
 
@@ -1458,33 +1479,14 @@ app.get('/api/sessions/status/:sessionId', authenticate, async (req, res) => {
         });
     }
     });
-      
-      const PORT = process.env.PORT || 3000;
-      server.listen(PORT, () => {
-        serverStarted = true; // Mark as started
-        console.log(`🚀 Server running on port ${PORT}`);
-        console.log('✅ All systems ready!');
-      });
-      
-    } catch (error) {
-      retries--;
-      console.error(`❌ Failed to start server (${retries} retries left):`, error.message);
-      
-      if (retries === 0) {
-        console.error('❌ All connection attempts failed. Exiting...');
-        console.error('💡 Please check:');
-        console.error('   1. MONGODB_URI environment variable is set correctly');
-        console.error('   2. MongoDB Atlas Network Access allows your IP (0.0.0.0/0)');
-        console.error('   3. Database user credentials are correct');
-        console.error('   4. Your internet connection is stable');
-        process.exit(1);
-      }
-      
-      console.log(`⏳ Retrying in 5 seconds...`);
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
-  }
-};
+
+    const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    serverStarted = true; // Mark as started
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log('✅ All systems ready!');
+});
+
 
 // Export for use in other modules
 module.exports = {
