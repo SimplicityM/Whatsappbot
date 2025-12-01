@@ -129,31 +129,18 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
     const connectDB = async () => {
-    try {
-        const mongoURI = process.env.MONGODB_URI;
-        if (!mongoURI) throw new Error("MONGODB_URI not defined");
+  try {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) throw new Error("MONGODB_URI not defined");
 
-        console.log("🔄 Connecting to MongoDB…");
-        console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
+    console.log("🔄 Connecting to MongoDB…");
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
 
-        // ===== GLOBAL MONGOOSE SETTINGS =====
-        mongoose.set("strictQuery", false);
-        mongoose.set("bufferCommands", true);
-        mongoose.set("autoIndex", false);
     // ===== GLOBAL MONGOOSE SETTINGS =====
     mongoose.set("strictQuery", false);
     mongoose.set("bufferCommands", true);
     mongoose.set("autoIndex", false);
 
-        // ===== CONNECTION EVENT LOGGERS =====
-        mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
-        mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
-        mongoose.connection.on("disconnected", () =>
-        console.warn("⚠️ MongoDB disconnected — retrying automatically…")
-        );
-        mongoose.connection.on("error", (err) =>
-        console.error("❌ MongoDB error:", err.message)
-        );
     // ===== CONNECTION EVENT LOGGERS =====
     mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
     mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
@@ -164,49 +151,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       console.error("❌ MongoDB error:", err.message)
     );
 
-        // ===== CONNECT TO MONGODB =====
-        await mongoose.connect(mongoURI, {
-        maxPoolSize: 20,
-        minPoolSize: 5,
-        serverSelectionTimeoutMS: 30000,
-        connectTimeoutMS: 30000,
-        socketTimeoutMS: 60000,
-        retryWrites: true,
-        w: "majority",
-        bufferCommands: true
-        });
-
-        console.log("🟢 Initial MongoDB connection established");
-
-        // ===== WAIT FOR STABLE READY STATE =====
-        let attempts = 0;
-        const maxAttempts = 15;
-
-        while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
-        console.log(
-            `⏳ Waiting for DB ready… Attempt ${attempts + 1}/${maxAttempts} (State: ${
-            mongoose.connection.readyState
-            })`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        attempts++;
-        }
-
-        if (mongoose.connection.readyState !== 1) {
-        throw new Error(
-            `MongoDB did not stabilize. Final readyState: ${mongoose.connection.readyState}`
-        );
-        }
-
-        console.log("✅ MongoDB readyState confirmed: 1 (connected)");
-
-        // ===== VERIFY CONNECTION WITH A PING =====
-        if (mongoose.connection.db) {
-        await mongoose.connection.db.admin().ping();
-        console.log("✅ MongoDB ping successful");
-        } else {
-        console.warn("⚠️ Skipping ping — connection.db not ready");
-        }
     // ===== CONNECT TO MONGODB =====
     await mongoose.connect(mongoURI, {
       maxPoolSize: 20,
@@ -219,23 +163,12 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       bufferCommands: true
     });
 
-        // ===== EXTRA STABILIZATION WAIT =====
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        console.log("✅ MongoDB connection stabilized");
+    console.log("🟢 Initial MongoDB connection established");
 
-        // ===== LOAD MODELS AFTER STABLE CONNECTION =====
-        const User = require("./models/User");
-        const Session = require("./models/Session");
-        const Usage = require("./models/Usage");
-        const SavedGroupList = require("./models/SavedGroupList");
     // ===== WAIT FOR STABLE READY STATE =====
     let attempts = 0;
     const maxAttempts = 15;
 
-        global.User = User;
-        global.Session = Session;
-        global.Usage = Usage;
-        global.SavedGroupList = SavedGroupList;
     while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
       console.log(
         `⏳ Waiting for DB ready… Attempt ${attempts + 1}/${maxAttempts} (State: ${
@@ -246,17 +179,12 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       attempts++;
     }
 
-        console.log("✅ Models loaded");
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error(
+        `MongoDB did not stabilize. Final readyState: ${mongoose.connection.readyState}`
+      );
+    }
 
-        // ===== TEST DATABASE OPERATIONS =====
-        try {
-        await User.countDocuments();
-        await Session.countDocuments();
-        console.log("✅ Database operations verified");
-        } catch (dbError) {
-        console.error("❌ Database operation test failed:", dbError);
-        throw dbError;
-        }
     console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
     // ===== VERIFY CONNECTION WITH A PING =====
@@ -284,10 +212,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     console.log("✅ Models loaded");
 
-        // ===== START TRIAL MONITORING =====
-        const { checkExpiredTrials } = require("./utils/trialMonitor");
-        checkExpiredTrials();
-        console.log("✅ Trial monitoring started");
     // ===== TEST DATABASE OPERATIONS =====
     try {
       await User.countDocuments();
@@ -298,12 +222,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       throw dbError;
     }
 
-        return true;
-    } catch (err) {
-        console.error("❌ MongoDB connection failed:", err);
-        throw err;
-    }
-    };
     // ===== START TRIAL MONITORING =====
     const { checkExpiredTrials } = require("./utils/trialMonitor");
     checkExpiredTrials();
@@ -315,6 +233,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
     throw err;
   }
 };
+
 
    
 
