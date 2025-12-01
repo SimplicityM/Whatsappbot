@@ -1447,7 +1447,7 @@ app.get('/api/sessions/status/:sessionId', authenticate, async (req, res) => {
         console.log(`🚀 Server running on port ${PORT}`);
         console.log('✅ All systems ready!');
     });
-}:
+};
 
 
 // Export for use in other modules
