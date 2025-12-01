@@ -64,4 +64,4 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Render auto-assigns PORT so we DO NOT EXPOSE OR FORCE ANY PORT
-CMD ["node", "worker.js"]
+CMD ["node", "worker/worker.js"]

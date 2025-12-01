@@ -21,7 +21,7 @@ logs
 *.log
 bot.log
 
-# Runtime data
+# Coverage and test data
 lib-cov
 coverage
 .nyc_output
@@ -33,18 +33,6 @@ build/Release
 .eslintcache
 .node_repl_history
 *.tgz
-.yarn-integrity
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
 .yarn-integrity
 
 # dotenv environment variables file
@@ -76,3 +64,14 @@ media/
 # Temporary files
 tmp/
 temp/
+
+# =====================================================
+# PROJECT-SPECIFIC FILES TO IGNORE
+# =====================================================
+
+# Configuration files with sensitive data
+config.json
+
+# Build outputs
+dist/
+build/
