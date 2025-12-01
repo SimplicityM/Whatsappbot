@@ -1,19 +1,14 @@
 {
   "name": "whatsappbot",
+  "private": true,
   "version": "1.0.0",
-  "engines": {
-    "node": "22.x"
-  },
+  "workspaces": [
+    "server",
+    "worker"
+  ],
   "scripts": {
-    "start": "echo 'Please specify server or worker'",
-    "start:server": "cd server && npm start",
-    "start:worker": "cd worker && npm start"
-  },
-  "dependencies": {
-    "axios": "^1.13.2",
-    "bcryptjs": "^2.4.3",
-    "google-auth-library": "^10.5.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.20.0"
+    "start": "echo \"Select server or worker\"",
+    "start:server": "npm --workspace server start",
+    "start:worker": "npm --workspace worker start"
   }
 }
