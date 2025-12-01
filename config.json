@@ -1,0 +1,13 @@
+{
+  "sessionDataPath": "./sessions",
+  "mediaPath": "./media",
+  "authPath": "./auth",
+  "adminSettings": {
+    "selfChatOnly": true,
+    "secondaryAdmins": {}
+  },
+  "owner": "2347067012884",
+  "prefix": "!",
+  "maxSessions": 1,
+  "allowedUsers": []
+}
