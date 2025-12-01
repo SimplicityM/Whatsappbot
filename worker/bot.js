@@ -1517,7 +1517,7 @@ case 'help': {
         break;
 
       /* ---------- SAVE ADMIN GROUPS: !list ---------- */
-      case 'list': {
+case 'list': {
     // Usage: !list OR !list refresh
     const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
 
@@ -1528,7 +1528,7 @@ case 'help': {
         if (cached && cached.groups && cached.groups.length) {
             let out = '📋 *Groups Where You Are Admin (Cached):*\n\n';
             cached.groups.forEach((g, i) => {
-                out += `${i + 1}. *${g.name}*\n;
+                out += `${i + 1}. ${g.name}\n`;  // ✅ CHANGED: Removed ID line
             });
             out += '\n🔄 To refresh the list, use: `!list refresh`';
             await safeSend(message.from, out);
@@ -1567,26 +1567,7 @@ case 'help': {
         }
     }
 
-//     // Save cache
-//     if (adminGroups.length) {
-//         await SavedGroupList.findOneAndUpdate(
-//             { sessionId },
-//             { groups: adminGroups, updatedAt: new Date() },
-//             { upsert: true }
-//         );
-//     }
-
-//     let out = '*📋 Updated Admin Group List:*\n\n';
-//     adminGroups.forEach((g, i) => {
-//         out += `${i + 1}. *${g.name}*\n;
-//     });
-//     out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
-//     await safeSend(message.from, out);
-
-//     break;
-// }
-
- // Save cache
+    // Save cache
     if (adminGroups.length) {
         await SavedGroupList.findOneAndUpdate(
             { sessionId },
@@ -1613,7 +1594,7 @@ case 'help': {
 
     let out = '*📋 Updated Admin Group List:*\n\n';
     adminGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n;
+        out += `${i + 1}. ${g.name}\n`;  // ✅ CHANGED: Removed ID line
     });
     out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
     await safeSend(message.from, out);
@@ -1981,54 +1962,54 @@ case 'status': {
 
 
         case 'listall': {
-            const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
+    const isRefresh = args[0] && args[0].toLowerCase() === "refresh";
 
-            if (!isRefresh) {
-                const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
-                    .lean()
-                    .catch(() => null);
+    if (!isRefresh) {
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            .lean()
+            .catch(() => null);
 
-                if (cached && cached.groups && cached.groups.length) {
-                    let out = '📋 *All Groups (Cached):*\n\n';
-                    cached.groups.forEach((g, i) => {
-                        out += `${i + 1}. *${g.name}*\n;
-                    });
-                    out += '\n🔄 To refresh: `!listall refresh`';
-                    await safeSend(message.from, out);
-                    break;
-                }
-            }
-
-            await safeSend(
-                message.from,
-                '⏳ Scanning ALL your groups… (may take 10–20s on 50+ groups)…'
-            );
-
-            const chats = await client.getChats();
-
-            const allGroups = chats
-                .filter(c => c.isGroup)
-                .map(c => ({
-                    name: c.name || "Unnamed Group",
-                    groupId: c.id._serialized
-                }));
-
-            await SavedGroupList.findOneAndUpdate(
-                { sessionId: sessionId + "_all" },
-                { groups: allGroups, updatedAt: new Date() },
-                { upsert: true }
-            );
-
-            let out = '*📋 Updated List of ALL Groups:*\n\n';
-            allGroups.forEach((g, i) => {
-                out += `${i + 1}. *${g.name}*\n;
+        if (cached && cached.groups && cached.groups.length) {
+            let out = '📋 *All Groups (Cached):*\n\n';
+            cached.groups.forEach((g, i) => {
+                out += `${i + 1}. ${g.name}\n`;
             });
-
-            out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
+            out += '\n🔄 To refresh: `!listall refresh`';
             await safeSend(message.from, out);
-
             break;
         }
+    }
+
+    await safeSend(
+        message.from,
+        '⏳ Scanning ALL your groups… (may take 10–20s on 50+ groups)…'
+    );
+
+    const chats = await client.getChats();
+
+    const allGroups = chats
+        .filter(c => c.isGroup)
+        .map(c => ({
+            name: c.name || "Unnamed Group",
+            groupId: c.id._serialized
+        }));
+
+    await SavedGroupList.findOneAndUpdate(
+        { sessionId: sessionId + "_all" },
+        { groups: allGroups, updatedAt: new Date() },
+        { upsert: true }
+    );
+
+    let out = '*📋 Updated List of ALL Groups:*\n\n';
+    allGroups.forEach((g, i) => {
+        out += `${i + 1}. ${g.name}\n`;
+    });
+
+    out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
+    await safeSend(message.from, out);
+
+    break;
+}
 
             case 'syncmembers': {
         // usage: !syncmembers <groupIndex>
@@ -2583,7 +2564,7 @@ case 'mygroups': {
 
     let out = `*👑 Groups YOU Created:*\n\n`;
     myGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n;
+        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
     });
 
     await safeSend(message.from, out);
