@@ -63,4 +63,4 @@ commandGrantSchema.index({ userId: 1, commandName: 1 });
 commandGrantSchema.index({ planType: 1, commandName: 1 });
 commandGrantSchema.index({ isActive: 1 });
 
-module.exports = mongoose.model('CommandGrant', commandGrantSchema);
+module.exports = mongoose.models.CommandGrant || mongoose.model('CommandGrant', commandGrantSchema);

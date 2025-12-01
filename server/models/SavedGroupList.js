@@ -11,4 +11,4 @@ const SavedGroupListSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('SavedGroupList', SavedGroupListSchema);
+module.exports = mongoose.models.SavedGroupList || mongoose.model('SavedGroupList', SavedGroupListSchema);

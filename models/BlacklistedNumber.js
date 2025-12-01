@@ -30,4 +30,4 @@ const blacklistedNumberSchema = new mongoose.Schema({
     }
 });
 
-module.exports = mongoose.model('BlacklistedNumber', blacklistedNumberSchema);
+module.exports = mongoose.models.BlacklistedNumber || mongoose.model('BlacklistedNumber', blacklistedNumberSchema);

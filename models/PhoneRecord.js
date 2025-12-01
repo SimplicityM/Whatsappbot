@@ -10,4 +10,4 @@ const phoneRecordSchema = new mongoose.Schema({
     firstCommandDone: { type: Boolean, default: false }
 }, { timestamps: true });
 
-module.exports = mongoose.model('PhoneRecord', phoneRecordSchema);
+module.exports = mongoose.models.PhoneRecord || mongoose.model('PhoneRecord', phoneRecordSchema);

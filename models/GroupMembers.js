@@ -12,4 +12,4 @@ GroupMembersSchema.methods.hasMember = function(jid) {
   return this.members.indexOf(jid) !== -1;
 };
 
-module.exports = mongoose.model('GroupMembers', GroupMembersSchema);
+module.exports = mongoose.models.GroupMembers || mongoose.model('GroupMembers', GroupMembersSchema);

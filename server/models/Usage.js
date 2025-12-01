@@ -34,4 +34,4 @@ const usageSchema = new mongoose.Schema({
 // Compound index for efficient queries
 usageSchema.index({ userId: 1, date: 1 }, { unique: true });
 
-module.exports = mongoose.model('Usage', usageSchema);
+module.exports = mongoose.models.Usage || mongoose.model('Usage', usageSchema);

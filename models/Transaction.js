@@ -104,4 +104,4 @@ transactionSchema.statics.getUserSummary = async function(userId) {
     };
 };
 
-module.exports = mongoose.model('Transaction', transactionSchema);
+module.exports = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);

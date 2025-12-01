@@ -45,4 +45,4 @@ const broadcastSchema = new mongoose.Schema({
 
 broadcastSchema.index({ scheduleTime: 1, status: 1 });
 
-module.exports = mongoose.model('Broadcast', broadcastSchema);
+module.exports = mongoose.models.Broadcast || mongoose.model('Broadcast', broadcastSchema);

@@ -66,4 +66,4 @@ contactSchema.index({ userId: 1, sessionId: 1 });
 contactSchema.index({ userId: 1, type: 1 });
 contactSchema.index({ sessionId: 1, isGroup: 1 });
 
-module.exports = mongoose.model('Contact', contactSchema);
+module.exports = mongoose.models.Contact || mongoose.model('Contact', contactSchema);

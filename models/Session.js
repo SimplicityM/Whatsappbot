@@ -127,4 +127,4 @@ sessionSchema.methods.getUptime = function() {
     return Math.floor((new Date() - this.connectedAt) / 1000); // in seconds
 };
 
-module.exports = mongoose.model('Session', sessionSchema);
+module.exports = mongoose.models.Session || mongoose.model('Session', sessionSchema);

@@ -33,4 +33,5 @@ const broadcastLogSchema = new mongoose.Schema({
 });
 
 broadcastLogSchema.index({ adminId: 1, sentAt: -1 });
-module.exports = mongoose.models.BroadcastLog || mongoose.model('BroadcastLog', broadcastLogSchema);module.exports = mongoose.model('BroadcastLog', broadcastLogSchema);
+
+module.exports = mongoose.models.BroadcastLog || mongoose.model('BroadcastLog', broadcastLogSchema);

@@ -8,4 +8,4 @@ const TagUsageSchema = new mongoose.Schema({
 
 TagUsageSchema.index({ phone: 1, date: 1 }, { unique: true });
 
-module.exports = mongoose.model("TagUsage", TagUsageSchema);
+module.exports = mongoose.models.TagUsage || mongoose.model("TagUsage", TagUsageSchema);
