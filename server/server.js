@@ -1330,10 +1330,8 @@ const startServer = async () => {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
-};
 
-
- // Register auth routes AFTER models are loaded
+  // Register auth routes AFTER models are loaded
     app.use("/api/auth", require("./routes/auth"));
     console.log('✅ Auth routes registered');
 
@@ -1486,6 +1484,11 @@ server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log('✅ All systems ready!');
 });
+
+};
+
+
+ 
 
 
 // Export for use in other modules
