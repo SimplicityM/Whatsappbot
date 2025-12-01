@@ -594,9 +594,9 @@ This policy prevents trial abuse and ensures fair access for all users.`);
         await new Promise(r => setTimeout(r, 400));
 
         await safeSend(selfId, `
-━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ WELCOME TO TAGTHEMALL BOT ✨
-━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 🤖 Your automation assistant is now active!
 
@@ -869,223 +869,7 @@ async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
 }
 
 
-  // generic message handler (per-client)
-// client.on('message_create', async (message) => {
-//   try {
-//     // only process commands (ignore status & empty)
-//     if (!message.body || message.from === 'status@broadcast') return;
-
-//     // ensure selfId is set
-//     if (!client.info || !client.info.wid) {
-//       if (message.fromMe) {
-//         client.info = client.info || {};
-//         client.info.wid = client.info.wid || { _serialized: message.from };
-//       }
-//     }
-
-//     const mySelf = client.info?.wid?._serialized;
-
-//     // determine sender
-//     const sender = message.fromMe ? mySelf : message.from;
-//     const isSelfChat = sender === mySelf;
-
-//     // --------------------------------------------------
-//     // 🟢 RECORD GROUP MESSAGE SENDERS INTO DB (NEW)
-//     // --------------------------------------------------
-//     try {
-//       const chat = await message.getChat().catch(() => null);
-
-//       if (chat && chat.isGroup) {
-//         const senderJid = message.author || message.from;
-
-//         if (senderJid) {
-//           await addMemberToGroup(
-//             sessionId,
-//             chat.id._serialized || chat.id,
-//             senderJid
-//           );
-//         }
-//       }
-//     } catch (e) {
-//       // ignore db errors
-//     }
-//     // --------------------------------------------------
-
-//     // --------------------------------------------------
-//     // 🟢 SELF-CHAT COMMAND FILTER + ✔️ REACTION
-//     // --------------------------------------------------
-//     if (message.body.startsWith(COMMAND_PREFIX)) {
-
-//       // Only owner can run commands
-//       if (sender !== mySelf) return;
-
-//       // Only self-chat allowed
-//       if (!isSelfChat) return;
-
-//       // Reaction to confirm command
-//       try {
-//         await message.react('✔️');
-//       } catch {}
-//     }
-
-//     // If no command prefix, stop here
-//     if (!message.body.startsWith(COMMAND_PREFIX)) return;
-
-//     // --------------------------------------------------
-//     // 🟢 COMMAND PARSER
-//     // --------------------------------------------------
-//     const full = message.body.slice(COMMAND_PREFIX.length).trim();
-//     const [cmdRaw, ...args] = full.split(/\s+/);
-//     const cmd = (cmdRaw || '').toLowerCase();
-
-//     // --------------------------------------------------
-//     // Your entire command switch block stays exactly as is
-//     // --------------------------------------------------
-
-//     async function fetchAndSaveAdminGroups() {
-//       let chats = await client.getChats();
-
-//       if (chats.length < CHAT_SYNC_THRESHOLD) {
-//         for (let i = 0; i < CHAT_SYNC_WAIT_ITER; i++) {
-//           if (chats.length > CHAT_SYNC_THRESHOLD) break;
-//           await new Promise(r => setTimeout(r, 500));
-//           chats = await client.getChats();
-//         }
-//       }
-
-//       const adminGroups = [];
-
-//       for (const c of chats) {
-//         if (!c.isGroup) continue;
-
-//         let participants = [];
-//         try {
-//           if (Array.isArray(c.participants) && c.participants.length) {
-//             participants = c.participants;
-//           } else if (typeof c.getParticipants === "function") {
-//             participants = await c.getParticipants();
-//           }
-//         } catch {
-//           participants = [];
-//         }
-
-//         const amIAdmin = participants.some(p =>
-//           p.id._serialized === mySelf &&
-//           (p.isAdmin || p.isSuperAdmin)
-//         );
-
-//         if (amIAdmin)
-//           adminGroups.push({
-//             name: c.name || 'Unnamed group',
-//             groupId: c.id._serialized
-//           });
-//       }
-
-//       if (adminGroups.length) {
-//         await SavedGroupList.findOneAndUpdate(
-//           { sessionId },
-//           { groups: adminGroups, updatedAt: new Date() },
-//           { upsert: true }
-//         );
-//       }
-
-//       return adminGroups;
-//     }
-
-    
-//   async function resolveTargetGroupArg(argIndex) {
-//     try {
-//         // 1️⃣ Load cached admin groups for this session
-//         let cached = await SavedGroupList.findOne({ sessionId })
-//             .lean()
-//             .catch(() => null);
-
-//         let adminGroups =
-//             cached && Array.isArray(cached.groups) ? cached.groups : [];
-
-//         // If no cache exists → rebuild FAST
-//         if (!adminGroups.length) {
-//             logger.warn(`[${sessionId}] No cached admin groups — rebuilding list.`);
-
-//             const chats = await client.getChats();
-//             adminGroups = [];
-
-//             for (const c of chats) {
-//                 if (!c.isGroup) continue;
-
-//                 let parts = [];
-//                 try {
-//                     if (Array.isArray(c.participants) && c.participants.length) {
-//                         parts = c.participants;
-//                     } else if (typeof c.getParticipants === "function") {
-//                         parts = await c.getParticipants();
-//                     }
-//                 } catch { parts = []; }
-
-//                 const amIAdmin = parts.some(
-//                     p =>
-//                         p.id?._serialized === client.info?.wid?._serialized &&
-//                         (p.isAdmin || p.isSuperAdmin)
-//                 );
-
-//                 if (amIAdmin) {
-//                     adminGroups.push({
-//                         name: c.name || 'Unnamed Group',
-//                         groupId: c.id._serialized,
-//                     });
-//                 }
-//             }
-
-//             // Save rebuilt cache
-//             await SavedGroupList.findOneAndUpdate(
-//                 { sessionId },
-//                 { groups: adminGroups, updatedAt: new Date() },
-//                 { upsert: true }
-//             ).catch(() => null);
-//         }
-
-//         // 2️⃣ If user passed an index → resolve directly
-//         if (argIndex && !isNaN(argIndex)) {
-//             const idx = parseInt(argIndex);
-//             const arrayIndex = idx - 1;
-
-//             if (adminGroups[arrayIndex]) {
-//                 return {
-//                     index: idx,
-//                     group: adminGroups[arrayIndex],
-//                 };
-//             }
-
-//             return { index: null, group: null };
-//         }
-
-//         // 3️⃣ No index → try to load last active group (from !use)
-//         const active = await ActiveGroup.findOne({ sessionId })
-//             .lean()
-//             .catch(() => null);
-
-//         if (active) {
-//             // Find this active group in cache
-//             const match = adminGroups.find(g => g.groupId === active.groupId);
-
-//             if (match) {
-//                 return {
-//                     index: adminGroups.indexOf(match) + 1,
-//                     group: match
-//                 };
-//             }
-//         }
-
-//         // 4️⃣ Nothing found
-//         return { index: null, group: null };
-
-//     } catch (e) {
-//         logger.error(`[${sessionId}] resolveTargetGroupArg ERROR`, e);
-//         return { index: null, group: null };
-//     }
-// }
-
-
+ 
 client.on('message_create', async (message) => {
   try {
     // only process commands (ignore status & empty)
@@ -1443,15 +1227,83 @@ try {
     }
 }
 
+// NEW FUNCTION: Resolve group from ALL groups (admin + member)
+async function resolveTargetGroupFromAll(argIndex) {
+    try {
+        // 1️⃣ Load cached ALL groups for this session
+        let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            .lean()
+            .catch(() => null);
+
+        let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+        // If no cache exists → rebuild from all groups
+        if (!allGroups.length) {
+            logger.warn(`[${sessionId}] No cached all groups — rebuilding list.`);
+
+            const chats = await client.getChats();
+            allGroups = chats
+                .filter(c => c.isGroup)
+                .map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+
+            // Save rebuilt cache
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId: sessionId + "_all" },
+                { groups: allGroups, updatedAt: new Date() },
+                { upsert: true }
+            ).catch(() => null);
+        }
+
+        // 2️⃣ If user passed an index → resolve directly
+        if (argIndex && !isNaN(argIndex)) {
+            const idx = parseInt(argIndex);
+            const arrayIndex = idx - 1;
+
+            if (allGroups[arrayIndex]) {
+                return {
+                    index: idx,
+                    group: allGroups[arrayIndex],
+                };
+            }
+
+            return { index: null, group: null };
+        }
+
+        // 3️⃣ No index → try to load last active group (from !use)
+        const lastActive = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
+
+        if (lastActive && lastActive.groupId) {
+            const found = allGroups.find(g => g.groupId === lastActive.groupId);
+            if (found) {
+                return { index: null, group: found };
+            }
+        }
+
+        // 4️⃣ Fallback: return first group if available
+        if (allGroups.length > 0) {
+            return { index: 1, group: allGroups[0] };
+        }
+
+        return { index: null, group: null };
+
+    } catch (err) {
+        logger.error(`resolveTargetGroupFromAll error:`, err);
+        return { index: null, group: null };
+    }
+}
+
     // ------------ COMMANDS ------------
     switch (cmd) {
 case 'help': {
     if (!isSelfChat) return;
 
     const text = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ *TAGTHEMALL BOT COMMANDS* ✨
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 📋 *GROUP MANAGEMENT*
 • !list — Groups where you're an admin
@@ -1502,9 +1354,9 @@ case 'help': {
 • !cleanupcache — Rebuild group cache
 • !help — Show this help menu
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 💡 *TIP:* You can type !tag without index if you used !use before.
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━
 `;
 
     await safeSend(message.from, text);
@@ -2082,7 +1934,7 @@ case 'dmall': {
 
     if (pipeIndex === -1) {
         await safeSend(message.from,
-            '❗ Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone'
+            '❗ Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone\n\n💡 Use !listall to see all your groups'
         );
         break;
     }
@@ -2095,10 +1947,49 @@ case 'dmall': {
         break;
     }
 
-    // resolve group
-    const resolved = await resolveTargetGroupArg(groupIndex);
+    // ✅ CHANGED: Resolve from ALL groups (not just admin groups)
+    let resolved = { index: null, group: null };
+    
+    try {
+        // Load cached ALL groups
+        let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            .lean()
+            .catch(() => null);
+
+        let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+        // If no cache, rebuild from all groups
+        if (!allGroups.length) {
+            const chats = await client.getChats();
+            allGroups = chats
+                .filter(c => c.isGroup)
+                .map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+
+            // Save cache
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId: sessionId + "_all" },
+                { groups: allGroups, updatedAt: new Date() },
+                { upsert: true }
+            ).catch(() => null);
+        }
+
+        // Resolve group by index
+        const arrayIndex = groupIndex - 1;
+        if (allGroups[arrayIndex]) {
+            resolved = {
+                index: groupIndex,
+                group: allGroups[arrayIndex]
+            };
+        }
+    } catch (err) {
+        logger.error('Error resolving group:', err);
+    }
+
     if (!resolved.group) {
-        await safeSend(message.from, '❌ Invalid group index.');
+        await safeSend(message.from, '❌ Invalid group index. Use !listall to see all groups.');
         break;
     }
 
@@ -2201,7 +2092,9 @@ case 'dmselected': {
 Examples:
 !dmselected 2 @john @mary | Private meeting
 !dmselected 1 08123456789 3 | Hello
-!dmselected 3 1,3,5 | Important update`);
+!dmselected 3 1,3,5 | Important update
+
+💡 Use !listall to see all your groups`);
         break;
     }
 
@@ -2216,11 +2109,50 @@ Examples:
     }
 
     // ------------------------------------------------------------
-    // 2️⃣ Resolve Group
+    // 2️⃣ Resolve Group from ALL groups
     // ------------------------------------------------------------
-    const resolved = await resolveTargetGroupArg(groupIndex);
+    let resolved = { index: null, group: null };
+    
+    try {
+        // Load cached ALL groups
+        let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            .lean()
+            .catch(() => null);
+
+        let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+        // If no cache, rebuild from all groups
+        if (!allGroups.length) {
+            const chats = await client.getChats();
+            allGroups = chats
+                .filter(c => c.isGroup)
+                .map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+
+            // Save cache
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId: sessionId + "_all" },
+                { groups: allGroups, updatedAt: new Date() },
+                { upsert: true }
+            ).catch(() => null);
+        }
+
+        // Resolve group by index
+        const arrayIndex = groupIndex - 1;
+        if (allGroups[arrayIndex]) {
+            resolved = {
+                index: groupIndex,
+                group: allGroups[arrayIndex]
+            };
+        }
+    } catch (err) {
+        logger.error('Error resolving group:', err);
+    }
+
     if (!resolved.group) {
-        await safeSend(message.from, '❌ Invalid group index. Run !list');
+        await safeSend(message.from, '❌ Invalid group index. Use !listall to see all groups.');
         break;
     }
 
@@ -2360,10 +2292,69 @@ Sent to **${delivered}** members in *${resolved.group.name}*.`
 case 'members': {
     // 1️⃣ Parse group index (or use active group)
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-    const resolved = await resolveTargetGroupArg(providedIdx);
+    
+    // 2️⃣ Resolve Group from ALL groups
+    let resolved = { index: null, group: null };
+    
+    if (providedIdx) {
+        try {
+            // Load cached ALL groups
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+            // If no cache, rebuild from all groups
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats
+                    .filter(c => c.isGroup)
+                    .map(c => ({
+                        name: c.name || "Unnamed Group",
+                        groupId: c.id._serialized
+                    }));
+
+                // Save cache
+                await SavedGroupList.findOneAndUpdate(
+                    { sessionId: sessionId + "_all" },
+                    { groups: allGroups, updatedAt: new Date() },
+                    { upsert: true }
+                ).catch(() => null);
+            }
+
+            // Resolve group by index
+            const arrayIndex = providedIdx - 1;
+            if (allGroups[arrayIndex]) {
+                resolved = {
+                    index: providedIdx,
+                    group: allGroups[arrayIndex]
+                };
+            }
+        } catch (err) {
+            logger.error('Error resolving group:', err);
+        }
+    } else {
+        // No index provided, try to use active group
+        const lastActive = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
+        
+        if (lastActive && lastActive.groupId) {
+            // Load all groups to find the active one
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            
+            const found = allGroups.find(g => g.groupId === lastActive.groupId);
+            if (found) {
+                resolved = { index: null, group: found };
+            }
+        }
+    }
 
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
+        await safeSend(message.from, '❌ No target group found. Use !listall to see all groups or !use <index> to set default');
         break;
     }
 
@@ -2443,12 +2434,72 @@ case 'members': {
 
 
       /* ---------- ADMINS ---------- */
+/* ---------- ADMINS ---------- */
 case 'admins': {
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-    const resolved = await resolveTargetGroupArg(providedIdx);
+    
+    // Resolve Group from ALL groups
+    let resolved = { index: null, group: null };
+    
+    if (providedIdx) {
+        try {
+            // Load cached ALL groups
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+
+            // If no cache, rebuild from all groups
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats
+                    .filter(c => c.isGroup)
+                    .map(c => ({
+                        name: c.name || "Unnamed Group",
+                        groupId: c.id._serialized
+                    }));
+
+                // Save cache
+                await SavedGroupList.findOneAndUpdate(
+                    { sessionId: sessionId + "_all" },
+                    { groups: allGroups, updatedAt: new Date() },
+                    { upsert: true }
+                ).catch(() => null);
+            }
+
+            // Resolve group by index
+            const arrayIndex = providedIdx - 1;
+            if (allGroups[arrayIndex]) {
+                resolved = {
+                    index: providedIdx,
+                    group: allGroups[arrayIndex]
+                };
+            }
+        } catch (err) {
+            logger.error('Error resolving group:', err);
+        }
+    } else {
+        // No index provided, try to use active group
+        const lastActive = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
+        
+        if (lastActive && lastActive.groupId) {
+            // Load all groups to find the active one
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            
+            const found = allGroups.find(g => g.groupId === lastActive.groupId);
+            if (found) {
+                resolved = { index: null, group: found };
+            }
+        }
+    }
 
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Run !list or !use <index>');
+        await safeSend(message.from, '❌ No target group found. Use !listall to see all groups or !use <index>');
         break;
     }
 
@@ -2564,7 +2615,7 @@ case 'mygroups': {
 
     let out = `*👑 Groups YOU Created:*\n\n`;
     myGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+        out += `${i + 1}. ${g.name}\n`;
     });
 
     await safeSend(message.from, out);
