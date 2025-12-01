@@ -19,12 +19,17 @@ const mongoose = require("mongoose");
 
 const Session = require("./models/Session");
 const User = require("./models/User");
+const config = require('./config');
 const {
     createBotSession,
     restoreAllSessions,
     resumeUserSession,
     clients
 } = require("./bot.js");
+
+// Use it:
+const PORT = process.env.PORT || 5001;
+const MAX_SESSIONS = config.client.MAX_SESSIONS;
 
 /* =====================================================
    WORKER SOCKET.IO SERVER
@@ -63,6 +68,7 @@ server.listen(PORT, '0.0.0.0', () => {
 /* =====================================================
    CONNECT TO DATABASE
    ===================================================== */
+
 (async () => {
     const mongoURI = process.env.MONGODB_URI;
 
@@ -75,9 +81,32 @@ server.listen(PORT, '0.0.0.0', () => {
         await mongoose.connect(mongoURI);
         console.log("📦 Worker connected to MongoDB");
 
-        // Restore all sessions
-        console.log("♻ Restoring existing WhatsApp sessions...");
-        restoreAllSessions(io);
+        // Track restoration progress
+        let restorationComplete = false;
+        let restorationStats = null;
+
+        // Restore all sessions with progress tracking
+        console.log("♻ Starting session restoration...");
+        const startTime = Date.now();
+        
+        try {
+            await restoreAllSessions(io);
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.log(`✅ Session restoration completed in ${duration}s`);
+            restorationComplete = true;
+        } catch (error) {
+            console.error("❌ Session restoration failed:", error);
+            restorationComplete = true; // Mark as complete even if failed
+        }
+
+        // Make restoration status available via socket
+        io.on("connection", (socket) => {
+            socket.emit('restoration:status', {
+                complete: restorationComplete,
+                stats: restorationStats
+            });
+        });
+
     } catch (error) {
         console.error("❌ Worker DB connection failed:", error);
         process.exit(1);

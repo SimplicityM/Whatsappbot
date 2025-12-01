@@ -676,6 +676,35 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
     }
 });
 
+// Add this endpoint in server.js
+
+app.get('/api/worker/restoration-status', authenticate, (req, res) => {
+    const workerSocket = req.app.get('workerSocket');
+    
+    if (!workerSocket || !workerSocket.connected) {
+        return res.json({
+            success: false,
+            message: 'Worker not connected',
+            status: 'unavailable'
+        });
+    }
+
+    // Request status from worker
+    workerSocket.emit('worker:restoration_status', {}, (err, status) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to get restoration status'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: status
+        });
+    });
+});
+
 // Payment endpoints
 app.get('/api/payments/subscription-status', authenticate, async (req, res) => {
     try {

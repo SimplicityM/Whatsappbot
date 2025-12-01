@@ -14,6 +14,13 @@ const SavedGroupList = require('./models/SavedGroupList');
 const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
 const AutoReply = require('./models/AutoReply');
+const config = require('./config');
+const RestorationMonitor = require('./restorationMonitor');
+
+
+// Create a global monitor instance
+const restorationMonitor = new RestorationMonitor();
+
 
 // bot.js (multi-session, isolated per-client implementation)
 // - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
@@ -117,20 +124,18 @@ async function trackDailyUsage(userId, type = 'message') {
 }
 
 
-//
-// === HIGH-PERF HELPERS: members cache, rate-limiter, chunked sender ===
-// Paste this AFTER getMembersFromDB in bot.js
-//
-
-// TUNABLES (env-friendly)
-const CACHE_TTL_MS = parseInt(process.env.MEMBERS_CACHE_TTL_MS || '300000'); // 5m
-const CACHE_REFRESH_AFTER_MS = parseInt(process.env.MEMBERS_CACHE_REFRESH_AFTER_MS || '240000'); // 4m
-const CHUNK_SIZE = parseInt(process.env.TAG_CHUNK_SIZE || '100'); // mentions/chunk
-const CONCURRENCY = parseInt(process.env.TAG_CONCURRENCY || '3'); // parallel chunk senders
-const CHUNK_DELAY_MS = parseInt(process.env.TAG_CHUNK_DELAY_MS || '400'); // polite pause
-const MAX_RETRIES = 3;
-const RATE_LIMIT_TOKENS = parseInt(process.env.RATE_LIMIT_TOKENS || '2'); // tokens per window
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'); // 1m
+// ========================================
+// CONFIGURATION (from config.js)
+// ========================================
+const CACHE_TTL_MS = config.memberCache.CACHE_TTL_MS;
+const CACHE_REFRESH_AFTER_MS = config.memberCache.CACHE_REFRESH_AFTER_MS;
+const CHUNK_SIZE = config.tagging.CHUNK_SIZE;
+const CONCURRENCY = config.tagging.CONCURRENCY;
+const CHUNK_DELAY_MS = config.tagging.CHUNK_DELAY_MS;
+const MAX_RETRIES = config.tagging.MAX_RETRIES;
+const RATE_LIMIT_TOKENS = config.rateLimit.TOKENS;
+const RATE_LIMIT_WINDOW_MS = config.rateLimit.WINDOW_MS;
+const COMMAND_PREFIX = config.client.COMMAND_PREFIX;
 
 // In-memory member cache (per-process). Key: `${sessionId}|${groupId}`
 const membersCache = new Map();
@@ -3591,9 +3596,96 @@ async function createBotSession(userId, sessionId, workerIO) {
 }
 
 
+// // =========================================
+// // RESTORE ALL SESSIONS ON SERVER STARTUP
+// // =========================================
+// async function restoreAllSessions(io) {
+//     try {
+//         if (mongoose.connection.readyState !== 1) {
+//             logger.info("⛔ Mongoose not connected - skipping session restore");
+//             return;
+//         }
+
+//         logger.info("♻ Starting WhatsApp session restoration...");
+
+//         // const sessions = await Session.find({
+//         //     status: { $in: ["connected", "authenticated", "ready"] }
+//         // });
+
+//         // Find all active sessions (not disconnected, failed, or errored)
+//         const sessions = await Session.find({
+//             status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
+//         });
+        
+//         logger.info(`🔍 Found ${sessions.length} sessions in database`);
+        
+//         // Log session statuses for debugging
+//         if (sessions.length > 0) {
+//             const statusCounts = sessions.reduce((acc, s) => {
+//                 acc[s.status] = (acc[s.status] || 0) + 1;
+//                 return acc;
+//             }, {});
+//             logger.info(`📊 Session statuses: ${JSON.stringify(statusCounts)}`);
+//         }
+//         if (!sessions.length) {
+//             logger.info("📭 No sessions found to restore.");
+//             return;
+//         }
+
+//         logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
+
+//         for (const s of sessions) {
+//             const sessionId = s.sessionId;
+//             const userId = s.userId;
+
+//             // 🔥 CHANGED: Check MongoDB instead of file system
+//             const authData = await SessionAuth.findOne({ sessionId });
+
+//             if (!authData) {
+//                 logger.info(`⚠ No auth data in MongoDB for ${sessionId}. Skipping restore.`);
+                
+//                 // Mark session as disconnected
+//                 await Session.findOneAndUpdate(
+//                     { sessionId },
+//                     { 
+//                         status: 'disconnected',
+//                         errorMessage: 'Session data lost. Please reconnect.',
+//                         disconnectedAt: new Date()
+//                     }
+//                 );
+                
+//                 continue;
+//             }
+
+//             logger.info(`♻ Restoring WhatsApp session: ${sessionId} for user ${userId}`);
+
+//             try {
+//                 await createBotSession(userId, sessionId, io);
+//                 logger.info(`✅ Successfully restored session: ${sessionId}`);
+//             } catch (err) {
+//                 logger.error(`❌ Failed to restore session ${sessionId}: ${err.message}`);
+//             }
+//         }
+
+//         logger.info("🎉 Session restoration completed!");
+
+//     } catch (err) {
+//         logger.error("❌ restoreAllSessions error:", err);
+//     }
+// }
+
 // =========================================
 // RESTORE ALL SESSIONS ON SERVER STARTUP
 // =========================================
+
+/**
+ * Configuration for session restoration
+ */
+const RESTORE_CONFIG = config.restoration;
+
+/**
+ * Restore sessions in batches with prioritization
+ */
 async function restoreAllSessions(io) {
     try {
         if (mongoose.connection.readyState !== 1) {
@@ -3601,73 +3693,331 @@ async function restoreAllSessions(io) {
             return;
         }
 
-        logger.info("♻ Starting WhatsApp session restoration...");
+        logger.info("♻ Starting intelligent WhatsApp session restoration...");
 
-        // const sessions = await Session.find({
-        //     status: { $in: ["connected", "authenticated", "ready"] }
-        // });
-
-        // Find all active sessions (not disconnected, failed, or errored)
-        const sessions = await Session.find({
+        // Get total session count first
+        const totalCount = await Session.countDocuments({
             status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
         });
-        
-        logger.info(`🔍 Found ${sessions.length} sessions in database`);
-        
-        // Log session statuses for debugging
-        if (sessions.length > 0) {
-            const statusCounts = sessions.reduce((acc, s) => {
-                acc[s.status] = (acc[s.status] || 0) + 1;
-                return acc;
-            }, {});
-            logger.info(`📊 Session statuses: ${JSON.stringify(statusCounts)}`);
-        }
-        if (!sessions.length) {
+
+        if (totalCount === 0) {
             logger.info("📭 No sessions found to restore.");
             return;
         }
 
-        logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
+        // Start monitoring
+        restorationMonitor.start(totalCount);
 
-        for (const s of sessions) {
-            const sessionId = s.sessionId;
-            const userId = s.userId;
+        // Restore in priority order
+        await restoreSessionsByPriority(io, totalCount);
 
-            // 🔥 CHANGED: Check MongoDB instead of file system
-            const authData = await SessionAuth.findOne({ sessionId });
-
-            if (!authData) {
-                logger.info(`⚠ No auth data in MongoDB for ${sessionId}. Skipping restore.`);
-                
-                // Mark session as disconnected
-                await Session.findOneAndUpdate(
-                    { sessionId },
-                    { 
-                        status: 'disconnected',
-                        errorMessage: 'Session data lost. Please reconnect.',
-                        disconnectedAt: new Date()
-                    }
-                );
-                
-                continue;
-            }
-
-            logger.info(`♻ Restoring WhatsApp session: ${sessionId} for user ${userId}`);
-
-            try {
-                await createBotSession(userId, sessionId, io);
-                logger.info(`✅ Successfully restored session: ${sessionId}`);
-            } catch (err) {
-                logger.error(`❌ Failed to restore session ${sessionId}: ${err.message}`);
-            }
-        }
+        // Complete monitoring
+        restorationMonitor.complete();
 
         logger.info("🎉 Session restoration completed!");
 
+        // Return stats for worker to emit
+        return restorationMonitor.getStats();
+
     } catch (err) {
         logger.error("❌ restoreAllSessions error:", err);
+        restorationMonitor.complete();
+        throw err;
     }
 }
+
+/**
+ * Restore sessions by priority (recently active first)
+ */
+async function restoreSessionsByPriority(io, totalCount) {
+    const priorities = [
+        {
+            name: 'Recently Active',
+            query: {
+                status: 'connected',
+                lastActive: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+            }
+        },
+        {
+            name: 'Connected',
+            query: {
+                status: 'connected',
+                lastActive: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            }
+        },
+        {
+            name: 'Waiting QR',
+            query: {
+                status: 'waiting_qr'
+            }
+        },
+        {
+            name: 'Other Active',
+            query: {
+                status: { $nin: ["disconnected", "failed", "auth_failed", "error", "connected", "waiting_qr"] }
+            }
+        }
+    ];
+
+    let totalRestored = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
+
+    for (const priority of priorities) {
+        const result = await restoreSessionBatch(io, priority);
+        totalRestored += result.restored;
+        totalFailed += result.failed;
+        totalSkipped += result.skipped;
+    }
+
+    logger.info(`📊 Restoration Summary: ${totalRestored} restored, ${totalFailed} failed, ${totalSkipped} skipped`);
+}
+
+/**
+ * Restore a batch of sessions matching a priority query
+ */
+async function restoreSessionBatch(io, priority) {
+    let restored = 0;
+    let failed = 0;
+    let skipped = 0;
+    let skip = 0;
+
+    logger.info(`🔄 Restoring ${priority.name} sessions...`);
+
+    while (true) {
+        // Fetch batch
+        const sessions = await Session.find(priority.query)
+            .sort({ lastActive: -1 }) // Most recently active first
+            .skip(skip)
+            .limit(RESTORE_CONFIG.BATCH_SIZE)
+            .lean();
+
+        if (sessions.length === 0) {
+            break; // No more sessions in this priority
+        }
+
+        logger.info(`📦 Processing batch: ${skip + 1}-${skip + sessions.length} (${priority.name})`);
+
+        // Process batch with concurrency control
+        const results = await processBatchConcurrently(sessions, io);
+        
+        restored += results.restored;
+        failed += results.failed;
+        skipped += results.skipped;
+
+        skip += RESTORE_CONFIG.BATCH_SIZE;
+
+        // Delay between batches to prevent overwhelming the system
+        if (sessions.length === RESTORE_CONFIG.BATCH_SIZE) {
+            logger.info(`⏸️ Pausing ${RESTORE_CONFIG.BATCH_DELAY_MS}ms before next batch...`);
+            await new Promise(resolve => setTimeout(resolve, RESTORE_CONFIG.BATCH_DELAY_MS));
+        }
+    }
+
+    logger.info(`✅ ${priority.name}: ${restored} restored, ${failed} failed, ${skipped} skipped`);
+    
+    return { restored, failed, skipped };
+}
+
+/**
+ * Process a batch of sessions with concurrency control
+ */
+async function processBatchConcurrently(sessions, io) {
+    const results = { restored: 0, failed: 0, skipped: 0 };
+    
+    // Process sessions in chunks to limit concurrent initializations
+    for (let i = 0; i < sessions.length; i += RESTORE_CONFIG.MAX_CONCURRENT_RESTORES) {
+        const chunk = sessions.slice(i, i + RESTORE_CONFIG.MAX_CONCURRENT_RESTORES);
+        
+        const promises = chunk.map(async (session, index) => {
+            // Stagger session initialization
+            await new Promise(resolve => 
+                setTimeout(resolve, index * RESTORE_CONFIG.SESSION_INIT_DELAY_MS)
+            );
+            
+            return restoreSingleSession(session, io);
+        });
+
+        const chunkResults = await Promise.allSettled(promises);
+        
+        chunkResults.forEach(result => {
+            if (result.status === 'fulfilled') {
+                if (result.value === 'restored') results.restored++;
+                else if (result.value === 'skipped') results.skipped++;
+                else results.failed++;
+            } else {
+                results.failed++;
+            }
+        });
+    }
+
+    return results;
+}
+
+/**
+ * Restore a single session with timeout
+ */
+async function restoreSingleSession(session, io) {
+    const sessionId = session.sessionId;
+    const userId = session.userId;
+
+    try {
+        // Check if already restored
+        if (clients.has(sessionId)) {
+            logger.info(`⏭️ Session ${sessionId} already active, skipping`);
+            return 'skipped';
+        }
+
+        // Check if auth data exists in MongoDB
+        const authData = await SessionAuth.findOne({ sessionId });
+
+        if (!authData) {
+            logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
+            
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'disconnected',
+                    errorMessage: 'Session data lost. Please reconnect.',
+                    disconnectedAt: new Date()
+                }
+            );
+            
+            return 'skipped';
+        }
+
+        logger.info(`♻️ Restoring session: ${sessionId} (User: ${userId})`);
+
+        // Restore with timeout
+        const timeout = session.status === 'connected' 
+            ? RESTORE_CONFIG.PRIORITY_RESTORE_TIMEOUT_MS 
+            : RESTORE_CONFIG.REGULAR_RESTORE_TIMEOUT_MS;
+
+        await Promise.race([
+            createBotSession(userId, sessionId, io),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Session restore timeout')), timeout)
+            )
+        ]);
+
+        logger.info(`✅ Restored: ${sessionId}`);
+        return 'restored';
+
+    } catch (err) {
+        logger.error(`❌ Failed to restore ${sessionId}: ${err.message}`);
+        
+        // Update session status
+        try {
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'error',
+                    errorMessage: `Restore failed: ${err.message}`,
+                    updatedAt: new Date()
+                }
+            );
+        } catch (updateErr) {
+            logger.error(`Failed to update session status for ${sessionId}:`, updateErr);
+        }
+        
+        return 'failed';
+    }
+}
+
+/**
+ * Resume a specific user session (called from payment webhook)
+ */
+async function resumeUserSession(userId, sessionId, io) {
+    try {
+        logger.info(`🔄 Resuming session ${sessionId} for user ${userId}`);
+
+        // Check if session already exists
+        if (clients.has(sessionId)) {
+            logger.info(`✅ Session ${sessionId} already active`);
+            return;
+        }
+
+        // Verify session exists in database
+        const session = await Session.findOne({ sessionId, userId });
+        if (!session) {
+            throw new Error(`Session ${sessionId} not found for user ${userId}`);
+        }
+
+        // Check auth data
+        const authData = await SessionAuth.findOne({ sessionId });
+        if (!authData) {
+            throw new Error(`No auth data found for session ${sessionId}`);
+        }
+
+        // Update session status
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'connecting',
+                errorMessage: null,
+                updatedAt: new Date()
+            }
+        );
+
+        // Create bot session
+        await createBotSession(userId, sessionId, io);
+
+        logger.info(`✅ Successfully resumed session ${sessionId}`);
+
+    } catch (err) {
+        logger.error(`❌ Failed to resume session ${sessionId}:`, err.message);
+        
+        // Mark as failed
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'failed',
+                errorMessage: `Resume failed: ${err.message}`,
+                updatedAt: new Date()
+            }
+        );
+        
+        throw err;
+    }
+}
+
+/**
+ * Lazy restore: restore a session on-demand when needed
+ */
+async function lazyRestoreSession(sessionId, io) {
+    try {
+        // Check if already active
+        if (clients.has(sessionId)) {
+            logger.info(`Session ${sessionId} already active`);
+            return clients.get(sessionId);
+        }
+
+        logger.info(`🔄 Lazy restoring session: ${sessionId}`);
+
+        // Get session from database
+        const session = await Session.findOne({ sessionId });
+        if (!session) {
+            throw new Error(`Session ${sessionId} not found`);
+        }
+
+        // Check auth data
+        const authData = await SessionAuth.findOne({ sessionId });
+        if (!authData) {
+            throw new Error(`No auth data for session ${sessionId}`);
+        }
+
+        // Restore the session
+        await createBotSession(session.userId, sessionId, io);
+        
+        logger.info(`✅ Lazy restore successful: ${sessionId}`);
+        return clients.get(sessionId);
+
+    } catch (err) {
+        logger.error(`❌ Lazy restore failed for ${sessionId}:`, err.message);
+        throw err;
+    }
+}
+
 
 
 // tiny start helper for local dev
@@ -3770,12 +4120,16 @@ async function gracefulShutdown() {
 process.once('SIGINT', gracefulShutdown);
 process.once('SIGTERM', gracefulShutdown);
 
-// exports
+
+// Export the new function
 module.exports = {
-  createBotSession,
-  restoreAllSessions,
-  start,
-  clients
+    createBotSession,
+    restoreAllSessions,
+    resumeUserSession,
+    lazyRestoreSession,
+    start,
+    clients,
+    restorationMonitor
 };
 
 // if run directly, start one session (dev)
