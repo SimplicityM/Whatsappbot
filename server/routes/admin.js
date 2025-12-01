@@ -1092,7 +1092,7 @@ router.post('/grant-command/user', authenticateAdmin, async (req, res) => {
 
         const CommandGrant = require('../../models/CommandGrant');
         const Notification = require('../../models/Notification');
-        const User = require('../../server/models/User');
+        const User = require('../models/User');
 
         // Validate user exists
         const user = await User.findById(userId);
@@ -1160,7 +1160,7 @@ router.post('/grant-command/plan', authenticateAdmin, async (req, res) => {
 
         const CommandGrant = require('../../models/CommandGrant');
         const Notification = require('../../models/Notification');
-        const User = require('../../server/models/User');
+        const User = require('../models/User');
 
         // Validate plan type
         const validPlans = ['free', 'starter', 'professional', 'business', 'enterprise'];
@@ -1255,7 +1255,7 @@ router.delete('/command-grants/:grantId', authenticateAdmin, async (req, res) =>
     try {
         const CommandGrant = require('../../models/CommandGrant');
         const Notification = require('../../models/Notification');
-        const User = require('../../server/models/User');
+        const User = require('../models/User');
 
         const grant = await CommandGrant.findById(req.params.grantId);
 
