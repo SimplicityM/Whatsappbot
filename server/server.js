@@ -131,90 +131,102 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
-    if (!mongoURI) throw new Error('MONGODB_URI not defined');
+    if (!mongoURI) throw new Error("MONGODB_URI not defined");
 
-    console.log('🔄 Connecting to MongoDB...');
-    console.log('📍 MongoDB URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
+    console.log("🔄 Connecting to MongoDB…");
+    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
 
-            // Global mongoose configs
-        mongoose.set('strictQuery', false);
-        mongoose.set('bufferCommands', true); // allow buffering while reconnecting
+    // ===== GLOBAL MONGOOSE SETTINGS =====
+    mongoose.set("strictQuery", false);
+    mongoose.set("bufferCommands", true);       // allow buffering during reconnect
+    mongoose.set("autoIndex", false);           // better for production
 
-        await mongoose.connect(mongoURI, {
-        serverSelectionTimeoutMS: 30000,
-        socketTimeoutMS: 60000,
-        connectTimeoutMS: 30000,
-        // tune pool sizes for cloud environment
-        maxPoolSize: 20,
-        minPoolSize: 2,
-        retryWrites: true,
-        w: 'majority',
-        bufferCommands: true,
-        autoIndex: false
-        });
+    // ===== MONGOOSE CONNECTION EVENTS =====
+    mongoose.connection.on("connected", () => {
+      console.log("🟢 MongoDB connected.");
+    });
 
+    mongoose.connection.on("reconnected", () => {
+      console.log("🔄 MongoDB reconnected.");
+    });
 
+    mongoose.connection.on("disconnected", () => {
+      console.warn("⚠️ MongoDB disconnected — retrying automatically...");
+    });
 
-    console.log('🟢 Initial MongoDB connection established');
+    mongoose.connection.on("error", (err) => {
+      console.error("❌ MongoDB error:", err.message);
+    });
 
-    // ✅ IMPROVED: Wait for connection with better retry logic
+    // ===== CONNECT TO MONGODB =====
+    await mongoose.connect(mongoURI, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
+
+      retryWrites: true,
+      w: "majority",
+
+      bufferCommands: true // IMPORTANT: RE-ENABLE buffering
+    });
+
+    console.log("🟢 Initial MongoDB connection established");
+
+    // ===== WAIT FOR CONNECTED STATE =====
     let attempts = 0;
-    const maxAttempts = 20; // Increased from 10
-    
+    const maxAttempts = 15;
+
     while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
-      console.log(`⏳ Waiting for DB ready... Attempt ${attempts + 1}/${maxAttempts} (State: ${mongoose.connection.readyState})`);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second intervals
+      console.log(
+        `⏳ Waiting for DB to be ready... Attempt ${attempts + 1}/${maxAttempts} (State: ${mongoose.connection.readyState})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 800));
       attempts++;
     }
 
     if (mongoose.connection.readyState !== 1) {
-      throw new Error(`MongoDB connection not ready after ${maxAttempts} attempts. ReadyState: ${mongoose.connection.readyState}`);
+      throw new Error(
+        `MongoDB did not stabilize. Final readyState: ${mongoose.connection.readyState}`
+      );
     }
 
-    console.log('✅ MongoDB readyState confirmed: 1 (connected)');
+    console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
-    // Verify DB connection with ping
+    // ===== VERIFY CONNECTION WITH PING =====
     if (mongoose.connection.db) {
       await mongoose.connection.db.admin().ping();
-      console.log('✅ MongoDB ping successful');
+      console.log("✅ MongoDB ping successful");
     } else {
-      console.log('⚠️ Skipping ping - connection.db not available yet');
+      console.warn("⚠️ Skipping ping — connection.db not ready");
     }
-    
-    // ✅ Additional stabilization wait
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    console.log('✅ MongoDB connection stabilized');
 
-    // MongoDB Connection Event Handlers
-    mongoose.connection.on('connected', () => {
-      console.log("🟢 MongoDB connected.");
-    });
+    // ===== EXTRA STABILIZATION DELAY =====
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    console.log("✅ MongoDB connection stabilized");
 
-    mongoose.connection.on('error', (err) => {
-      console.error("❌ MongoDB connection error:", err);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.warn("⚠️ MongoDB disconnected. Attempting to reconnect...");
-    });
-
-    mongoose.connection.on('reconnected', () => {
-      console.log("🔄 MongoDB reconnected.");
-    });
-
-    mongoose.connection.on('reconnectFailed', () => {
-      console.error("❌ MongoDB reconnection failed");
-    });
-
-    // Load models AFTER confirmed connection
-    User = require('./models/User');  
-    Session = require('./models/Session');  
-    Usage = require('./models/Usage'); 
-    SavedGroupList = require('./models/SavedGroupList'); 
+    // ===== LOAD MODELS AFTER STABLE CONNECTION =====
+    User = require("./models/User");
+    Session = require("./models/Session");
+    Usage = require("./models/Usage");
+    SavedGroupList = require("./models/SavedGroupList");
 
     const CONFIG = (() => {
-  try { return require('./config.json'); } catch (e) { return {}; }
-})();
+      try {
+        return require("./config.json");
+      } catch (e) {
+        return {};
+      }
+    })();
+
+  } catch (err) {
+    console.error("❌ MongoDB Connection Error:", err);
+    throw err;
+  }
+};
+
 
 
 
