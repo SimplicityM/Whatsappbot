@@ -27,7 +27,7 @@ const {
     clients
 } = require("./bot.js");
 
-// Use it:
+// Configuration
 const PORT = process.env.PORT || 5001;
 const MAX_SESSIONS = config.client.MAX_SESSIONS;
 
@@ -59,8 +59,7 @@ const io = socketIo(server, {
     }
 });
 
-const PORT = process.env.PORT || 5001;
-
+// Start server
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
 });
@@ -81,31 +80,23 @@ server.listen(PORT, '0.0.0.0', () => {
         await mongoose.connect(mongoURI);
         console.log("📦 Worker connected to MongoDB");
 
-        // Track restoration progress
-        let restorationComplete = false;
-        let restorationStats = null;
-
-        // Restore all sessions with progress tracking
-        console.log("♻ Starting session restoration...");
+        // Restore all sessions and capture stats
+        console.log("♻ Restoring existing WhatsApp sessions...");
         const startTime = Date.now();
         
+        let restorationStats = null;
+        
         try {
-            await restoreAllSessions(io);
+            restorationStats = await restoreAllSessions(io);
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
             console.log(`✅ Session restoration completed in ${duration}s`);
-            restorationComplete = true;
+            
+            if (restorationStats) {
+                console.log(`📊 Final Stats: ${JSON.stringify(restorationStats.progress)}`);
+            }
         } catch (error) {
             console.error("❌ Session restoration failed:", error);
-            restorationComplete = true; // Mark as complete even if failed
         }
-
-        // Make restoration status available via socket
-        io.on("connection", (socket) => {
-            socket.emit('restoration:status', {
-                complete: restorationComplete,
-                stats: restorationStats
-            });
-        });
 
     } catch (error) {
         console.error("❌ Worker DB connection failed:", error);
@@ -136,32 +127,32 @@ io.on("connection", (socket) => {
      *  From server: io.emit("worker:create_session", {...})
      * ========================================= */
 
-socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
-    console.log("🟢 Worker: create session request:", sessionId);
+    socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
+        console.log("🟢 Worker: create session request:", sessionId);
 
-    try {
-        await createBotSession(userId, sessionId, io);
+        try {
+            await createBotSession(userId, sessionId, io);
 
-        await Session.findOneAndUpdate(
-            { sessionId },
-            { status: "waiting_qr", updatedAt: new Date() }
-        );
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { status: "waiting_qr", updatedAt: new Date() }
+            );
 
-        console.log(`✅ Worker: session ${sessionId} created`);
-        
-        // Send acknowledgment
-        if (typeof callback === 'function') {
-            callback(null, { success: true, sessionId });
+            console.log(`✅ Worker: session ${sessionId} created`);
+            
+            // Send acknowledgment
+            if (typeof callback === 'function') {
+                callback(null, { success: true, sessionId });
+            }
+        } catch (err) {
+            console.error("❌ Worker create session error:", err);
+            
+            // Send error acknowledgment
+            if (typeof callback === 'function') {
+                callback(err.message, null);
+            }
         }
-    } catch (err) {
-        console.error("❌ Worker create session error:", err);
-        
-        // Send error acknowledgment
-        if (typeof callback === 'function') {
-            callback(err.message, null);
-        }
-    }
-});
+    });
 
     /** =========================================
      *  RESUME SUSPENDED SESSION
@@ -226,38 +217,41 @@ socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
             console.error("❌ Worker delete error:", err);
         }
     });
-    // Handle broadcast message sending
-socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callback) => {
-    try {
-        console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
-        
-        // Get the client for this session
-        const clientData = clients.get(sessionId);
-        
-        if (!clientData || !clientData.client) {
-            return callback('Session not found or not connected');
-        }
 
-        const client = clientData.client;
-        
-        // Get the user's own WhatsApp number to send to themselves
-        const info = client.info;
-        if (!info || !info.wid) {
-            return callback('Could not get user WhatsApp info');
-        }
+    /** =========================================
+     *  SEND BROADCAST MESSAGE
+     * ========================================= */
+    socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callback) => {
+        try {
+            console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
+            
+            // Get the client for this session
+            const clientData = clients.get(sessionId);
+            
+            if (!clientData || !clientData.client) {
+                return callback('Session not found or not connected');
+            }
 
-        // Send message to user's own number
-        const userJid = info.wid._serialized;
-        await client.sendMessage(userJid, message);
-        
-        console.log(`✅ WORKER: Broadcast sent to ${sessionId}`);
-        callback(null, { success: true, sessionId });
-        
-    } catch (error) {
-        console.error(`❌ WORKER: Broadcast error for ${sessionId}:`, error);
-        callback(error.message || 'Failed to send broadcast');
-    }
-});
+            const client = clientData.client;
+            
+            // Get the user's own WhatsApp number to send to themselves
+            const info = client.info;
+            if (!info || !info.wid) {
+                return callback('Could not get user WhatsApp info');
+            }
+
+            // Send message to user's own number
+            const userJid = info.wid._serialized;
+            await client.sendMessage(userJid, message);
+            
+            console.log(`✅ WORKER: Broadcast sent to ${sessionId}`);
+            callback(null, { success: true, sessionId });
+            
+        } catch (error) {
+            console.error(`❌ WORKER: Broadcast error for ${sessionId}:`, error);
+            callback(error.message || 'Failed to send broadcast');
+        }
+    });
 });
 
 
