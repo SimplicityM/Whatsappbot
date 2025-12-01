@@ -136,19 +136,15 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
         console.log("🔄 Connecting to MongoDB…");
         console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
 
-<<<<<<< HEAD
         // ===== GLOBAL MONGOOSE SETTINGS =====
         mongoose.set("strictQuery", false);
         mongoose.set("bufferCommands", true);
         mongoose.set("autoIndex", false);
-=======
     // ===== GLOBAL MONGOOSE SETTINGS =====
     mongoose.set("strictQuery", false);
     mongoose.set("bufferCommands", true);
     mongoose.set("autoIndex", false);
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
         // ===== CONNECTION EVENT LOGGERS =====
         mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
         mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
@@ -158,7 +154,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
         mongoose.connection.on("error", (err) =>
         console.error("❌ MongoDB error:", err.message)
         );
-=======
     // ===== CONNECTION EVENT LOGGERS =====
     mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
     mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
@@ -168,9 +163,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
     mongoose.connection.on("error", (err) =>
       console.error("❌ MongoDB error:", err.message)
     );
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
         // ===== CONNECT TO MONGODB =====
         await mongoose.connect(mongoURI, {
         maxPoolSize: 20,
@@ -214,7 +207,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
         } else {
         console.warn("⚠️ Skipping ping — connection.db not ready");
         }
-=======
     // ===== CONNECT TO MONGODB =====
     await mongoose.connect(mongoURI, {
       maxPoolSize: 20,
@@ -226,30 +218,24 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       w: "majority",
       bufferCommands: true
     });
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
         // ===== EXTRA STABILIZATION WAIT =====
         await new Promise((resolve) => setTimeout(resolve, 2000));
         console.log("✅ MongoDB connection stabilized");
 
-<<<<<<< HEAD
         // ===== LOAD MODELS AFTER STABLE CONNECTION =====
         const User = require("./models/User");
         const Session = require("./models/Session");
         const Usage = require("./models/Usage");
         const SavedGroupList = require("./models/SavedGroupList");
-=======
     // ===== WAIT FOR STABLE READY STATE =====
     let attempts = 0;
     const maxAttempts = 15;
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
         global.User = User;
         global.Session = Session;
         global.Usage = Usage;
         global.SavedGroupList = SavedGroupList;
-=======
     while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
       console.log(
         `⏳ Waiting for DB ready… Attempt ${attempts + 1}/${maxAttempts} (State: ${
@@ -259,11 +245,9 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       await new Promise((resolve) => setTimeout(resolve, 800));
       attempts++;
     }
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
         console.log("✅ Models loaded");
 
-<<<<<<< HEAD
         // ===== TEST DATABASE OPERATIONS =====
         try {
         await User.countDocuments();
@@ -273,7 +257,6 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
         console.error("❌ Database operation test failed:", dbError);
         throw dbError;
         }
-=======
     console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
     // ===== VERIFY CONNECTION WITH A PING =====
@@ -300,14 +283,11 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
     global.SavedGroupList = SavedGroupList;
 
     console.log("✅ Models loaded");
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
         // ===== START TRIAL MONITORING =====
         const { checkExpiredTrials } = require("./utils/trialMonitor");
         checkExpiredTrials();
         console.log("✅ Trial monitoring started");
-=======
     // ===== TEST DATABASE OPERATIONS =====
     try {
       await User.countDocuments();
@@ -317,31 +297,24 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       console.error("❌ Database operation test failed:", dbError);
       throw dbError;
     }
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
         return true;
     } catch (err) {
         console.error("❌ MongoDB connection failed:", err);
         throw err;
     }
     };
-=======
     // ===== START TRIAL MONITORING =====
     const { checkExpiredTrials } = require("./utils/trialMonitor");
     checkExpiredTrials();
     console.log("✅ Trial monitoring started");
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
-<<<<<<< HEAD
-=======
     return true;
   } catch (err) {
     console.error("❌ MongoDB connection failed:", err);
     throw err;
   }
 };
->>>>>>> a586dc5de6b3d1b77ef289536848ad277727db26
 
    
 
