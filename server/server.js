@@ -717,7 +717,7 @@ app.post('/api/webhooks/payment-success', async (req, res) => {
         let resumedCount = 0;
 
         for (const session of suspendedSessions) {
-            io.emit("worker:resume_session", {
+            workerSocket.emit("worker:resume_session", {
                 userId,
                 sessionId: session.sessionId
             });
