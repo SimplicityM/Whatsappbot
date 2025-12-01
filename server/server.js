@@ -138,50 +138,42 @@ const connectDB = async () => {
 
     // ===== GLOBAL MONGOOSE SETTINGS =====
     mongoose.set("strictQuery", false);
-    mongoose.set("bufferCommands", true);       // allow buffering during reconnect
-    mongoose.set("autoIndex", false);           // better for production
+    mongoose.set("bufferCommands", true);
+    mongoose.set("autoIndex", false);
 
-    // ===== MONGOOSE CONNECTION EVENTS =====
-    mongoose.connection.on("connected", () => {
-      console.log("🟢 MongoDB connected.");
-    });
-
-    mongoose.connection.on("reconnected", () => {
-      console.log("🔄 MongoDB reconnected.");
-    });
-
-    mongoose.connection.on("disconnected", () => {
-      console.warn("⚠️ MongoDB disconnected — retrying automatically...");
-    });
-
-    mongoose.connection.on("error", (err) => {
-      console.error("❌ MongoDB error:", err.message);
-    });
+    // ===== CONNECTION EVENT LOGGERS =====
+    mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
+    mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
+    mongoose.connection.on("disconnected", () =>
+      console.warn("⚠️ MongoDB disconnected — retrying automatically…")
+    );
+    mongoose.connection.on("error", (err) =>
+      console.error("❌ MongoDB error:", err.message)
+    );
 
     // ===== CONNECT TO MONGODB =====
     await mongoose.connect(mongoURI, {
       maxPoolSize: 20,
       minPoolSize: 5,
-
       serverSelectionTimeoutMS: 30000,
       connectTimeoutMS: 30000,
       socketTimeoutMS: 60000,
-
       retryWrites: true,
       w: "majority",
-
-      bufferCommands: true // IMPORTANT: RE-ENABLE buffering
+      bufferCommands: true
     });
 
     console.log("🟢 Initial MongoDB connection established");
 
-    // ===== WAIT FOR CONNECTED STATE =====
+    // ===== WAIT FOR STABLE READY STATE =====
     let attempts = 0;
     const maxAttempts = 15;
 
     while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
       console.log(
-        `⏳ Waiting for DB to be ready... Attempt ${attempts + 1}/${maxAttempts} (State: ${mongoose.connection.readyState})`
+        `⏳ Waiting for DB ready… Attempt ${attempts + 1}/${maxAttempts} (State: ${
+          mongoose.connection.readyState
+        })`
       );
       await new Promise((resolve) => setTimeout(resolve, 800));
       attempts++;
@@ -195,7 +187,7 @@ const connectDB = async () => {
 
     console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
-    // ===== VERIFY CONNECTION WITH PING =====
+    // ===== VERIFY CONNECTION WITH A PING =====
     if (mongoose.connection.db) {
       await mongoose.connection.db.admin().ping();
       console.log("✅ MongoDB ping successful");
@@ -203,60 +195,44 @@ const connectDB = async () => {
       console.warn("⚠️ Skipping ping — connection.db not ready");
     }
 
-    // ===== EXTRA STABILIZATION DELAY =====
+    // ===== EXTRA STABILIZATION WAIT =====
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log("✅ MongoDB connection stabilized");
 
     // ===== LOAD MODELS AFTER STABLE CONNECTION =====
-    User = require("./models/User");
-    Session = require("./models/Session");
-    Usage = require("./models/Usage");
-    SavedGroupList = require("./models/SavedGroupList");
+    const User = require("./models/User");
+    const Session = require("./models/Session");
+    const Usage = require("./models/Usage");
+    const SavedGroupList = require("./models/SavedGroupList");
 
-    const CONFIG = (() => {
-      try {
-        return require("./config.json");
-      } catch (e) {
-        return {};
-      }
-    })();
+    global.User = User;
+    global.Session = Session;
+    global.Usage = Usage;
+    global.SavedGroupList = SavedGroupList;
 
-        } catch (err) {
-            console.error("❌ MongoDB Connection Error:", err);
-            throw err;
-        }
-            };
+    console.log("✅ Models loaded");
 
-                //assign globally if needed
-                global.User = User;
-                global.Session = Session;
-                global.Usage = Usage;
-                global.SavedGroupList = SavedGroupList;
+    // ===== TEST DATABASE OPERATIONS =====
+    try {
+      await User.countDocuments();
+      await Session.countDocuments();
+      console.log("✅ Database operations verified");
+    } catch (dbError) {
+      console.error("❌ Database operation test failed:", dbError);
+      throw dbError;
+    }
 
-                console.log('✅ Models loaded');
+    // ===== START TRIAL MONITORING =====
+    const { checkExpiredTrials } = require("./utils/trialMonitor");
+    checkExpiredTrials();
+    console.log("✅ Trial monitoring started");
 
-                // Test database operations
-                try {
-                await User.countDocuments();
-                await Session.countDocuments();
-                console.log('✅ Database operations verified');
-                } catch (dbError) {
-            console.error('❌ Database operation test failed:', dbError);
-            throw dbError;
-            }
-
-            // ✅ Start trial monitoring AFTER DB is connected
-            const { checkExpiredTrials } = require('./utils/trialMonitor');
-            checkExpiredTrials();
-            console.log('✅ Trial monitoring started');
-
-            return true; // Return success
-
-        } catch (error) {
-            console.error('❌ MongoDB connection failed:', error);
-            throw error;
-        }
-        };
+    return true;
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    throw err;
+  }
+};
 
    
 
