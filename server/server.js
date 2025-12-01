@@ -9,6 +9,10 @@ const path = require('path');
 const cors = require("cors");
 const app = express();
 
+const User = require("./models/User");
+const Session = require("./models/Session");
+const Usage = require("./models/Usage");
+const SavedGroupList = require("./models/SavedGroupList");
 
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
@@ -268,10 +272,10 @@ const connectDB = async () => {
     console.log("✅ MongoDB connection stabilized");
 
     // LOAD MODELS
-    User = require("./models/User");
-    Session = require("./models/Session");
-    Usage = require("./models/Usage");
-    SavedGroupList = require("./models/SavedGroupList");
+    // User = require("./models/User");
+    // Session = require("./models/Session");
+    // Usage = require("./models/Usage");
+    // SavedGroupList = require("./models/SavedGroupList");
 
 
     console.log("✅ Models loaded globally");
