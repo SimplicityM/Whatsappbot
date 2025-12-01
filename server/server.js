@@ -1092,6 +1092,15 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {
+        // Check if models are loaded
+        if (!Session || !Usage || !SavedGroupList) {
+            return res.status(503).json({
+                success: false,
+                message: "Server is still initializing"
+            });
+        }
+        
+
         // Database check
         if (mongoose.connection.readyState !== 1) {
             return res.status(503).json({
