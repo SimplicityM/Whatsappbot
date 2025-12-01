@@ -38,24 +38,24 @@ router.get('/my-sessions', authenticate, async (req, res) => {
 });
 
 // Create new session
-// Create new session (improved)
+// Create new session (with comprehensive error handling)
 router.post('/create', authenticate, checkSubscription, async (req, res) => {
   try {
-    // local DB ready guard (in addition to middleware)
+    // 1. Check database connection
     const mongoose = require('mongoose');
     if (mongoose.connection.readyState !== 1) {
-      const retrySeconds = 5;
-      res.set('Retry-After', String(retrySeconds));
-      console.warn('❗ Create session rejected — DB not ready (create route)');
+      console.warn('❗ Create session rejected — DB not ready');
+      res.set('Retry-After', '5');
       return res.status(503).json({
         success: false,
-        message: 'Database connection not ready. Please try again in a moment.'
+        message: 'Database connection not ready. Please try again in a moment.',
+        retryAfter: 5
       });
     }
 
     const user = req.user;
 
-    // Check subscription limits
+    // 2. Check subscription limits
     const limits = user.getSubscriptionLimits();
     if (limits.sessions !== -1) {
       const userSessions = await Session.countDocuments({
@@ -64,72 +64,81 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
       });
 
       if (userSessions >= limits.sessions) {
-        return res.json({
+        return res.status(403).json({
           success: false,
-          message: `Session limit reached. Your ${user.subscription} plan allows ${limits.sessions} sessions.`
+          message: `Session limit reached. Your ${user.subscription} plan allows ${limits.sessions} session(s). Please upgrade or delete an existing session.`,
+          currentSessions: userSessions,
+          maxSessions: limits.sessions
         });
       }
     }
 
-    // Generate unique session ID
+    // 3. Check worker availability BEFORE creating anything
+    const isWorkerAvailable = req.app.get('isWorkerAvailable');
+    if (!isWorkerAvailable || !isWorkerAvailable()) {
+      console.error('❌ Worker service unavailable');
+      res.set('Retry-After', '30');
+      return res.status(503).json({
+        success: false,
+        message: 'WhatsApp service is temporarily unavailable. Please try again in 30 seconds.',
+        retryAfter: 30,
+        code: 'WORKER_UNAVAILABLE'
+      });
+    }
+
+    // 4. Generate unique session ID
     const sessionId = `session-${user._id}-${Date.now()}`;
 
     console.log('🔄 API: Creating session for user:', user._id);
     console.log('📱 Session ID:', sessionId);
 
-    // Create a DB record first (status waiting_qr)
-    const newSession = new Session({
-      userId: user._id,
-      sessionId,
-      status: 'waiting_qr',
-      subscriptionAtTime: user.subscription,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-    await newSession.save();
+    // 5. Use the enhanced createWhatsAppSession function
+    const { createWhatsAppSession } = require('../server');
+    await createWhatsAppSession(user._id, sessionId);
 
-    // Ask worker to create the actual WhatsApp session
-    // If worker not connected, mark DB record as failed and return error
-    const workerSocket = req.app.get('workerSocket');
-    if (!workerSocket || !workerSocket.connected) {
-      // mark as failed in DB and return 503 so UI knows to retry later
-      await Session.findByIdAndUpdate(newSession._id, {
-        status: 'failed',
-        errorMessage: 'Worker service not connected',
-        updatedAt: new Date()
-      });
-      const retrySeconds = 10;
-      res.set('Retry-After', String(retrySeconds));
-      return res.status(503).json({
-        success: false,
-        message: 'Worker service is not connected. Please try again later.'
-      });
-    }
-
-    // Ask worker to create — keep same timeout as server.js createWhatsAppSession
-    const ack = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Worker did not respond in time')), 20000);
-      workerSocket.emit('worker:create_session', { userId: user._id, sessionId }, (err, result) => {
-        clearTimeout(timeout);
-        if (err) return reject(new Error(String(err)));
-        resolve(result);
-      });
-    });
-
-    console.log('✅ API: Worker acked create_session:', ack);
+    console.log('✅ API: Session created successfully');
 
     return res.json({
       success: true,
-      data: { sessionId },
-      message: 'Session created successfully'
+      data: { 
+        sessionId,
+        status: 'waiting_qr',
+        message: 'Session created. Please wait for QR code.'
+      }
     });
 
   } catch (error) {
-    console.error('❌ Create session error (improved handler):', error);
-    // Provide the error message to help debugging, but don't leak sensitive internals
-    return res.status(500).json({
+    console.error('❌ Create session error:', error.message);
+    
+    // Determine appropriate status code and message
+    let statusCode = 500;
+    let message = 'Failed to create session';
+    let retryAfter = null;
+
+    if (error.message.includes('Worker service is not available')) {
+      statusCode = 503;
+      message = error.message;
+      retryAfter = 30;
+    } else if (error.message.includes('Worker did not respond')) {
+      statusCode = 504;
+      message = 'Session creation timed out. Please try again.';
+      retryAfter = 10;
+    } else if (error.message.includes('User not found')) {
+      statusCode = 404;
+      message = 'User not found';
+    } else {
+      message = error.message || message;
+    }
+
+    if (retryAfter) {
+      res.set('Retry-After', String(retryAfter));
+    }
+
+    return res.status(statusCode).json({
       success: false,
-      message: error.message || 'Failed to create session'
+      message,
+      retryAfter,
+      code: error.code || 'SESSION_CREATE_ERROR'
     });
   }
 });

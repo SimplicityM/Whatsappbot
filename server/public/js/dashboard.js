@@ -26,7 +26,67 @@ document.addEventListener('DOMContentLoaded', function() {
     startAutoRefresh();
 });
 
+// Add this to your dashboard.js
+async function createSessionWithRetry(maxRetries = 3) {
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+        try {
+            showNotification('Creating WhatsApp session...', 'info');
+            
+            const response = await fetch('/api/sessions/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
 
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showNotification('Session created successfully! Waiting for QR code...', 'success');
+                return data;
+            }
+
+            // Handle specific error codes
+            if (response.status === 503 && data.code === 'WORKER_UNAVAILABLE') {
+                attempt++;
+                const retryAfter = data.retryAfter || 30;
+                
+                if (attempt < maxRetries) {
+                    showNotification(
+                        `Service temporarily unavailable. Retrying in ${retryAfter} seconds... (Attempt ${attempt}/${maxRetries})`,
+                        'warning'
+                    );
+                    await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                    continue;
+                } else {
+                    throw new Error('WhatsApp service is currently unavailable. Please try again later.');
+                }
+            }
+
+            // Handle other errors
+            throw new Error(data.message || 'Failed to create session');
+
+        } catch (error) {
+            if (attempt >= maxRetries - 1) {
+                showNotification(error.message, 'error');
+                throw error;
+            }
+            attempt++;
+        }
+    }
+}
+
+// Use it in your create session button handler
+document.getElementById('createSessionBtn')?.addEventListener('click', async () => {
+    try {
+        await createSessionWithRetry(3);
+    } catch (error) {
+        console.error('Session creation failed:', error);
+    }
+});
 
 // Update your initializeDashboard function
 function initializeDashboard() {

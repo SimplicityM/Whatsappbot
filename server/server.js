@@ -59,9 +59,69 @@ const workerSocket = require('socket.io-client')(WORKER_URL, {
 });
 app.set('workerSocket', workerSocket);
 
-// workerSocket.on('connect', () => {
-//   console.log('🔌 Server: connected to worker at', WORKER_URL);
-// });
+// Worker connection health monitoring
+let workerHealthy = false;
+let lastWorkerPing = null;
+const WORKER_HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+const WORKER_PING_TIMEOUT = 5000; // 5 seconds
+
+// Track worker health status
+workerSocket.on('connect', () => {
+  console.log('🔌 Server: connected to worker at', WORKER_URL);
+  workerHealthy = true;
+  lastWorkerPing = Date.now();
+  startBroadcastScheduler(workerSocket);
+});
+
+workerSocket.on('disconnect', (reason) => {
+  console.warn('⚠ Server: disconnected from worker:', reason);
+  workerHealthy = false;
+  lastWorkerPing = null;
+});
+
+workerSocket.on('connect_error', (err) => {
+  console.error('❌ Server: worker connect_error', err.message);
+  workerHealthy = false;
+});
+
+// Periodic health check
+setInterval(() => {
+  if (!workerSocket.connected) {
+    workerHealthy = false;
+    return;
+  }
+
+  // Send ping to worker
+  const pingStart = Date.now();
+  workerSocket.emit('worker:ping', {}, (err, response) => {
+    if (err) {
+      console.error('❌ Worker ping failed:', err);
+      workerHealthy = false;
+    } else {
+      const latency = Date.now() - pingStart;
+      workerHealthy = true;
+      lastWorkerPing = Date.now();
+      console.log(`💚 Worker healthy (latency: ${latency}ms)`);
+    }
+  });
+}, WORKER_HEALTH_CHECK_INTERVAL);
+
+// Helper function to check worker availability
+function isWorkerAvailable() {
+  if (!workerSocket || !workerSocket.connected) {
+    return false;
+  }
+  
+  // If we haven't received a ping response in 2 minutes, consider unhealthy
+  if (lastWorkerPing && (Date.now() - lastWorkerPing) > 120000) {
+    return false;
+  }
+  
+  return workerHealthy;
+}
+
+// Make it available to routes
+app.set('isWorkerAvailable', isWorkerAvailable);
 
 workerSocket.on('connect_error', (err) => {
   console.error('❌ Server: worker connect_error', err.message);
@@ -237,6 +297,11 @@ const connectDB = async () => {
   }
 };
 
+// In server.js, after models are loaded (around line 231)
+const { startSessionCleanup } = require('./utils/sessionCleanup');
+startSessionCleanup();
+console.log('✅ Session cleanup started');
+
 // =========================
 // ADMIN CREATE SESSION
 // =========================
@@ -385,54 +450,87 @@ function checkUsageLimit(subscription, limitType, currentUsage) {
 
 
 // ------------------ session creation: ask worker to create ------------------
+// ------------------ session creation: ask worker to create ------------------
 async function createWhatsAppSession(userId, sessionId) {
+  let sessionCreated = false;
+  let session = null;
+
   try {
     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
 
-    // Store initial session record BEFORE asking worker
-    const session = new Session({
+    // Validate user exists first
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Check if worker is connected BEFORE creating DB record
+    if (!workerSocket || !workerSocket.connected) {
+      console.error('❌ SERVER: Worker is not connected');
+      throw new Error('Worker service is not available. Please try again in a moment.');
+    }
+
+    // Store initial session record ONLY after worker check passes
+    session = new Session({
       userId,
       sessionId,
       status: 'waiting_qr',
-      subscriptionAtTime: (await User.findById(userId)).subscription,
+      subscriptionAtTime: user.subscription,
       createdAt: new Date(),
       updatedAt: new Date()
     });
     await session.save();
+    sessionCreated = true;
 
-    // Check if worker is connected
-    if (!workerSocket.connected) {
-      throw new Error('Worker service is not connected. Please try again later.');
-    }
+    console.log('✅ SERVER: Session record created in DB');
 
-    // Emit to worker and wait for response
+    // Emit to worker and wait for response with timeout
     const ack = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Worker did not respond in time'));
+        reject(new Error('Worker did not respond within 20 seconds'));
       }, 20000);
 
       workerSocket.emit('worker:create_session', { userId, sessionId }, (err, result) => {
         clearTimeout(timeout);
-        if (err) return reject(new Error(String(err)));
+        if (err) {
+          console.error('❌ SERVER: Worker returned error:', err);
+          return reject(new Error(String(err)));
+        }
         resolve(result);
       });
     });
 
-    console.log('✅ SERVER: Worker acked create_session:', ack);
+    console.log('✅ SERVER: Worker acknowledged session creation:', ack);
     return sessionId;
+
   } catch (error) {
-    console.error('❌ SERVER: createWhatsAppSession error:', error);
+    console.error('❌ SERVER: createWhatsAppSession error:', error.message);
     
-    // Mark session as failed
-    try {
-      await Session.findOneAndUpdate({ sessionId }, {
-        status: 'failed',
-        errorMessage: error.message,
-        updatedAt: new Date()
-      });
-    } catch (dbErr) {
-      console.error('❌ SERVER: failed to update session status', dbErr);
+    // Clean up: Mark session as failed if it was created
+    if (sessionCreated && sessionId) {
+      try {
+        await Session.findOneAndUpdate(
+          { sessionId },
+          {
+            status: 'failed',
+            errorMessage: error.message,
+            updatedAt: new Date()
+          }
+        );
+        console.log('⚠️ SERVER: Session marked as failed in DB');
+      } catch (dbErr) {
+        console.error('❌ SERVER: Failed to update session status:', dbErr.message);
+        
+        // If we can't update, try to delete the orphaned record
+        try {
+          await Session.deleteOne({ sessionId });
+          console.log('🗑️ SERVER: Deleted orphaned session record');
+        } catch (deleteErr) {
+          console.error('❌ SERVER: Failed to delete orphaned session:', deleteErr.message);
+        }
+      }
     }
+    
     throw error;
   }
 }

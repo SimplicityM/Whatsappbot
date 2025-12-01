@@ -91,6 +91,17 @@ server.listen(PORT, '0.0.0.0', () => {
 io.on("connection", (socket) => {
     console.log("🔌 Worker connected to server:", socket.id);
 
+    // Health check ping handler
+    socket.on("worker:ping", (data, callback) => {
+        if (typeof callback === 'function') {
+            callback(null, { 
+                status: 'healthy', 
+                activeSessions: clients.size,
+                timestamp: Date.now() 
+            });
+        }
+    });
+
     /** =========================================
      *  CREATE NEW SESSION
      *  From server: io.emit("worker:create_session", {...})
