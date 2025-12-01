@@ -61,4 +61,4 @@ const AutoReplySchema = new mongoose.Schema({
 // Index for faster queries
 AutoReplySchema.index({ sessionId: 1, groupId: 1 });
 
-module.exports = mongoose.models.AutoReply || mongoose.model('AutoReply', autoReplySchema);
+module.exports = mongoose.models.AutoReply || mongoose.model('AutoReply', AutoReplySchema);
