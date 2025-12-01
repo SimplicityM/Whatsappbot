@@ -128,20 +128,23 @@ app.get('/health', (req, res) => {
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
-    const connectDB = async () => {
+const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) throw new Error("MONGODB_URI not defined");
 
     console.log("🔄 Connecting to MongoDB…");
-    console.log("📍 MongoDB URI:", mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@"));
+    console.log(
+      "📍 MongoDB URI:",
+      mongoURI.replace(/\/\/([^:]+):([^@]+)@/, "//***:***@")
+    );
 
-    // ===== GLOBAL MONGOOSE SETTINGS =====
+    /** ===== GLOBAL MONGOOSE SETTINGS ===== **/
     mongoose.set("strictQuery", false);
     mongoose.set("bufferCommands", true);
     mongoose.set("autoIndex", false);
 
-    // ===== CONNECTION EVENT LOGGERS =====
+    /** ===== CONNECTION EVENTS ===== **/
     mongoose.connection.on("connected", () => console.log("🟢 MongoDB connected."));
     mongoose.connection.on("reconnected", () => console.log("🔄 MongoDB reconnected."));
     mongoose.connection.on("disconnected", () =>
@@ -151,7 +154,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       console.error("❌ MongoDB error:", err.message)
     );
 
-    // ===== CONNECT TO MONGODB =====
+    /** ===== CONNECT ===== **/
     await mongoose.connect(mongoURI, {
       maxPoolSize: 20,
       minPoolSize: 5,
@@ -165,7 +168,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     console.log("🟢 Initial MongoDB connection established");
 
-    // ===== WAIT FOR STABLE READY STATE =====
+    /** ===== WAIT FOR READY ===== **/
     let attempts = 0;
     const maxAttempts = 15;
 
@@ -187,7 +190,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
-    // ===== VERIFY CONNECTION WITH A PING =====
+    /** ===== VERIFY WITH A PING ===== **/
     if (mongoose.connection.db) {
       await mongoose.connection.db.admin().ping();
       console.log("✅ MongoDB ping successful");
@@ -195,11 +198,11 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       console.warn("⚠️ Skipping ping — connection.db not ready");
     }
 
-    // ===== EXTRA STABILIZATION WAIT =====
+    /** ===== EXTRA STABILIZATION DELAY ===== **/
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log("✅ MongoDB connection stabilized");
 
-    // ===== LOAD MODELS AFTER STABLE CONNECTION =====
+    /** ===== LOAD MODELS ===== **/
     const User = require("./models/User");
     const Session = require("./models/Session");
     const Usage = require("./models/Usage");
@@ -212,7 +215,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
     console.log("✅ Models loaded");
 
-    // ===== TEST DATABASE OPERATIONS =====
+    /** ===== TEST DATABASE OPERATIONS ===== **/
     try {
       await User.countDocuments();
       await Session.countDocuments();
@@ -222,7 +225,7 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
       throw dbError;
     }
 
-    // ===== START TRIAL MONITORING =====
+    /** ===== START TRIAL MONITORING ===== **/
     const { checkExpiredTrials } = require("./utils/trialMonitor");
     checkExpiredTrials();
     console.log("✅ Trial monitoring started");
@@ -234,26 +237,32 @@ const { authenticate, authenticateAdmin } = require('../middleware/auth');
   }
 };
 
-    app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
-        try {
-        console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
-        const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
+// =========================
+// ADMIN CREATE SESSION
+// =========================
+app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
+  try {
+    console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
 
-        await createWhatsAppSession(req.user.id, sessionId);
-        
-        res.json({
-            success: true,
-            data: { sessionId },
-            message: 'Admin session created successfully'
-        });
-        } catch (error) {
-        console.error('❌ ADMIN: Session creation error:', error);
-        res.status(400).json({
-            success: false,
-            message: error.message
-        });
-    }
+    const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
+
+    await createWhatsAppSession(req.user.id, sessionId);
+
+    return res.json({
+      success: true,
+      data: { sessionId },
+      message: 'Admin session created successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ ADMIN: Session creation error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
 });
+
 
 // Global variables
 const activeClients = new Map();
