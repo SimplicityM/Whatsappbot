@@ -1528,7 +1528,7 @@ case 'help': {
         if (cached && cached.groups && cached.groups.length) {
             let out = '📋 *Groups Where You Are Admin (Cached):*\n\n';
             cached.groups.forEach((g, i) => {
-                out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+                out += `${i + 1}. *${g.name}*\n;
             });
             out += '\n🔄 To refresh the list, use: `!list refresh`';
             await safeSend(message.from, out);
@@ -1578,7 +1578,7 @@ case 'help': {
 
 //     let out = '*📋 Updated Admin Group List:*\n\n';
 //     adminGroups.forEach((g, i) => {
-//         out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+//         out += `${i + 1}. *${g.name}*\n;
 //     });
 //     out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
 //     await safeSend(message.from, out);
@@ -1613,7 +1613,7 @@ case 'help': {
 
     let out = '*📋 Updated Admin Group List:*\n\n';
     adminGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+        out += `${i + 1}. *${g.name}*\n;
     });
     out += '\n⚡ Next time, just run `!list` (instant)\n🔄 To re-scan again use: `!list refresh`';
     await safeSend(message.from, out);
@@ -1991,7 +1991,7 @@ case 'status': {
                 if (cached && cached.groups && cached.groups.length) {
                     let out = '📋 *All Groups (Cached):*\n\n';
                     cached.groups.forEach((g, i) => {
-                        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+                        out += `${i + 1}. *${g.name}*\n;
                     });
                     out += '\n🔄 To refresh: `!listall refresh`';
                     await safeSend(message.from, out);
@@ -2021,7 +2021,7 @@ case 'status': {
 
             let out = '*📋 Updated List of ALL Groups:*\n\n';
             allGroups.forEach((g, i) => {
-                out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+                out += `${i + 1}. *${g.name}*\n;
             });
 
             out += '\n⚡ Cached for instant display.\nUse `!listall refresh` to scan again.';
@@ -2583,7 +2583,7 @@ case 'mygroups': {
 
     let out = `*👑 Groups YOU Created:*\n\n`;
     myGroups.forEach((g, i) => {
-        out += `${i + 1}. *${g.name}*\n   ID: ${g.groupId}\n\n`;
+        out += `${i + 1}. *${g.name}*\n;
     });
 
     await safeSend(message.from, out);
