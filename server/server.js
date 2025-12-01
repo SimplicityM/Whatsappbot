@@ -125,7 +125,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-const { authenticate, authenticateAdmin } = require('../middleware/auth');
+const { authenticate, authenticateAdmin } = require('./middleware/auth');
 
 // DB connection
 const connectDB = async () => {
@@ -221,29 +221,26 @@ const connectDB = async () => {
       }
     })();
 
-  } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err);
-    throw err;
-  }
-};
+        } catch (err) {
+            console.error("❌ MongoDB Connection Error:", err);
+            throw err;
+        }
+            };
 
+                //assign globally if needed
+                global.User = User;
+                global.Session = Session;
+                global.Usage = Usage;
+                global.SavedGroupList = SavedGroupList;
 
+                console.log('✅ Models loaded');
 
-
-    //assign globally if needed
-    global.User = User;
-    global.Session = Session;
-    global.Usage = Usage;
-    global.SavedGroupList = SavedGroupList;
-
-    console.log('✅ Models loaded');
-
-        // Test database operations
-            try {
-            await User.countDocuments();
-            await Session.countDocuments();
-            console.log('✅ Database operations verified');
-            } catch (dbError) {
+                // Test database operations
+                try {
+                await User.countDocuments();
+                await Session.countDocuments();
+                console.log('✅ Database operations verified');
+                } catch (dbError) {
             console.error('❌ Database operation test failed:', dbError);
             throw dbError;
             }
@@ -263,8 +260,8 @@ const connectDB = async () => {
 
    
 
-app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
-    try {
+        app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
+        try {
         console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
         const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
 
@@ -275,7 +272,7 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
             data: { sessionId },
             message: 'Admin session created successfully'
         });
-    } catch (error) {
+        } catch (error) {
         console.error('❌ ADMIN: Session creation error:', error);
         res.status(400).json({
             success: false,
