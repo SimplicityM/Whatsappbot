@@ -1089,98 +1089,6 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Statistics endpoint
-app.get('/api/statistics/user', authenticate, async (req, res) => {
-    try {
-        // Check if models are loaded
-        if (!Session || !Usage || !SavedGroupList) {
-            return res.status(503).json({
-                success: false,
-                message: "Server is still initializing"
-            });
-        }
-        
-
-        // Database check
-        if (mongoose.connection.readyState !== 1) {
-            return res.status(503).json({
-                success: false,
-                message: "Database temporarily unavailable"
-            });
-        }
-
-        // Get user sessions
-        const sessions = await Session.find({ userId: req.user.id });
-
-        if (!sessions || sessions.length === 0) {
-            return res.json({
-                success: true,
-                data: {
-                    totalMessages: 0,
-                    totalGroups: 0,
-                    commandsUsed: 0,
-                    messagesToday: 0,
-                    groupsManaged: 0
-                }
-            });
-        }
-
-        // Calculate session usage
-        let totalMessages = 0;
-        let totalCommands = 0;
-        let totalGroups = 0;
-
-        for (const session of sessions) {
-            totalMessages += session.usage?.messagesProcessed || 0;
-            totalCommands += session.usage?.commandsExecuted || 0;
-            totalGroups += session.usage?.groupsTagged || 0;
-        }
-
-        // Get today's usage
-        const today = new Date().toISOString().split('T')[0];
-        const todayUsage = await Usage.findOne({
-            userId: req.user.id,
-            date: today
-        });
-
-        // Get groups managed
-        let adminGroupsCount = [];
-        try {
-            adminGroupsCount = await SavedGroupList.aggregate([
-                {
-                    $match: {
-                        sessionId: { $in: sessions.map(s => s.sessionId) }
-                    }
-                },
-                { $unwind: "$groups" },
-                { $group: { _id: null, count: { $sum: 1 } } }
-            ]);
-        } catch (err) {
-            console.error("Aggregation error:", err.message);
-        }
-
-        // Return stats
-        return res.json({
-            success: true,
-            data: {
-                totalMessages,
-                totalGroups,
-                commandsUsed: totalCommands,
-                messagesToday: todayUsage?.messagesCount || 0,
-                groupsManaged: adminGroupsCount[0]?.count || 0
-            }
-        });
-
-    } catch (error) {
-        console.error("Statistics error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching statistics"
-        });
-    }
-});
-
-
 
 // Public stats API
 app.get('/api/public/stats', async (req, res) => {
@@ -1313,6 +1221,89 @@ const startServer = async () => {
 
     app.use("/api/sessions", require("./routes/sessions"));
     console.log('✅ Session routes registered');
+
+    // Statistics endpoint
+app.get('/api/statistics/user', authenticate, async (req, res) => {
+    try {
+            
+        // Database check
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(503).json({
+                success: false,
+                message: "Database temporarily unavailable"
+            });
+        }
+
+        // Get user sessions
+        const sessions = await Session.find({ userId: req.user.id });
+
+        if (!sessions || sessions.length === 0) {
+            return res.json({
+                success: true,
+                data: {
+                    totalMessages: 0,
+                    totalGroups: 0,
+                    commandsUsed: 0,
+                    messagesToday: 0,
+                    groupsManaged: 0
+                }
+            });
+        }
+
+        // Calculate session usage
+        let totalMessages = 0;
+        let totalCommands = 0;
+        let totalGroups = 0;
+
+        for (const session of sessions) {
+            totalMessages += session.usage?.messagesProcessed || 0;
+            totalCommands += session.usage?.commandsExecuted || 0;
+            totalGroups += session.usage?.groupsTagged || 0;
+        }
+
+        // Get today's usage
+        const today = new Date().toISOString().split('T')[0];
+        const todayUsage = await Usage.findOne({
+            userId: req.user.id,
+            date: today
+        });
+
+        // Get groups managed
+        let adminGroupsCount = [];
+        try {
+            adminGroupsCount = await SavedGroupList.aggregate([
+                {
+                    $match: {
+                        sessionId: { $in: sessions.map(s => s.sessionId) }
+                    }
+                },
+                { $unwind: "$groups" },
+                { $group: { _id: null, count: { $sum: 1 } } }
+            ]);
+        } catch (err) {
+            console.error("Aggregation error:", err.message);
+        }
+
+        // Return stats
+        return res.json({
+            success: true,
+            data: {
+                totalMessages,
+                totalGroups,
+                commandsUsed: totalCommands,
+                messagesToday: todayUsage?.messagesCount || 0,
+                groupsManaged: adminGroupsCount[0]?.count || 0
+            }
+        });
+
+    } catch (error) {
+        console.error("Statistics error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching statistics"
+        });
+    }
+});
 
     // ============================================
 // 📱 MOBILE APP: Create Session with Phone Number
