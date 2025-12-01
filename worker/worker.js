@@ -192,7 +192,7 @@ socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callba
         console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
         
         // Get the client for this session
-        const clientData = activeSessions.get(sessionId);
+        const clientData = clients.get(sessionId);
         
         if (!clientData || !clientData.client) {
             return callback('Session not found or not connected');
