@@ -93,7 +93,8 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
     console.log('📱 Session ID:', sessionId);
 
     // 5. Use the enhanced createWhatsAppSession function
-    const { createWhatsAppSession } = require('../server');
+    const { createWhatsAppSession } = require('../utils/sessionCreator');
+
     await createWhatsAppSession(user._id, sessionId);
 
     console.log('✅ API: Session created successfully');

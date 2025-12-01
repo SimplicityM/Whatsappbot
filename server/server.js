@@ -40,8 +40,6 @@ app.use(cors({
   credentials: true
 }));
 
-// ⚠️ Don't import models here - they'll be imported after DB connection
-let User, Session, Usage, SavedGroupList;
 
 const server = http.createServer(app);
 
@@ -191,30 +189,6 @@ app.get('/health', (req, res) => {
 
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
-// ========================================
-// 🛡️ MODEL CHECK MIDDLEWARE
-// ========================================
-const ensureModelsLoaded = (req, res, next) => {
-    // Skip for health check and public endpoints
-    if (req.path === '/health' || req.path.startsWith('/api/public')) {
-        return next();
-    }
-
-    // Check if models are loaded
-    if (!global.User || !global.Session) {
-        console.warn('⚠️ Request rejected - models not yet loaded:', req.path);
-        return res.status(503).json({
-            success: false,
-            message: 'Server is still initializing. Please try again in a moment.',
-            code: 'SERVER_INITIALIZING'
-        });
-    }
-
-    next();
-};
-
-// Apply to all API routes
-app.use('/api', ensureModelsLoaded);
 
 // DB connection
 const connectDB = async () => {
@@ -271,18 +245,13 @@ const connectDB = async () => {
     await new Promise(res => setTimeout(res, 2000));
     console.log("✅ MongoDB connection stabilized");
 
-    // LOAD MODELS
-    // User = require("./models/User");
-    // Session = require("./models/Session");
-    // Usage = require("./models/Usage");
-    // SavedGroupList = require("./models/SavedGroupList");
-
-
+    
     console.log("✅ Models loaded globally");
 
     // TEST MODELS — MUST USE *global* variables
-    await global.User.countDocuments();
-    await global.Session.countDocuments();
+    await User.countDocuments();
+    await Session.countDocuments();
+
     console.log("✅ Database operations verified");
 
     // START TRIAL MONITORING
@@ -312,7 +281,9 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
 
     const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
 
-    await createWhatsAppSession(req.user.id, sessionId);
+    const workerSocket = req.app.get("workerSocket");
+    await createWhatsAppSession(req.user.id, sessionId, workerSocket);
+
 
     return res.json({
       success: true,
@@ -448,11 +419,8 @@ function checkUsageLimit(subscription, limitType, currentUsage) {
     return { allowed, remaining, limit };
 }
 
-
-
 // ------------------ session creation: ask worker to create ------------------
-// ------------------ session creation: ask worker to create ------------------
-async function createWhatsAppSession(userId, sessionId) {
+async function createWhatsAppSession(userId, sessionId, workerSocket) {
   let sessionCreated = false;
   let session = null;
 
@@ -460,7 +428,7 @@ async function createWhatsAppSession(userId, sessionId) {
     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
 
     // Validate user exists first
-    const user = await User.findById(userId);  
+    const user = await User.findById(userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -480,6 +448,7 @@ async function createWhatsAppSession(userId, sessionId) {
       createdAt: new Date(),
       updatedAt: new Date()
     });
+
     await session.save();
     sessionCreated = true;
 
@@ -491,14 +460,15 @@ async function createWhatsAppSession(userId, sessionId) {
         reject(new Error('Worker did not respond within 20 seconds'));
       }, 20000);
 
-      workerSocket.emit('worker:create_session', { userId, sessionId }, (err, result) => {
-        clearTimeout(timeout);
-        if (err) {
-          console.error('❌ SERVER: Worker returned error:', err);
-          return reject(new Error(String(err)));
+      workerSocket.emit(
+        'worker:create_session',
+        { userId, sessionId },
+        (err, result) => {
+          clearTimeout(timeout);
+          if (err) return reject(new Error(String(err)));
+          resolve(result);
         }
-        resolve(result);
-      });
+      );
     });
 
     console.log('✅ SERVER: Worker acknowledged session creation:', ack);
@@ -506,8 +476,7 @@ async function createWhatsAppSession(userId, sessionId) {
 
   } catch (error) {
     console.error('❌ SERVER: createWhatsAppSession error:', error.message);
-    
-    // Clean up: Mark session as failed if it was created
+
     if (sessionCreated && sessionId) {
       try {
         await Session.findOneAndUpdate(
@@ -518,24 +487,16 @@ async function createWhatsAppSession(userId, sessionId) {
             updatedAt: new Date()
           }
         );
-        console.log('⚠️ SERVER: Session marked as failed in DB');
       } catch (dbErr) {
-        console.error('❌ SERVER: Failed to update session status:', dbErr.message);
-        
-        // If we can't update, try to delete the orphaned record
         try {
           await Session.deleteOne({ sessionId });
-          console.log('🗑️ SERVER: Deleted orphaned session record');
-        } catch (deleteErr) {
-          console.error('❌ SERVER: Failed to delete orphaned session:', deleteErr.message);
-        }
+        } catch (_) {}
       }
     }
-    
+
     throw error;
   }
 }
-
 
 
 // Page routes
@@ -1415,7 +1376,9 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
         console.log('✅ MOBILE: Session record created in database');
 
         // Create WhatsApp session
-        await createWhatsAppSession(req.user.id, sessionId);
+        const workerSocket = req.app.get("workerSocket");
+        await createWhatsAppSession(req.user.id, sessionId, workerSocket);
+
         
         console.log('✅ MOBILE: WhatsApp session initialized');
 
@@ -1484,8 +1447,6 @@ server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log('✅ All systems ready!');
 });
-
-};
 
 
 // Export for use in other modules
