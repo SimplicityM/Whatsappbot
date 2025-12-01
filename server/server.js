@@ -125,7 +125,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-const { authenticate, authenticateAdmin } = require('./middleware/auth');
+const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
 // DB connection
 const connectDB = async () => {
