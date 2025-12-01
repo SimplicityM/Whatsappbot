@@ -187,6 +187,31 @@ app.get('/health', (req, res) => {
 
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
 
+// ========================================
+// 🛡️ MODEL CHECK MIDDLEWARE
+// ========================================
+const ensureModelsLoaded = (req, res, next) => {
+    // Skip for health check and public endpoints
+    if (req.path === '/health' || req.path.startsWith('/api/public')) {
+        return next();
+    }
+
+    // Check if models are loaded
+    if (!global.User || !global.Session) {
+        console.warn('⚠️ Request rejected - models not yet loaded:', req.path);
+        return res.status(503).json({
+            success: false,
+            message: 'Server is still initializing. Please try again in a moment.',
+            code: 'SERVER_INITIALIZING'
+        });
+    }
+
+    next();
+};
+
+// Apply to all API routes
+app.use('/api', ensureModelsLoaded);
+
 // DB connection
 const connectDB = async () => {
   try {
@@ -262,18 +287,30 @@ const connectDB = async () => {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log("✅ MongoDB connection stabilized");
 
-    /** ===== LOAD MODELS ===== **/
+        /** ===== LOAD MODELS ===== **/
     const User = require("./models/User");
     const Session = require("./models/Session");
     const Usage = require("./models/Usage");
     const SavedGroupList = require("./models/SavedGroupList");
 
+    // Assign to global scope for routes that need them
     global.User = User;
     global.Session = Session;
     global.Usage = Usage;
     global.SavedGroupList = SavedGroupList;
 
-    console.log("✅ Models loaded");
+    console.log("✅ Models loaded and assigned to global scope");
+
+    // Verify models are accessible
+    if (!global.User || !global.Session || !global.Usage || !global.SavedGroupList) {
+        throw new Error("Failed to assign models to global scope");
+    }
+
+    console.log("✅ Models verified and ready");
+} catch (modelError) {
+    console.error("❌ Failed to load models:", modelError);
+    throw modelError;
+}
 
     /** ===== TEST DATABASE OPERATIONS ===== **/
     try {
@@ -1130,10 +1167,7 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
 // Statistics endpoint
 app.get('/api/statistics/user', authenticate, async (req, res) => {
     try {
-
-        // ================================
-        // 1️⃣  DATABASE READY GUARD
-        // ================================
+        // Database check
         if (mongoose.connection.readyState !== 1) {
             return res.status(503).json({
                 success: false,
@@ -1141,27 +1175,7 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             });
         }
 
-        // ================================
-        // 2️⃣  MODEL LOAD GUARDS
-        // (Prevents "Usage is not defined" / "SavedGroupList is undefined")
-        // ================================
-        if (!global.Usage && typeof Usage === "undefined") {
-            return res.status(500).json({
-                success: false,
-                message: "Usage model not loaded"
-            });
-        }
-
-        if (!global.SavedGroupList && typeof SavedGroupList === "undefined") {
-            return res.status(500).json({
-                success: false,
-                message: "SavedGroupList model not loaded"
-            });
-        }
-
-        // ================================
-        // 3️⃣  GET USER SESSIONS
-        // ================================
+        // Get user sessions
         const sessions = await Session.find({ userId: req.user.id });
 
         if (!sessions || sessions.length === 0) {
@@ -1177,9 +1191,7 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             });
         }
 
-        // ================================
-        // 4️⃣ CALCULATE SESSION USAGE
-        // ================================
+        // Calculate session usage
         let totalMessages = 0;
         let totalCommands = 0;
         let totalGroups = 0;
@@ -1190,21 +1202,15 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             totalGroups += session.usage?.groupsTagged || 0;
         }
 
-        // ================================
-        // 5️⃣ GET TODAY'S USAGE
-        // ================================
+        // Get today's usage
         const today = new Date().toISOString().split('T')[0];
-
         const todayUsage = await Usage.findOne({
             userId: req.user.id,
             date: today
         });
 
-        // ================================
-        // 6️⃣ GET GROUPS MANAGED (SAFE AGGREGATION)
-        // ================================
+        // Get groups managed
         let adminGroupsCount = [];
-
         try {
             adminGroupsCount = await SavedGroupList.aggregate([
                 {
@@ -1217,27 +1223,22 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
             ]);
         } catch (err) {
             console.error("Aggregation error:", err.message);
-            adminGroupsCount = [];
         }
 
-        // ================================
-        // 7️⃣ FINAL STATS
-        // ================================
-        const stats = {
-            totalMessages,
-            totalGroups,
-            commandsUsed: totalCommands,
-            messagesToday: todayUsage?.messagesCount || 0,
-            groupsManaged: adminGroupsCount[0]?.count || 0
-        };
-
+        // Return stats
         return res.json({
             success: true,
-            data: stats
+            data: {
+                totalMessages,
+                totalGroups,
+                commandsUsed: totalCommands,
+                messagesToday: todayUsage?.messagesCount || 0,
+                groupsManaged: adminGroupsCount[0]?.count || 0
+            }
         });
 
     } catch (error) {
-        console.error("Statistics error:", error.stack || error);
+        console.error("Statistics error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching statistics"
