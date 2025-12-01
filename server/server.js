@@ -268,15 +268,11 @@ const connectDB = async () => {
     console.log("✅ MongoDB connection stabilized");
 
     // LOAD MODELS
-    const User = require("./models/User");
-    const Session = require("./models/Session");
-    const Usage = require("./models/Usage");
-    const SavedGroupList = require("./models/SavedGroupList");
+    User = require("./models/User");
+    Session = require("./models/Session");
+    Usage = require("./models/Usage");
+    SavedGroupList = require("./models/SavedGroupList");
 
-    global.User = User;
-    global.Session = Session;
-    global.Usage = Usage;
-    global.SavedGroupList = SavedGroupList;
 
     console.log("✅ Models loaded globally");
 
@@ -460,7 +456,7 @@ async function createWhatsAppSession(userId, sessionId) {
     console.log('🔄 SERVER: Requesting worker to create session:', sessionId);
 
     // Validate user exists first
-    const user = await User.findById(userId);
+    const user = await User.findById(userId);  
     if (!user) {
       throw new Error('User not found');
     }
@@ -1486,9 +1482,6 @@ server.listen(PORT, () => {
 });
 
 };
-
-
- 
 
 
 // Export for use in other modules
