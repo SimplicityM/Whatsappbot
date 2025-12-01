@@ -275,7 +275,7 @@ const connectDB = async () => {
 
     console.log("✅ MongoDB readyState confirmed: 1 (connected)");
 
-    /** ===== VERIFY WITH A PING ===== **/
+   /** ===== VERIFY WITH A PING ===== **/
     if (mongoose.connection.db) {
       await mongoose.connection.db.admin().ping();
       console.log("✅ MongoDB ping successful");
@@ -287,30 +287,31 @@ const connectDB = async () => {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log("✅ MongoDB connection stabilized");
 
-        /** ===== LOAD MODELS ===== **/
-    const User = require("./models/User");
-    const Session = require("./models/Session");
-    const Usage = require("./models/Usage");
-    const SavedGroupList = require("./models/SavedGroupList");
+    /** ===== LOAD MODELS ===== **/
+    try {
+      const User = require("./models/User");
+      const Session = require("./models/Session");
+      const Usage = require("./models/Usage");
+      const SavedGroupList = require("./models/SavedGroupList");
 
-    // Assign to global scope for routes that need them
-    global.User = User;
-    global.Session = Session;
-    global.Usage = Usage;
-    global.SavedGroupList = SavedGroupList;
+      // Assign to global scope for routes that need them
+      global.User = User;
+      global.Session = Session;
+      global.Usage = Usage;
+      global.SavedGroupList = SavedGroupList;
 
-    console.log("✅ Models loaded and assigned to global scope");
+      console.log("✅ Models loaded and assigned to global scope");
 
-    // Verify models are accessible
-    if (!global.User || !global.Session || !global.Usage || !global.SavedGroupList) {
+      // Verify models are accessible
+      if (!global.User || !global.Session || !global.Usage || !global.SavedGroupList) {
         throw new Error("Failed to assign models to global scope");
-    }
+      }
 
-    console.log("✅ Models verified and ready");
-} catch (modelError) {
-    console.error("❌ Failed to load models:", modelError);
-    throw modelError;
-}
+      console.log("✅ Models verified and ready");
+    } catch (modelError) {
+      console.error("❌ Failed to load models:", modelError);
+      throw modelError;
+    }
 
     /** ===== TEST DATABASE OPERATIONS ===== **/
     try {
@@ -326,6 +327,11 @@ const connectDB = async () => {
     const { checkExpiredTrials } = require("./utils/trialMonitor");
     checkExpiredTrials();
     console.log("✅ Trial monitoring started");
+
+    /** ===== START SESSION CLEANUP ===== **/
+    const { startSessionCleanup } = require('./utils/sessionCleanup');
+    startSessionCleanup();
+    console.log('✅ Session cleanup started');
 
     return true;
   } catch (err) {
