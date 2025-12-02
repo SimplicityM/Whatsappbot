@@ -999,6 +999,242 @@ try {
     console.error("Auto-reply error:", e);
 }
 
+        // ------------------ RECALL ENGINE (members + natural triggers) ------------------
+        // Paste this block BEFORE: if (!message.body.startsWith(COMMAND_PREFIX)) return;
+        try {
+        const rawText = (message.body || '').trim();
+        const textLower = rawText.toLowerCase();
+
+        // Only act on non-empty text in chats (not status, not protocol messages)
+        if (!message.fromMe && textLower && message.from !== 'status@broadcast') {
+            // --- Helper: parse user-supplied tokens ---
+            const tokens = textLower.split(/\s+/).filter(Boolean);
+
+            // Quick match patterns (requires index number for member-facing commands)
+            // Examples:
+            //  "yesterday picture 3"
+            //  "last week pdf 2"
+            //  "resend last picture 1"
+            //  "ana asa 4"  (where "ana" or "asa" may be custom keywords)
+            // We will load custom keywords from AutoReply.recalls (recallKeywords)
+
+            // Load custom recall keywords mapping for this session (cached per request)
+            let recallDoc = null;
+            try { recallDoc = await AutoReply.findOne({ sessionId }).lean().catch(()=>null); } catch { recallDoc = null; }
+            const customKws = (recallDoc && Array.isArray(recallDoc.recallKeywords)) ? recallDoc.recallKeywords : [];
+
+            // Helper: resolve a token to either a time-token or media-type or custom mapping
+            function resolveToken(tok) {
+            const t = tok.toLowerCase();
+            // Time keywords
+            const timeMap = ['today','yesterday','thisweek','this_week','this-week','lastweek','last_week','last-week','lastmonth','last_month','last-month'];
+            const weekday = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+            if (timeMap.includes(t) || weekday.includes(t) || /\d+\s*days?\s*ago/.test(t) || /^\d+dago$/.test(t)) return { kind: 'time', value: t };
+
+            // media types
+            if (['picture','image','photo','img','pic','pics'].includes(t)) return { kind:'media', value:'image' };
+            if (['video','vid','movie','mp4'].includes(t)) return { kind:'media', value:'video' };
+            if (['document','doc','pdf','file','ppt','pptx','xls','xlsx','docx'].includes(t)) return { kind:'media', value:'document' };
+            if (['audio','voice','vn','ptt','mp3','ogg'].includes(t)) return { kind:'media', value:'audio' };
+            if (['sticker','gif'].includes(t)) return { kind:'media', value:'sticker' };
+            if (['last','resend','send'].includes(t)) return { kind:'special', value: t };
+
+            // custom keywords (exact term match)
+            const custom = customKws.find(c => c.term.toLowerCase() === t);
+            if (custom) {
+                // custom may map to time or to media or both
+                return { kind: 'custom', value: custom };
+            }
+
+            // number tokens
+            if (/^\d+$/.test(t)) return { kind: 'index', value: parseInt(t,10) };
+
+            return { kind: 'unknown', value: t };
+            }
+
+            // Helper: parse a phrase into components: {timeRange, mediaType, index}
+            function parseUserQuery(tokens) {
+            let timeToken = null, mediaType = null, index = null;
+            // allow flexible order; scan tokens for index, media, time, custom
+            for (const tok of tokens) {
+                const r = resolveToken(tok);
+                if (r.kind === 'index') { index = r.value; continue; }
+                if (r.kind === 'media') { mediaType = r.value; continue; }
+                if (r.kind === 'time') { timeToken = r.value; continue; }
+                if (r.kind === 'custom') {
+                // custom may declare both time and/or media in stored mapping
+                if (r.value.mapsToTime) timeToken = r.value.mapsToTime;
+                if (r.value.mapsToMedia) mediaType = r.value.mapsToMedia;
+                continue;
+                }
+                if (r.kind === 'special') {
+                // e.g., "resend last" – treat "last" as time shortcut (no-op)
+                continue;
+                }
+            }
+            return { timeToken, mediaType, index };
+            }
+
+            // Helper: convert timeToken -> start and end Date objects (inclusive)
+            function computeTimeWindow(timeToken) {
+            const now = new Date();
+            const t = (timeToken || '').toLowerCase();
+            // default: if null -> no time filter
+            if (!t) return null;
+
+            // "today"
+            if (t === 'today') {
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
+                const end = new Date(start.getTime() + 24*60*60*1000 - 1);
+                return { start, end };
+            }
+            // "yesterday"
+            if (t === 'yesterday' || t === 'ana') {
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1, 0,0,0,0);
+                const end = new Date(start.getTime() + 24*60*60*1000 - 1);
+                return { start, end };
+            }
+            // "lastweek" or "last week" -> last 7 days (from 7 days ago to now - or previous whole week)
+            if (t.includes('lastweek') || t.includes('last_week') || t === 'last-week' || t === 'last week') {
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
+                const start = new Date(end.getTime() - 7*24*60*60*1000 + 1);
+                return { start, end };
+            }
+            if (t.includes('thisweek') || t.includes('this_week') || t === 'this week' || t === 'this-week') {
+                const weekday = now.getDay(); // 0-6 Sun-Sat
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday, 0,0,0,0);
+                const end = new Date(start.getTime() + 7*24*60*60*1000 - 1);
+                return { start, end };
+            }
+            // last month -> last 30 days window
+            if (t.includes('lastmonth') || t.includes('last_month') || t === 'last-month' || t === 'last month') {
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
+                const start = new Date(end.getTime() - 30*24*60*60*1000 + 1);
+                return { start, end };
+            }
+            // "X days ago" or "3 days ago"
+            const daysMatch = t.match(/(\d+)\s*days?\s*ago/);
+            if (daysMatch) {
+                const n = parseInt(daysMatch[1],10);
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()-n, 0,0,0,0);
+                const end = new Date(start.getTime() + 24*60*60*1000 - 1);
+                return { start, end };
+            }
+            // Weekday name -> search recent occurrences of that weekday (last 4 weeks)
+            const wk = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+            if (wk.includes(t)) {
+                // collect messages from the last 28 days that match that weekday
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
+                const start = new Date(end.getTime() - 28*24*60*60*1000 + 1);
+                return { start, end, weekday: t };
+            }
+
+            // fallback -> null (no time window)
+            return null;
+            }
+
+            // Helper: check message matches desired media type
+            function messageMatchesMediaType(m, mediaType) {
+            try {
+                const mime = (m._data?.mimeType || '').toLowerCase();
+                if (!mediaType) return true; // if none specified, accept any media
+                if (mediaType === 'image') return mime.includes('image');
+                if (mediaType === 'video') return mime.includes('video');
+                if (mediaType === 'audio') return mime.includes('audio') || mime.includes('ogg') || mime.includes('opus');
+                if (mediaType === 'document') return (mime.includes('application') || mime.includes('pdf') || mime.includes('msword') || mime.includes('vnd'));
+                if (mediaType === 'sticker') return mime.includes('webp') || (m.type && m.type === 'sticker');
+            } catch {}
+            return false;
+            }
+
+            // Helper: find Nth matching media in a chat given time window & mediaType
+            async function findNthMediaInChat(chat, timeWindow, mediaType, requestedIndex) {
+            const SCAN_LIMIT = 1000; // scan up to 1000 recent messages
+            let msgs = [];
+            try {
+                msgs = await chat.fetchMessages({ limit: SCAN_LIMIT });
+            } catch (e) {
+                try { msgs = await client.getMessages(chat.id._serialized, SCAN_LIMIT); } catch(e2){ msgs = []; }
+            }
+            // messages returned newest -> oldest usually; filter by time window and media
+            const filtered = [];
+            const startTs = timeWindow ? (timeWindow.start.getTime()) : null;
+            const endTs = timeWindow ? (timeWindow.end.getTime()) : null;
+            for (const m of msgs) {
+                const hasMedia = (typeof m.hasMedia === 'function') ? await m.hasMedia() : m.hasMedia;
+                if (!hasMedia) continue;
+                const ts = m.timestamp ? (m.timestamp*1000) : (m._data?.t ? m._data.t*1000 : null);
+                if (timeWindow) {
+                if (!ts) continue;
+                if (startTs && ts < startTs) continue;
+                if (endTs && ts > endTs) continue;
+                // weekday filtering (optional)
+                if (timeWindow.weekday) {
+                    const d = new Date(ts);
+                    const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][d.getDay()];
+                    if (dayName !== timeWindow.weekday) continue;
+                }
+                }
+                if (!messageMatchesMediaType(m, mediaType)) continue;
+                filtered.push(m);
+            }
+            // filtered is ordered newest-first -> nth requestedIndex -> return that (1-based)
+            if (!filtered.length) return { found: null, available: 0 };
+            if (requestedIndex < 1 || requestedIndex > filtered.length) return { found: null, available: filtered.length };
+            return { found: filtered[requestedIndex - 1], available: filtered.length };
+            }
+
+            // Now check if tokens represent a recall query (time-based, natural or custom) requiring index
+            const parsed = parseUserQuery(tokens);
+
+            // If parsed contains either timeToken OR custom mapping OR special "resend last" AND index must be present (you chose B)
+            const hasRecallTrigger = parsed.timeToken || parsed.mediaType || textLower.startsWith('resend') || textLower.startsWith('send') || tokens.some(t => customKws.some(c=>c.term.toLowerCase()===t));
+            if (hasRecallTrigger) {
+            // Require index per your choice B
+            if (!parsed.index) {
+                await safeSend(message.from, 'Please specify which item number you want. Example: "yesterday picture 3" or "resend last picture 1"');
+                // Do not fall through to command parsing
+                return;
+            }
+
+            // compute time window
+            const timeWindow = computeTimeWindow(parsed.timeToken);
+            // find in current chat only (members recall uses current group)
+            const originChat = await message.getChat().catch(()=>null);
+            if (!originChat) {
+                await safeSend(message.from, 'Unable to access the chat. Try again.');
+                return;
+            }
+
+            const { found, available } = await findNthMediaInChat(originChat, timeWindow, parsed.mediaType, parsed.index);
+
+            if (!found) {
+                await safeSend(message.from, `I couldn't find that item. Available matching items in this time range: ${available}.`);
+                return;
+            }
+
+            // forward or re-send
+            try {
+                await found.forward(message.from);
+            } catch (e) {
+                try {
+                const media = await found.downloadMedia();
+                const mm = new MessageMedia(media.mimetype, media.data, media.filename);
+                await safeSend(message.from, mm, { caption: found.body || '' });
+                } catch (e2) {
+                await safeSend(message.from, 'Found the media but failed to resend it. Check bot logs.');
+                }
+            }
+            return; // do not proceed to command parsing
+            }
+
+        } // end if-not-from-me and text
+        } catch (err) {
+        logger.error(`[${sessionId}] recall engine error:`, err);
+        // swallow to avoid crashing event handler
+        }
+
+
     // If no command prefix, stop here
     if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
@@ -3647,6 +3883,185 @@ case 'forwardall': {
 
     doAllGroups(0);
     break;
+}
+
+/* ---------- OWNER-ONLY: Keyword management and !find deep search ---------- */
+// Add this inside your switch(cmd) { ... } block.
+
+case 'keyword': {
+  // OWNER ONLY
+  if (sender !== mySelf || !isSelfChat) return;
+  const sub = (args[0] || '').toLowerCase();
+
+  if (sub === 'add') {
+    // Format: !keyword add <term> | <mapping>
+    const full = args.slice(1).join(' ');
+    const pipe = full.indexOf('|');
+    if (pipe === -1) {
+      await safeSend(message.from, 'Usage: !keyword add <term> | <mapping>\nExample: !keyword add ana | yesterday\nMapping can be a time (yesterday|last week|today) or media (image|document|audio) or both separated by space.');
+      break;
+    }
+    const term = full.slice(0, pipe).trim();
+    const mapping = full.slice(pipe+1).trim().toLowerCase();
+    if (!term || !mapping) { await safeSend(message.from, 'Invalid term or mapping.'); break; }
+
+    // Decide mapsToTime and/or mapsToMedia
+    let mapsToTime = null, mapsToMedia = null;
+    const mapTokens = mapping.split(/\s+/);
+    for (const mt of mapTokens) {
+      if (['today','yesterday','lastweek','last_week','last week','last-week','thisweek','lastmonth','last month','3','2'].includes(mt) || mt.match(/days?/)) {
+        mapsToTime = mt;
+      }
+      if (['picture','image','photo','video','audio','document','file','pdf','sticker'].includes(mt)) {
+        // normalize
+        if (['picture','image','photo','pic','pics'].includes(mt)) mapsToMedia = 'image';
+        else if (['video','vid'].includes(mt)) mapsToMedia = 'video';
+        else if (['audio','voice','vn','ptt'].includes(mt)) mapsToMedia = 'audio';
+        else if (['document','doc','pdf','file'].includes(mt)) mapsToMedia = 'document';
+        else mapsToMedia = mt;
+      }
+    }
+
+    // Save into AutoReply.recallKeywords
+    let doc = await AutoReply.findOne({ sessionId }).catch(()=>null);
+    if (!doc) doc = await AutoReply.create({ sessionId, rules: [], mediaRules: [], recallKeywords: [] });
+
+    const exists = (doc.recallKeywords || []).find(r => r.term.toLowerCase() === term.toLowerCase());
+    if (exists) {
+      // update
+      exists.mapsToTime = mapsToTime || exists.mapsToTime;
+      exists.mapsToMedia = mapsToMedia || exists.mapsToMedia;
+    } else {
+      doc.recallKeywords = doc.recallKeywords || [];
+      doc.recallKeywords.push({ term, mapsToTime, mapsToMedia });
+    }
+    await doc.save();
+    await safeSend(message.from, `✅ Keyword added/updated: ${term} -> ${mapsToTime || ''} ${mapsToMedia || ''}`);
+    break;
+  }
+
+  if (sub === 'remove') {
+    // !keyword remove <term>
+    const term = args.slice(1).join(' ').trim();
+    if (!term) { await safeSend(message.from, 'Usage: !keyword remove <term>'); break; }
+    let doc = await AutoReply.findOne({ sessionId }).catch(()=>null);
+    if (!doc || !doc.recallKeywords || !doc.recallKeywords.length) { await safeSend(message.from, 'No keywords saved.'); break; }
+    doc.recallKeywords = doc.recallKeywords.filter(r => r.term.toLowerCase() !== term.toLowerCase());
+    await doc.save();
+    await safeSend(message.from, `🗑 Removed keyword: ${term}`);
+    break;
+  }
+
+  if (sub === 'list') {
+    let doc = await AutoReply.findOne({ sessionId }).lean().catch(()=>null);
+    const kws = (doc && Array.isArray(doc.recallKeywords)) ? doc.recallKeywords : [];
+    if (!kws.length) { await safeSend(message.from, 'No recall keywords configured.'); break; }
+    let out = '*📄 Recall Keywords:*\n\n';
+    kws.forEach((k,i) => {
+      out += `${i+1}. ${k.term} -> time: ${k.mapsToTime || '-'} media: ${k.mapsToMedia || '-'}\n`;
+    });
+    await safeSend(message.from, out);
+    break;
+  }
+
+  await safeSend(message.from, 'Usage:\n!keyword add <term> | <mapping>\n!keyword remove <term>\n!keyword list');
+  break;
+}
+
+// Owner-only deep hybrid search: !find <keyword>
+case 'find': {
+  // only owner
+  if (sender !== mySelf || !isSelfChat) return;
+  const keyword = args.join(' ').trim().toLowerCase();
+  if (!keyword) { await safeSend(message.from, 'Usage: !find <keyword>'); break; }
+
+  const SEARCHING_MSG = `I couldn’t find that picture in this group, searching other groups…`;
+  const SCAN_LIMIT = 500;
+
+  // 1) Search current chat
+  const originChat = await message.getChat().catch(()=>null);
+  let foundMessage = null;
+  if (originChat) {
+    try {
+      const msgs = await originChat.fetchMessages({ limit: SCAN_LIMIT }).catch(()=>[]);
+      for (const m of msgs) {
+        const hasMedia = (typeof m.hasMedia === 'function') ? await m.hasMedia() : m.hasMedia;
+        if (!hasMedia) continue;
+        const caption = (m.body || '').toLowerCase();
+        let filename = (m._data?.media?.filename || '').toLowerCase();
+        if (caption.includes(keyword) || filename.includes(keyword)) { foundMessage = m; break; }
+      }
+    } catch (e) {}
+  }
+
+  if (foundMessage) {
+    try { await foundMessage.forward(message.from); } catch (e) {
+      try {
+        const media = await foundMessage.downloadMedia();
+        await safeSend(message.from, new MessageMedia(media.mimetype, media.data, media.filename), { caption: foundMessage.body || '' });
+      } catch (e2) { await safeSend(message.from, 'Found media but failed to forward/send it.'); }
+    }
+    break;
+  }
+
+  // Not found in current chat -> notify and search admin groups then all groups
+  await safeSend(message.from, SEARCHING_MSG);
+
+  // get admin groups from saved cache
+  let adminGroupIds = [];
+  try {
+    const cached = await SavedGroupList.findOne({ sessionId }).lean().catch(()=>null);
+    adminGroupIds = (cached && Array.isArray(cached.groups)) ? cached.groups.map(g=>g.groupId) : [];
+    if (!adminGroupIds.length) {
+      // rebuild quick admin list
+      const chats = await client.getChats().catch(()=>[]);
+      for (const c of chats) {
+        if (!c.isGroup) continue;
+        const parts = Array.isArray(c.participants) ? c.participants : (typeof c.getParticipants === 'function' ? await c.getParticipants().catch(()=>[]) : []);
+        const amIAdmin = parts.some(p => p.id?._serialized === mySelf && (p.isAdmin || p.isSuperAdmin));
+        if (amIAdmin) adminGroupIds.push(c.id._serialized);
+      }
+    }
+  } catch (e) { adminGroupIds = []; }
+
+  // Build all groups list, ensuring admin groups are searched first
+  const allChats = await client.getChats().catch(()=>[]);
+  const allGroupIds = allChats.filter(c=>c.isGroup).map(c=>c.id._serialized);
+  const remaining = allGroupIds.filter(id => !adminGroupIds.includes(id));
+  const searchOrder = [...adminGroupIds, ...remaining];
+
+  for (const gid of searchOrder) {
+    try {
+      const chat = await client.getChatById(gid).catch(()=>null);
+      if (!chat) continue;
+      const msgs = await chat.fetchMessages({ limit: SCAN_LIMIT }).catch(()=>[]);
+      for (const m of msgs) {
+        const hasMedia = (typeof m.hasMedia === 'function') ? await m.hasMedia() : m.hasMedia;
+        if (!hasMedia) continue;
+        const caption = (m.body || '').toLowerCase();
+        let filename = (m._data?.media?.filename || '').toLowerCase();
+        if (caption.includes(keyword) || filename.includes(keyword)) {
+          foundMessage = m;
+          // forward to origin
+          try { await foundMessage.forward(message.from); } catch (err) {
+            try {
+              const media = await foundMessage.downloadMedia();
+              await safeSend(message.from, new MessageMedia(media.mimetype, media.data, media.filename), { caption: foundMessage.body || '' });
+            } catch (e2) { await safeSend(message.from, 'Found media but failed to forward/send it.'); }
+          }
+          const srcName = chat.name || gid;
+          await safeSend(message.from, `Found in "${srcName}".`);
+          break;
+        }
+      }
+      if (foundMessage) break;
+    } catch (e) { continue; }
+  }
+
+  if (!foundMessage) {
+    await safeSend(message.from, `Sorry — I couldn't find a matching image in any of the groups I checked.`);
+  }
+  break;
 }
 
 

@@ -21,6 +21,10 @@ const RestorationMonitor = require('./restorationMonitor');
 // Create a global monitor instance
 const restorationMonitor = new RestorationMonitor();
 
+const BASE_AUTH_PATH = path.join(__dirname, '..', '.wwebjs_auth'); 
+// or use process.cwd() if bot.js is not in worker folder
+// console.log("Auth path:", BASE_AUTH_PATH);
+
 
 // bot.js (multi-session, isolated per-client implementation)
 // - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
@@ -428,9 +432,46 @@ function normalizeJid(jid) {
     }
   });
 
-  client.on('authenticated', () => {
-    logger.info(`[${sessionName}] authenticated`);
-  });
+//   client.on('authenticated', () => {
+//     logger.info(`[${sessionName}] authenticated`);
+//   });
+
+client.on('authenticated', async () => {
+    try {
+        logger.info(`[${sessionName}] authenticated — saving auth files...`);
+
+        const sessionFolder = path.join(BASE_AUTH_PATH, sessionId);
+        if (!fs.existsSync(sessionFolder)) {
+            logger.warn(`[${sessionName}] Auth folder does not exist: ${sessionFolder}`);
+            return;
+        }
+
+        const files = fs.readdirSync(sessionFolder);
+        const authObj = {};
+
+        for (const file of files) {
+            try {
+                const filePath = path.join(sessionFolder, file);
+                const data = fs.readFileSync(filePath);
+                authObj[file] = data.toString('base64');
+            } catch (err) {
+                logger.warn(`[${sessionName}] Failed to read auth file ${file}: ${err.message}`);
+            }
+        }
+
+        await SessionAuth.findOneAndUpdate(
+            { sessionId },
+            { authData: JSON.stringify(authObj), updatedAt: new Date() },
+            { upsert: true }
+        );
+
+        logger.info(`[${sessionName}] Authentication data saved to DB.`);
+
+    } catch (err) {
+        logger.error(`[${sessionName}] Error saving authentication data: ${err.message}`);
+    }
+});
+
 
   client.on('auth_failure', (err) => {
     logger.error(`[${sessionName}] auth failure`, err && err.message ? err.message : err);
@@ -4358,20 +4399,40 @@ try {
 }
 
 // ---------------- Session creation / management API ----------------
-function createClient(sessionId) {
+// function createClient(sessionId) {
+//   const opts = createClientOptions(sessionId);
+//   const client = new Client(opts);
+//   // ensure event handlers are unique per client
+//   setupClientEvents(client, sessionId, global.io || null);
+//   return client;
+// }
+
+async function createClient(sessionId) {
+  // 1. Restore auth files BEFORE creating client
+  await restoreAuthForSession(sessionId);
+
+  // 2. Make sure LocalAuth uses the correct folder
   const opts = createClientOptions(sessionId);
+
+  // override dataPath to absolute path for safety
+  opts.authStrategy = new (require('whatsapp-web.js').LocalAuth)({
+    clientId: sessionId,
+    dataPath: BASE_AUTH_PATH
+  });
+
   const client = new Client(opts);
-  // ensure event handlers are unique per client
   setupClientEvents(client, sessionId, global.io || null);
   return client;
 }
+
 
 function createSession(sessionId) {
   if (clients.has(sessionId)) {
     logger.info(`Session ${sessionId} already exists`);
     return clients.get(sessionId);
   }
-  const client = createClient(sessionId);
+//   const client = createClient(sessionId);
+const client = await createClient(sessionId);
   clients.set(sessionId, client);
   client.initialize().catch(err => {
     logger.error(`Failed to initialize client ${sessionId}`, err);
@@ -4407,6 +4468,41 @@ async function createBotSession(userId, sessionId, workerIO) {
  * Configuration for session restoration
  */
 const RESTORE_CONFIG = config.restoration;
+
+function ensureDir(p) {
+  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+}
+
+async function restoreAuthForSession(sessionId) {
+  try {
+    const session = await SessionAuth.findOne({ sessionId }).lean();
+    if (!session || !session.authData) {
+      return false;
+    }
+
+    let authObj;
+    try {
+      authObj = JSON.parse(session.authData);
+    } catch {
+      return false;
+    }
+
+    const sessionFolder = path.join(BASE_AUTH_PATH, sessionId);
+    ensureDir(sessionFolder);
+
+    // authObj must be an object of filename -> base64 contents
+    for (const filename of Object.keys(authObj)) {
+      const filePath = path.join(sessionFolder, filename);
+      fs.writeFileSync(filePath, Buffer.from(authObj[filename], 'base64'));
+    }
+
+    return true;
+
+  } catch (err) {
+    console.log("restoreAuthForSession error:", err);
+    return false;
+  }
+}
 
 /**
  * Restore sessions in batches with prioritization
