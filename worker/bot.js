@@ -594,9 +594,9 @@ This policy prevents trial abuse and ensures fair access for all users.`);
         await new Promise(r => setTimeout(r, 400));
 
         await safeSend(selfId, `
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 ✨ WELCOME TO TAGTHEMALL BOT ✨
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 
 🤖 Your automation assistant is now active!
 
@@ -867,8 +867,6 @@ async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
     }
   }
 }
-
-
  
 client.on('message_create', async (message) => {
   try {
@@ -1000,9 +998,6 @@ try {
 } catch (e) {
     console.error("Auto-reply error:", e);
 }
-
-
-
 
     // If no command prefix, stop here
     if (!message.body.startsWith(COMMAND_PREFIX)) return;
@@ -1301,9 +1296,9 @@ case 'help': {
     if (!isSelfChat) return;
 
     const text = `
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 ✨ *TAGTHEMALL BOT COMMANDS* ✨
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 
 📋 *GROUP MANAGEMENT*
 • !list — Groups where you're an admin
@@ -1354,9 +1349,9 @@ case 'help': {
 • !cleanupcache — Rebuild group cache
 • !help — Show this help menu
 
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 💡 *TIP:* You can type !tag without index if you used !use before.
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 `;
 
     await safeSend(message.from, text);
@@ -1928,37 +1923,50 @@ case 'status': {
 case 'dmall': {
     if (!isSelfChat) return;
 
-    // usage: !dmall <groupIndex> | <message>
-    const full = args.join(' ');
-    const pipeIndex = full.indexOf('|');
-
+    // ------------------------------------------------------------
+    // 1️⃣ PARSE GROUP INDEX AND MESSAGE
+    // ------------------------------------------------------------
+    const pipeIndex = message.body.indexOf('|');
     if (pipeIndex === -1) {
         await safeSend(message.from,
-            '❗ Usage:\n!dmall <groupIndex> | <message>\nExample:\n!dmall 2 | Hello everyone\n\n💡 Use !listall to see all your groups'
-        );
+            '❗ Usage:\n!dmall <groupIndex> | <message>');
         break;
     }
 
-    const groupIndex = parseInt(full.slice(0, pipeIndex).trim());
-    const msgText = full.slice(pipeIndex + 1).trim();
+    const beforePipe = message.body.substring(0, pipeIndex).trim();
+    const afterPipe = message.body.substring(pipeIndex + 1).trim();
 
-    if (!groupIndex || !msgText) {
-        await safeSend(message.from, '❗ Missing group index or message.');
+    const parts = beforePipe.split(/\s+/);
+    const groupIndex = parseInt(parts[1]);
+
+    if (isNaN(groupIndex)) {
+        await safeSend(message.from,
+            '❗ First argument must be the group index.\nExample:\n!dmall 3 | Hello');
         break;
     }
 
-    // ✅ CHANGED: Resolve from ALL groups (not just admin groups)
-    let resolved = { index: null, group: null };
+    if (!afterPipe.length) {
+        await safeSend(message.from,
+            '❗ Empty message detected.\nPut your message after the "|" symbol.');
+        break;
+    }
+
+    const msgText = afterPipe;
     
+    // ------------------------------------------------------------
+    // 2️⃣ RESOLVE THE GROUP FROM INDEX (USING listall CACHE)
+    // ------------------------------------------------------------
+    let allGroups = [];
+
     try {
-        // Load cached ALL groups
-        let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
             .lean()
             .catch(() => null);
 
-        let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+        if (cached && Array.isArray(cached.groups)) {
+            allGroups = cached.groups;
+        }
 
-        // If no cache, rebuild from all groups
         if (!allGroups.length) {
             const chats = await client.getChats();
             allGroups = chats
@@ -1968,115 +1976,343 @@ case 'dmall': {
                     groupId: c.id._serialized
                 }));
 
-            // Save cache
             await SavedGroupList.findOneAndUpdate(
                 { sessionId: sessionId + "_all" },
                 { groups: allGroups, updatedAt: new Date() },
                 { upsert: true }
-            ).catch(() => null);
+            );
         }
+    } catch {}
 
-        // Resolve group by index
-        const arrayIndex = groupIndex - 1;
-        if (allGroups[arrayIndex]) {
-            resolved = {
-                index: groupIndex,
-                group: allGroups[arrayIndex]
-            };
-        }
-    } catch (err) {
-        logger.error('Error resolving group:', err);
-    }
+    const arrayIndex = groupIndex - 1;
+    const group = allGroups[arrayIndex];
 
-    if (!resolved.group) {
-        await safeSend(message.from, '❌ Invalid group index. Use !listall to see all groups.');
+    if (!group) {
+        await safeSend(message.from,
+            '❌ Invalid group index.\nUse !listall to see indexes.');
         break;
     }
 
-    // fetch group chat
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
+    const groupId = group.groupId;
+    const chat = await client.getChatById(groupId).catch(() => null);
+
     if (!chat) {
-        await safeSend(message.from, '❌ Could not fetch group chat.');
+        await safeSend(message.from,
+            '❌ Could not load group. Bot may not be a member.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
+    // 3️⃣ REFRESH MEMBERS ALWAYS (YOUR CHOICE C)
     // ------------------------------------------------------------
     let participants = [];
 
     try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+        // Always fetch fresh members
+        const fetched = await chat.getParticipants().catch(() => []);
 
-        if (Array.isArray(dbList) && dbList.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } 
-        else if (typeof chat.getParticipants === "function") {
-            const fetched = await chat.getParticipants().catch(() => []);
-            if (fetched.length) {
-                participants = fetched;
-
-                const jids = fetched.map(p => p.id?._serialized || p);
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
-            }
-        } 
-        else if (Array.isArray(chat.participants) && chat.participants.length) {
-            participants = chat.participants;
-
-            const jids = participants
-                .map(p => p.id?._serialized || null)
-                .filter(Boolean);
-
-            await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+        if (fetched.length) {
+            participants = fetched;
+            await setMembersForGroup(
+                sessionId,
+                groupId,
+                fetched.map(p => p.id._serialized)
+            );
         }
-    } catch {
-        participants = [];
-    }
+    } catch {}
 
     if (!participants.length) {
-        await safeSend(
-            message.from,
-            `⚠ Unable to fetch members for *${resolved.group.name}*.\n` +
-            `This may happen in Community subgroups.\n` +
-            `Try !syncmembers if bot becomes admin.`
-        );
+        await safeSend(message.from,
+            `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin.`);
         break;
     }
 
-    // convert to JIDs
-    const allJids = participants
+    // Convert to JIDs
+    const allJIDs = participants
         .map(p => p.id._serialized)
-        .filter(j => j !== mySelf); // skip bot
+        .filter(j => j !== mySelf);
+
+    if (!allJIDs.length) {
+        await safeSend(message.from,
+            '⚠ No eligible members found.');
+        break;
+    }
 
     // ------------------------------------------------------------
-    // 📨 SEND DM TO EACH MEMBER
+    // 4️⃣ AUTO-BATCH SETUP
     // ------------------------------------------------------------
-    let delivered = 0;
+    const batchSize = 60;               // safe batch
+    const delayPerMessage = () => 1200 + Math.random() * 1300;  // strong safety
+    const batchDelay = 10 * 60 * 1000;  // 10 minutes = 600000 ms
 
-    await safeSend(
-        message.from,
-        `📨 *DM-All Started*\nSending message to ${allJids.length} members of *${resolved.group.name}*...`
-    );
-
-    for (const jid of allJids) {
-        try {
-            await client.sendMessage(jid, msgText);
-            delivered++;
-        } catch (e) {
-            logger.error("dmall send error", e);
-        }
-
-        // throttle to avoid WhatsApp spam detection
-        await new Promise(r => setTimeout(r, 350));
+    const batches = [];
+    for (let i = 0; i < allJIDs.length; i += batchSize) {
+        batches.push(allJIDs.slice(i, i + batchSize));
     }
 
     await safeSend(
         message.from,
-        `✅ *DM-All Completed*\nMessage delivered to **${delivered}** members.`
+        `📨 *DM-All Started (Auto-Batch Mode)*  
+Group: *${chat.name}*  
+Total Members: *${allJIDs.length}*  
+Total Batches: *${batches.length}*  
+Batch Size: *60*  
+Delay Between Batches: *10 minutes*
+
+Sending first batch now…`
     );
+
+    // ------------------------------------------------------------
+    // 5️⃣ AUTO-BATCH EXECUTION (NO USER INTERACTION NEEDED)
+    // ------------------------------------------------------------
+    async function sendBatch(batchIndex) {
+        if (batchIndex >= batches.length) {
+            await safeSend(
+                message.from,
+                `🎉 *DM-All Completed!*  
+Total messages sent: *${allJIDs.length}*`
+            );
+            return;
+        }
+
+        const batch = batches[batchIndex];
+        let sent = 0;
+
+        for (const jid of batch) {
+            try {
+                await client.sendMessage(jid, msgText);
+                sent++;
+            } catch {}
+            await new Promise(r => setTimeout(r, delayPerMessage()));
+        }
+
+        await safeSend(
+            message.from,
+            `📦 *Batch ${batchIndex + 1}/${batches.length} complete*  
+Sent: *${sent}/${batch.length}*  
+Next batch in 10 minutes…`
+        );
+
+        // Schedule next batch after 10 minutes
+        setTimeout(() => {
+            sendBatch(batchIndex + 1);
+        }, batchDelay);
+    }
+
+    // Start first batch
+    sendBatch(0);
 
     break;
 }
+
+
+case 'dmallmulti': {
+    if (!isSelfChat) return;
+
+    // ------------------------------------------------------------
+    // 1️⃣ PARSE GROUP INDEXES + MESSAGE
+    // ------------------------------------------------------------
+    const pipeIndex = message.body.indexOf('|');
+    if (pipeIndex === -1) {
+        await safeSend(message.from,
+            '❗ Usage:\n!dmallmulti <groupIndexes> | <message>\nExample:\n!dmallmulti 1,2,5 | Hello');
+        break;
+    }
+
+    const beforePipe = message.body.substring(0, pipeIndex).trim();
+    const msgText = message.body.substring(pipeIndex + 1).trim();
+
+    if (!msgText.length) {
+        await safeSend(message.from, '❗ Message cannot be empty.');
+        break;
+    }
+
+    const parts = beforePipe.split(/\s+/);
+    const rawIndexes = parts[1];
+
+    if (!rawIndexes) {
+        await safeSend(message.from,
+            '❗ You must provide group indexes.\nExample:\n!dmallmulti 1,2,5 | Hello');
+        break;
+    }
+
+    // Convert "1,2,5" → [1, 2, 5]
+    const groupIndexes = rawIndexes.split(',')
+        .map(i => parseInt(i.trim()))
+        .filter(n => !isNaN(n) && n > 0);
+
+    if (!groupIndexes.length) {
+        await safeSend(message.from,
+            '❗ Invalid group indexes.\nUse comma-separated numbers.');
+        break;
+    }
+
+    // ------------------------------------------------------------
+    // 2️⃣ LOAD OR REBUILD GROUP LIST
+    // ------------------------------------------------------------
+    let allGroups = [];
+
+    try {
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean();
+        if (cached && Array.isArray(cached.groups)) allGroups = cached.groups;
+
+        if (!allGroups.length) {
+            const chats = await client.getChats();
+            allGroups = chats
+                .filter(c => c.isGroup)
+                .map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+
+            await SavedGroupList.findOneAndUpdate(
+                { sessionId: sessionId + "_all" },
+                { groups: allGroups, updatedAt: new Date() },
+                { upsert: true }
+            );
+        }
+    } catch {}
+
+    const selectedGroups = groupIndexes
+        .map(i => allGroups[i - 1])
+        .filter(Boolean);
+
+    if (!selectedGroups.length) {
+        await safeSend(message.from,
+            '❌ None of the requested groups were found.\nUse !listall to see indexes.');
+        break;
+    }
+
+    // ------------------------------------------------------------
+    // 3️⃣ SAFETY CONSTANTS
+    // ------------------------------------------------------------
+    const batchSize = 60;                     // safe WhatsApp batch
+    const msgDelay = () => 1200 + Math.random() * 1300;  // 1.2–2.5 sec per DM
+    const batchDelay = 10 * 60 * 1000;        // 10 minutes between batches
+    const groupDelay = 10 * 60 * 1000;        // 10 minutes between groups
+
+    await safeSend(
+        message.from,
+        `📨 *DM-All MULTI Started*  
+Groups: *${rawIndexes}*  
+Batch Size: *60*  
+Delay Between Batches: *10 mins*  
+Delay Between Groups: *10 mins*`
+    );
+
+    // ------------------------------------------------------------
+    // 4️⃣ PROCESS A SINGLE GROUP (ALL BATCHES)
+    // ------------------------------------------------------------
+    async function processGroup(groupObj, groupNumber, totalGroups) {
+        const groupId = groupObj.groupId;
+        const chat = await client.getChatById(groupId).catch(() => null);
+
+        if (!chat) {
+            await safeSend(message.from,
+                `❌ Skipping Group #${groupIndexes[groupNumber - 1]} — Cannot load chat.`);
+            return;
+        }
+
+        // Always refresh members (Option C)
+        let participants = [];
+        try {
+            const fetched = await chat.getParticipants().catch(() => []);
+            if (fetched.length) {
+                participants = fetched;
+                await setMembersForGroup(
+                    sessionId,
+                    groupId,
+                    fetched.map(p => p.id._serialized)
+                );
+            }
+        } catch {}
+
+        if (!participants.length) {
+            await safeSend(message.from,
+                `⚠ Skipping *${chat.name}* — Cannot fetch members.`);
+            return;
+        }
+
+        // Convert to JIDs
+        const allJIDs = participants
+            .map(p => p.id._serialized)
+            .filter(j => j !== mySelf);
+
+        if (!allJIDs.length) {
+            await safeSend(
+                message.from,
+                `⚠ Skipping *${chat.name}* — No eligible members.`
+            );
+            return;
+        }
+
+        // Create safe batches (60 per batch)
+        const batches = [];
+        for (let i = 0; i < allJIDs.length; i += batchSize) {
+            batches.push(allJIDs.slice(i, i + batchSize));
+        }
+
+        await safeSend(
+            message.from,
+            `📦 *Group ${groupNumber}/${totalGroups} — ${chat.name}*  
+Members: *${allJIDs.length}*  
+Batches: *${batches.length}*`
+        );
+
+        // SEND EACH BATCH
+        async function sendBatch(batchIndex) {
+            if (batchIndex >= batches.length) {
+                await safeSend(message.from,
+                    `✔ Finished *${chat.name}*\nWaiting 10 mins before next group…`);
+                return;
+            }
+
+            const batch = batches[batchIndex];
+            let sent = 0;
+
+            for (const jid of batch) {
+                try {
+                    await client.sendMessage(jid, msgText);
+                    sent++;
+                } catch {}
+                await new Promise(r => setTimeout(r, msgDelay()));
+            }
+
+            await safeSend(
+                message.from,
+                `📨 Batch ${batchIndex + 1}/${batches.length} complete for *${chat.name}*\nSent: *${sent}/${batch.length}*\nNext batch in 10 mins…`
+            );
+
+            setTimeout(() => sendBatch(batchIndex + 1), batchDelay);
+        }
+
+        await sendBatch(0);  // start batches
+    }
+
+    // ------------------------------------------------------------
+    // 5️⃣ PROCESS ALL GROUPS SEQUENTIALLY
+    // ------------------------------------------------------------
+    async function processGroupsSequentially(index) {
+        if (index >= selectedGroups.length) {
+            await safeSend(message.from, '🎉 *DM-All MULTI Completed for ALL groups!*');
+            return;
+        }
+
+        const groupObj = selectedGroups[index];
+
+        await processGroup(groupObj, index + 1, selectedGroups.length);
+
+        // Wait 10 minutes before next group
+        setTimeout(() => {
+            processGroupsSequentially(index + 1);
+        }, groupDelay);
+    }
+
+    processGroupsSequentially(0);
+
+    break;
+}
+
 
 
 /* ---------- DMSELECTED ---------- */
@@ -2433,7 +2669,6 @@ case 'members': {
 }
 
 
-      /* ---------- ADMINS ---------- */
 /* ---------- ADMINS ---------- */
 case 'admins': {
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
@@ -3048,249 +3283,372 @@ Examples:
 }
   
 
+
+      /* ---------- FORWARD ---------- */
+case 'forwardone': {
+    if (!isSelfChat) return;
+
+    // must be a reply to a message to forward
+    const quoted = await (async () => {
+        try { return await message.getQuotedMessage(); } catch { return null; }
+    })();
+
+    if (!quoted) {
+        await safeSend(message.from, '❗ Usage (reply to a message):\nReply to the message you want to forward, then type:\n!forwardone <groupIndex>');
+        break;
+    }
+
+    // parse index
+    const parts = message.body.trim().split(/\s+/);
+    const groupIndex = parseInt(parts[1]);
+    if (isNaN(groupIndex)) {
+        await safeSend(message.from, '❗ First argument must be the group index. Example:\n!forwardone 3');
+        break;
+    }
+
+    // resolve all groups (listall cache)
+    let allGroups = [];
+    try {
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+        if (cached && Array.isArray(cached.groups)) allGroups = cached.groups;
+        if (!allGroups.length) {
+            const chats = await client.getChats();
+            allGroups = chats.filter(c => c.isGroup).map(c => ({ name: c.name || "Unnamed Group", groupId: c.id._serialized }));
+            await SavedGroupList.findOneAndUpdate({ sessionId: sessionId + "_all" }, { groups: allGroups, updatedAt: new Date() }, { upsert: true }).catch(()=>null);
+        }
+    } catch {}
+
+    const group = allGroups[groupIndex - 1];
+    if (!group) {
+        await safeSend(message.from, '❌ Invalid group index. Use !listall to view indexes.');
+        break;
+    }
+
+    // load group chat and refresh members (Option C)
+    const chat = await client.getChatById(group.groupId).catch(()=>null);
+    if (!chat) {
+        await safeSend(message.from, '❌ Could not load group. Bot may not be a member.');
+        break;
+    }
+
+    let participants = [];
+    try {
+        const fetched = await chat.getParticipants().catch(()=>[]);
+        if (fetched.length) {
+            participants = fetched;
+            await setMembersForGroup(sessionId, group.groupId, fetched.map(p => p.id._serialized)).catch(()=>null);
+        }
+    } catch { participants = []; }
+
+    if (!participants.length) {
+        await safeSend(message.from, `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin or !syncmembers.`);
+        break;
+    }
+
+    const allJIDs = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
+    if (!allJIDs.length) {
+        await safeSend(message.from, '⚠ No eligible members to forward to.');
+        break;
+    }
+
+    // Safety constants
+    const batchSize = 60;
+    const msgDelay = () => 1200 + Math.random() * 1300;
+    const batchDelay = 10 * 60 * 1000; // 10 min
+
+    // Build batches
+    const batches = [];
+    for (let i = 0; i < allJIDs.length; i += batchSize) batches.push(allJIDs.slice(i, i + batchSize));
+
+    await safeSend(message.from, `📤 *Forward-One Started*  
+Group: *${chat.name}*  
+Members: *${allJIDs.length}*  
+Batches: *${batches.length}*  
+Forwarding now (private forwards).`);
+
+    // send batches sequentially
+    async function sendBatch(batchIndex) {
+        if (batchIndex >= batches.length) {
+            await safeSend(message.from, `✅ *Forward-One Completed for ${chat.name}*`);
+            return;
+        }
+
+        const batch = batches[batchIndex];
+        let sent = 0;
+
+        for (const jid of batch) {
+            try {
+                // forward quoted message to private chat jid
+                await client.forwardMessages(jid, [quoted], true).catch(async () => {
+                    // some clients expect message id; fallback: try forward by id if exists
+                    try {
+                        const mid = quoted.id?._serialized || quoted._data?.id?._serialized;
+                        if (mid) await client.forwardMessages(jid, [mid], true);
+                    } catch {}
+                });
+                sent++;
+            } catch (e) {
+                // ignore errors for single recipients
+            }
+            await new Promise(r => setTimeout(r, msgDelay()));
+        }
+
+        await safeSend(message.from, `📦 Batch ${batchIndex + 1}/${batches.length} completed — Sent: ${sent}/${batch.length}\nNext batch in 10 minutes...`);
+        setTimeout(() => sendBatch(batchIndex + 1), batchDelay);
+    }
+
+    // start
+    sendBatch(0);
+    break;
+}
+
+case 'forwardmulti': {
+    if (!isSelfChat) return;
+
+    // must reply to a message
+    const quoted = await (async () => {
+        try { return await message.getQuotedMessage(); } catch { return null; }
+    })();
+
+    if (!quoted) {
+        await safeSend(message.from, '❗ Usage (reply to a message):\nReply to the message you want to forward, then type:\n!forwardmulti 1,2 | <optional>');
+        break;
+    }
+
+    // parse indexes
+    const pipeIndex = message.body.indexOf('|');
+    const beforePipe = pipeIndex === -1 ? message.body.trim() : message.body.substring(0, pipeIndex).trim();
+    const parts = beforePipe.split(/\s+/);
+    const raw = parts[1];
+    if (!raw) {
+        await safeSend(message.from, '❗ Provide group indexes. Example: !forwardmulti 1,2,5');
+        break;
+    }
+
+    const groupIndexes = raw.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n) && n > 0);
+    if (!groupIndexes.length) {
+        await safeSend(message.from, '❗ Invalid group indexes. Use comma-separated numbers.');
+        break;
+    }
+
+    // load all groups (cache or rebuild)
+    let allGroups = [];
+    try {
+        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(()=>null);
+        if (cached && Array.isArray(cached.groups)) allGroups = cached.groups;
+        if (!allGroups.length) {
+            const chats = await client.getChats();
+            allGroups = chats.filter(c => c.isGroup).map(c => ({ name: c.name || "Unnamed Group", groupId: c.id._serialized }));
+            await SavedGroupList.findOneAndUpdate({ sessionId: sessionId + "_all" }, { groups: allGroups, updatedAt: new Date() }, { upsert: true }).catch(()=>null);
+        }
+    } catch {}
+
+    const selectedGroups = groupIndexes.map(i => allGroups[i - 1]).filter(Boolean);
+    if (!selectedGroups.length) {
+        await safeSend(message.from, '❌ None of the requested groups were found. Use !listall to see indexes.');
+        break;
+    }
+
+    // safety constants
+    const batchSize = 60;
+    const msgDelay = () => 1200 + Math.random() * 1300;
+    const batchDelay = 10 * 60 * 1000;
+    const groupDelay = 10 * 60 * 1000;
+
+    await safeSend(message.from, `📤 *Forward-Multi Started* Groups: ${groupIndexes.join(', ')} — will process sequentially.`);
+
+    // process one group (all its batches)
+    async function processGroup(groupObj, idx, total) {
+        const chat = await client.getChatById(groupObj.groupId).catch(()=>null);
+        if (!chat) {
+            await safeSend(message.from, `❌ Skipping group #${groupIndexes[idx - 1]} — cannot load chat.`);
+            return;
+        }
+
+        // refresh members
+        let participants = [];
+        try {
+            const fetched = await chat.getParticipants().catch(()=>[]);
+            if (fetched.length) {
+                participants = fetched;
+                await setMembersForGroup(sessionId, groupObj.groupId, fetched.map(p => p.id._serialized)).catch(()=>null);
+            }
+        } catch {}
+
+        if (!participants.length) {
+            await safeSend(message.from, `⚠ Skipping ${chat.name} — cannot fetch members.`);
+            return;
+        }
+
+        const allJIDs = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
+        if (!allJIDs.length) {
+            await safeSend(message.from, `⚠ Skipping ${chat.name} — no eligible members.`);
+            return;
+        }
+
+        const batches = [];
+        for (let i = 0; i < allJIDs.length; i += batchSize) batches.push(allJIDs.slice(i, i + batchSize));
+
+        await safeSend(message.from, `📦 Starting ${idx}/${total}: ${chat.name} — members: ${allJIDs.length}, batches: ${batches.length}`);
+
+        async function sendBatch(bi) {
+            if (bi >= batches.length) {
+                await safeSend(message.from, `✔ Completed ${chat.name} — waiting 10 mins before next group...`);
+                return;
+            }
+
+            const batch = batches[bi];
+            let sent = 0;
+            for (const jid of batch) {
+                try {
+                    await client.forwardMessages(jid, [quoted], true).catch(async () => {
+                        try {
+                            const mid = quoted.id?._serialized || quoted._data?.id?._serialized;
+                            if (mid) await client.forwardMessages(jid, [mid], true);
+                        } catch {}
+                    });
+                    sent++;
+                } catch {}
+                await new Promise(r => setTimeout(r, msgDelay()));
+            }
+
+            await safeSend(message.from, `📨 Batch ${bi + 1}/${batches.length} for ${chat.name} completed — Sent: ${sent}/${batch.length}\nNext batch in 10 mins...`);
+            setTimeout(() => sendBatch(bi + 1), batchDelay);
+        }
+
+        sendBatch(0);
+    }
+
+    // process groups sequentially
+    async function doGroups(i) {
+        if (i >= selectedGroups.length) {
+            await safeSend(message.from, '🎉 *Forward-Multi Completed for all requested groups!*');
+            return;
+        }
+
+        const groupObj = selectedGroups[i];
+        await processGroup(groupObj, i + 1, selectedGroups.length);
+
+        // wait groupDelay then continue with next group
+        setTimeout(() => doGroups(i + 1), groupDelay);
+    }
+
+    doGroups(0);
+    break;
+}
+
 case 'forwardall': {
     if (!isSelfChat) return;
 
-    // usage: !forwardall <groupIndex> <message>
-    if (args.length < 2) {
-        await safeSend(message.from,
-            "Usage:\n!forwardall <groupIndex> <message>\nExample:\n!forwardall 20 Hello everyone!");
+    // must reply to a message
+    const quoted = await (async () => {
+        try { return await message.getQuotedMessage(); } catch { return null; }
+    })();
+
+    if (!quoted) {
+        await safeSend(message.from, '❗ Usage (reply): Reply to the message you want to forward, then type:\n!forwardall');
         break;
     }
 
-    // 1️⃣ Extract group index
-    const groupIndex = parseInt(args[0]);
-    if (isNaN(groupIndex)) {
-        await safeSend(message.from, "❌ First argument must be a group index.");
-        break;
-    }
-
-    // 2️⃣ Extract message text
-    const msgText = args.slice(1).join(" ").trim();
-    if (!msgText) {
-        await safeSend(message.from, "❌ Message cannot be empty.");
-        break;
-    }
-
-    // 3️⃣ Resolve group
-    const resolved = await resolveTargetGroupArg(groupIndex);
-    if (!resolved.group) {
-        await safeSend(message.from, "❌ Invalid group index. Run !list first.");
-        break;
-    }
-
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-    if (!chat) {
-        await safeSend(message.from, "❌ Could not fetch group.");
-        break;
-    }
-
-    // 4️⃣ Safe participant resolver (DB → fetch → fallback)
-    let participants = [];
+    // load all groups (admin+member)
+    let allGroups = [];
     try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
+        const chats = await client.getChats();
+        allGroups = chats.filter(c => c.isGroup).map(c => ({ name: c.name || "Unnamed Group", groupId: c.id._serialized }));
+        // update cache
+        await SavedGroupList.findOneAndUpdate({ sessionId: sessionId + "_all" }, { groups: allGroups, updatedAt: new Date() }, { upsert: true }).catch(()=>null);
+    } catch {}
 
-        if (dbList?.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } else if (typeof chat.getParticipants === "function") {
-            const fetched = await chat.getParticipants().catch(() => []);
+    if (!allGroups.length) {
+        await safeSend(message.from, '❌ No groups found for this session.');
+        break;
+    }
+
+    // safety
+    const batchSize = 60;
+    const msgDelay = () => 1200 + Math.random() * 1300;
+    const batchDelay = 10 * 60 * 1000;
+    const groupDelay = 10 * 60 * 1000;
+
+    await safeSend(message.from, `📤 *Forward-All Started* — Processing ${allGroups.length} groups sequentially.`);
+
+    // process single group (same as forwardmulti)
+    async function processGroup(groupObj, idx, total) {
+        const chat = await client.getChatById(groupObj.groupId).catch(()=>null);
+        if (!chat) {
+            await safeSend(message.from, `❌ Skipping group #${idx} — cannot load chat.`);
+            return;
+        }
+
+        let participants = [];
+        try {
+            const fetched = await chat.getParticipants().catch(()=>[]);
             if (fetched.length) {
                 participants = fetched;
-                const jids = fetched.map(p => p.id._serialized);
-                await setMembersForGroup(sessionId, resolved.group.groupId, jids);
+                await setMembersForGroup(sessionId, groupObj.groupId, fetched.map(p => p.id._serialized)).catch(()=>null);
             }
-        } else if (chat.participants?.length) {
-            participants = chat.participants;
-            const jids = participants.map(p => p.id._serialized);
-            await setMembersForGroup(sessionId, resolved.group.groupId, jids);
-        }
-    } catch {
-        participants = [];
-    }
+        } catch {}
 
-    if (!participants.length) {
-        await safeSend(message.from, `⚠ Cannot get members of *${resolved.group.name}*.`);
-        break;
-    }
-
-    const JIDS = participants.map(p => p.id._serialized);
-
-    // 5️⃣ Send private DMs one by one
-    let delivered = 0;
-    await safeSend(message.from,
-        `📨 Sending your message privately to **${JIDS.length}** members of *${resolved.group.name}*...`
-    );
-
-    for (const jid of JIDS) {
-        if (jid === mySelf) continue; // skip bot
-
-        try {
-            await client.sendMessage(jid, msgText);
-            delivered++;
-        } catch (e) {
-            logger.error("forwardall DM error:", e);
+        if (!participants.length) {
+            await safeSend(message.from, `⚠ Skipping ${chat.name} — cannot fetch members.`);
+            return;
         }
 
-        await new Promise(r => setTimeout(r, 300)); // anti-spam throttle
+        const allJIDs = participants.map(p => p.id._serialized).filter(j => j !== mySelf);
+        if (!allJIDs.length) {
+            await safeSend(message.from, `⚠ Skipping ${chat.name} — no eligible members.`);
+            return;
+        }
+
+        const batches = [];
+        for (let i = 0; i < allJIDs.length; i += batchSize) batches.push(allJIDs.slice(i, i + batchSize));
+
+        await safeSend(message.from, `📦 Group ${idx}/${total}: ${chat.name} — Members: ${allJIDs.length}, Batches: ${batches.length}`);
+
+        async function sendBatch(bi) {
+            if (bi >= batches.length) {
+                await safeSend(message.from, `✔ Finished ${chat.name} — waiting 10 mins before next group...`);
+                return;
+            }
+
+            const batch = batches[bi];
+            let sent = 0;
+            for (const jid of batch) {
+                try {
+                    await client.forwardMessages(jid, [quoted], true).catch(async () => {
+                        try {
+                            const mid = quoted.id?._serialized || quoted._data?.id?._serialized;
+                            if (mid) await client.forwardMessages(jid, [mid], true);
+                        } catch {}
+                    });
+                    sent++;
+                } catch {}
+                await new Promise(r => setTimeout(r, msgDelay()));
+            }
+
+            await safeSend(message.from, `📨 Batch ${bi + 1}/${batches.length} for ${chat.name} completed — Sent: ${sent}/${batch.length}\nNext batch in 10 mins...`);
+            setTimeout(() => sendBatch(bi + 1), batchDelay);
+        }
+
+        sendBatch(0);
     }
 
-    await safeSend(message.from,
-        `✅ *ForwardAll completed!*\nMessage delivered to **${delivered}** members of *${resolved.group.name}*.`
-    );
+    async function doAllGroups(i) {
+        if (i >= allGroups.length) {
+            await safeSend(message.from, '🎉 *Forward-All Completed for ALL groups!*');
+            return;
+        }
 
+        const groupObj = allGroups[i];
+        await processGroup(groupObj, i + 1, allGroups.length);
+
+        setTimeout(() => doAllGroups(i + 1), groupDelay);
+    }
+
+    doAllGroups(0);
     break;
 }
 
-
-      /* ---------- FORWARD ---------- */
-case 'forward': {
-    if (!isSelfChat) return;
-
-    // Must reply to a message
-    if (!message.hasQuotedMsg) {
-        await safeSend(message.from, '❗ Reply to a message then send:\n!forward <groupIndex> <targets>');
-        break;
-    }
-
-    // Group index
-    const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
-    const resolved = await resolveTargetGroupArg(providedIdx);
-
-    if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Run !list or set a default with !use');
-        break;
-    }
-
-    // Raw target input
-    const rawTargets = args.slice(providedIdx ? 1 : 0).join(' ');
-    const quoted = await message.getQuotedMessage();
-
-    const chat = await client.getChatById(resolved.group.groupId).catch(() => null);
-    if (!chat) {
-        await safeSend(message.from, '❌ Could not fetch group chat.');
-        break;
-    }
-
-    // ------------------------------------------------------------
-    // 🟢 PARTICIPANT RESOLVER (DB → getParticipants → fallback)
-    // ------------------------------------------------------------
-    let participants = [];
-    try {
-        const dbList = await getMembersFromDB(sessionId, resolved.group.groupId);
-
-        if (Array.isArray(dbList) && dbList.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j } }));
-        } else if (typeof chat.getParticipants === "function") {
-            const fetched = await chat.getParticipants().catch(() => []);
-            if (Array.isArray(fetched) && fetched.length) {
-                participants = fetched;
-
-                await setMembersForGroup(
-                    sessionId,
-                    resolved.group.groupId,
-                    fetched.map(p => p.id?._serialized || p)
-                );
-            }
-        } else if (Array.isArray(chat.participants) && chat.participants.length) {
-            participants = chat.participants;
-
-            const jids = participants
-                .map(p => p.id?._serialized || null)
-                .filter(Boolean);
-
-            if (jids.length) await setMembersForGroup(sessionId, resolved.group.groupId, jids);
-        }
-    } catch {
-        participants = [];
-    }
-
-    if (!participants.length) {
-        await safeSend(
-            message.from,
-            `⚠ Cannot determine members for *${resolved.group.name}*.\n` +
-            `Group may be a Community subgroup.\n` +
-            `Try running !syncmembers after making bot admin.`
-        );
-        break;
-    }
-
-    const participantJIDs = participants.map(p => p.id._serialized);
-
-    // ------------------------------------------------------------
-    // 🟢 TARGET PARSER (mentions, phone numbers, indexes)
-    // ------------------------------------------------------------
-    let targets = [];
-    
-    // A: Mentions like @234801234567
-    const matchMentions = rawTargets.match(/@?(\d{6,20})/g);
-    if (matchMentions) {
-        targets = matchMentions.map(m => `${m.replace(/[^0-9]/g, '')}@c.us`);
-    }
-
-    // B: Numeric indexes like 1,3,7
-    else if (/^[0-9,\s]+$/.test(rawTargets.trim())) {
-        const idxs = rawTargets.split(',')
-            .map(s => parseInt(s.trim()))
-            .filter(n => !isNaN(n));
-
-        targets = idxs
-            .map(i => participantJIDs[i - 1])
-            .filter(Boolean);
-    }
-
-    // C: Raw numbers like 081..., 090..., 234...
-    else {
-        const nums = rawTargets
-            .split(',')
-            .map(s => s.replace(/[^0-9]/g, ''))
-            .filter(n => n.length >= 7);
-
-        if (nums.length) {
-            targets = nums.map(n =>
-                (n.startsWith('234') ? n : '234' + n) + '@c.us'
-            );
-        }
-    }
-
-    // Remove duplicates & invalid JIDs
-    targets = [...new Set(targets)].filter(Boolean);
-
-    if (!targets.length) {
-        await safeSend(message.from, '❗ Could not parse targets. Use mentions, numbers, or indexes.');
-        break;
-    }
-
-    // ------------------------------------------------------------
-    // 🟢 CONFIRMATION
-    // ------------------------------------------------------------
-    await safeSend(message.from, `🔁 Forwarding to ${targets.length} members...`);
-
-    // ------------------------------------------------------------
-    // 🟢 SEND (supports media or text)
-    // ------------------------------------------------------------
-    for (const jid of targets) {
-        try {
-            if (quoted.hasMedia) {
-                const media = await quoted.downloadMedia();
-                await client.sendMessage(jid, media, {
-                    caption: quoted.body || ''
-                });
-            } else {
-                await client.sendMessage(jid, quoted.body || '');
-            }
-
-            await new Promise(r => setTimeout(r, 300)); // Throttle
-        } catch (e) {
-            logger.error(`[${sessionName}] forward -> ${jid}`, e.message || e);
-        }
-    }
-
-    // ------------------------------------------------------------
-    // DONE
-    // ------------------------------------------------------------
-    await safeSend(message.from, '✅ Forwarding completed.');
-    break;
-}
 
 
       /* ---------- PER-GROUP ALLOW / DENY ---------- */
@@ -3454,7 +3812,6 @@ case 'forward': {
     logger.error(`[${sessionName}] message handler error`, e);
   }
 });
-
 
   // error handler
   client.on('error', (err) => {
@@ -3626,84 +3983,6 @@ async function createBotSession(userId, sessionId, workerIO) {
   }
 }
 
-
-// // =========================================
-// // RESTORE ALL SESSIONS ON SERVER STARTUP
-// // =========================================
-// async function restoreAllSessions(io) {
-//     try {
-//         if (mongoose.connection.readyState !== 1) {
-//             logger.info("⛔ Mongoose not connected - skipping session restore");
-//             return;
-//         }
-
-//         logger.info("♻ Starting WhatsApp session restoration...");
-
-//         // const sessions = await Session.find({
-//         //     status: { $in: ["connected", "authenticated", "ready"] }
-//         // });
-
-//         // Find all active sessions (not disconnected, failed, or errored)
-//         const sessions = await Session.find({
-//             status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
-//         });
-        
-//         logger.info(`🔍 Found ${sessions.length} sessions in database`);
-        
-//         // Log session statuses for debugging
-//         if (sessions.length > 0) {
-//             const statusCounts = sessions.reduce((acc, s) => {
-//                 acc[s.status] = (acc[s.status] || 0) + 1;
-//                 return acc;
-//             }, {});
-//             logger.info(`📊 Session statuses: ${JSON.stringify(statusCounts)}`);
-//         }
-//         if (!sessions.length) {
-//             logger.info("📭 No sessions found to restore.");
-//             return;
-//         }
-
-//         logger.info(`🔁 Found ${sessions.length} sessions to restore.`);
-
-//         for (const s of sessions) {
-//             const sessionId = s.sessionId;
-//             const userId = s.userId;
-
-//             // 🔥 CHANGED: Check MongoDB instead of file system
-//             const authData = await SessionAuth.findOne({ sessionId });
-
-//             if (!authData) {
-//                 logger.info(`⚠ No auth data in MongoDB for ${sessionId}. Skipping restore.`);
-                
-//                 // Mark session as disconnected
-//                 await Session.findOneAndUpdate(
-//                     { sessionId },
-//                     { 
-//                         status: 'disconnected',
-//                         errorMessage: 'Session data lost. Please reconnect.',
-//                         disconnectedAt: new Date()
-//                     }
-//                 );
-                
-//                 continue;
-//             }
-
-//             logger.info(`♻ Restoring WhatsApp session: ${sessionId} for user ${userId}`);
-
-//             try {
-//                 await createBotSession(userId, sessionId, io);
-//                 logger.info(`✅ Successfully restored session: ${sessionId}`);
-//             } catch (err) {
-//                 logger.error(`❌ Failed to restore session ${sessionId}: ${err.message}`);
-//             }
-//         }
-
-//         logger.info("🎉 Session restoration completed!");
-
-//     } catch (err) {
-//         logger.error("❌ restoreAllSessions error:", err);
-//     }
-// }
 
 // =========================================
 // RESTORE ALL SESSIONS ON SERVER STARTUP
@@ -4050,7 +4329,6 @@ async function lazyRestoreSession(sessionId, io) {
 }
 
 
-
 // tiny start helper for local dev
 function start(count = 1) {
   for (let i = 0; i < count; i++) {
@@ -4109,7 +4387,7 @@ async function canUseCommand(userId, commandName, userSubscription) {
     }
 }
 
-// Update your command handler to use this check
+
 // Find where commands are processed and add this check:
 async function handleCommand(message, sessionId, userId, userSubscription) {
     const text = message.body.trim();
