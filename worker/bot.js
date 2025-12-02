@@ -10,6 +10,7 @@ const Contact = require('./models/Contact');
 const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
+const Usage = require('./models/Usage');
 const SavedGroupList = require('./models/SavedGroupList');
 const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
@@ -4426,7 +4427,7 @@ async function createClient(sessionId) {
 }
 
 
-function createSession(sessionId) {
+async function createSession(sessionId) {
   if (clients.has(sessionId)) {
     logger.info(`Session ${sessionId} already exists`);
     return clients.get(sessionId);
