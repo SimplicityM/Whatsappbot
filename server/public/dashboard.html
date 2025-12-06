@@ -8,75 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" type="image/jpg" href="images/Zufamoa.jpg"/>
-
-    <!-- Add this to your dashboard header -->
-<div id="worker-status" class="worker-status">
-    <span class="status-indicator"></span>
-    <span class="status-text">Checking service...</span>
-</div>
-
-<style>
-.worker-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: #f7fafc;
-    border-radius: 6px;
-    font-size: 14px;
-}
-
-.status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #cbd5e0;
-    animation: pulse 2s infinite;
-}
-
-.status-indicator.healthy {
-    background: #48bb78;
-}
-
-.status-indicator.unhealthy {
-    background: #f56565;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-</style>
-
-<script>
-// Check worker status periodically
-async function checkWorkerStatus() {
-    try {
-        const response = await fetch('/health');
-        const data = await response.json();
-        
-        const indicator = document.querySelector('.status-indicator');
-        const text = document.querySelector('.status-text');
-        
-        if (data.worker) {
-            indicator.classList.add('healthy');
-            indicator.classList.remove('unhealthy');
-            text.textContent = 'WhatsApp Service Online';
-        } else {
-            indicator.classList.remove('healthy');
-            indicator.classList.add('unhealthy');
-            text.textContent = 'WhatsApp Service Offline';
-        }
-    } catch (error) {
-        console.error('Health check failed:', error);
-    }
-}
-
-// Check every 30 seconds
-setInterval(checkWorkerStatus, 30000);
-checkWorkerStatus(); // Initial check
-</script>
-    
 </head>
 <body class="admin-body">
     <!-- Sidebar -->
@@ -158,6 +89,12 @@ checkWorkerStatus(); // Initial check
                     <i class="fas fa-bars"></i>
                 </button>
                 <h1 class="page-title" id="pageTitle">Dashboard Overview</h1>
+            </div>
+
+                        <!-- Add this to your dashboard header -->
+            <div id="worker-status" class="worker-status">
+                <span class="status-indicator"></span>
+                <span class="status-text">Checking service...</span>
             </div>
             <div class="header-right">
                 <div class="header-actions">
@@ -651,6 +588,34 @@ checkWorkerStatus(); // Initial check
 <script>
 console.log('✅ QRCode library loaded locally');
 window.QRCodeReady = true;
+</script>
+<script>
+// Check worker status periodically
+async function checkWorkerStatus() {
+    try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        
+        const indicator = document.querySelector('.status-indicator');
+        const text = document.querySelector('.status-text');
+        
+        if (data.worker) {
+            indicator.classList.add('healthy');
+            indicator.classList.remove('unhealthy');
+            text.textContent = 'WhatsApp Service Online';
+        } else {
+            indicator.classList.remove('healthy');
+            indicator.classList.add('unhealthy');
+            text.textContent = 'WhatsApp Service Offline';
+        }
+    } catch (error) {
+        console.error('Health check failed:', error);
+    }
+}
+
+// Check every 30 seconds
+setInterval(checkWorkerStatus, 30000);
+checkWorkerStatus(); // Initial check
 </script>
 </body>
 </html>

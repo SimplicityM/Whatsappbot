@@ -2745,3 +2745,35 @@ body.dark-theme .action-btn:hover {
         gap: 0.5rem;
     }
 }
+
+/* Worker Status */
+.worker-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #f7fafc;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #cbd5e0;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.healthy {
+    background: #48bb78;
+}
+
+.status-indicator.unhealthy {
+    background: #f56565;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
