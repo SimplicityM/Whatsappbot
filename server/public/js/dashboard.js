@@ -1469,77 +1469,25 @@ async function loadSubscriptionInfo() {
     }
 }
 
-// function updateSubscriptionDisplay() {
-//     if (!userSubscription) return;
-
-//     const elements = {
-//         currentPlan: document.getElementById('currentPlan'),
-//         paymentStatus: document.getElementById('paymentStatus'),
-//         expiryDate: document.getElementById('expiryDate'),
-//         maxSessions: document.getElementById('maxSessions'),
-//         planDaysLeft: document.getElementById('planDaysLeft'),
-//         planStatus: document.getElementById('planStatus'),
-//         sessionLimit: document.getElementById('sessionLimit')
-//     };
-
-//     if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
-//     if (elements.paymentStatus) elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
-//     if (elements.expiryDate) elements.expiryDate.textContent = userSubscription.daysRemaining ? `${userSubscription.daysRemaining} days` : 'Never';
-//     if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
-//     if (elements.planDaysLeft) elements.planDaysLeft.textContent = userSubscription.daysRemaining || 0;
-//     if (elements.planStatus) elements.planStatus.textContent = userSubscription.subscription || 'Free';
-//     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
-// }
-
-// function updateSubscriptionDisplay() {
-//     if (!userSubscription) return;
-
-//     const daysLeft = userSubscription.daysRemaining || 0;
-//     const isTrial = userSubscription.paymentStatus === 'trial';
-    
-//     if (elements.currentPlan) elements.currentPlan.textContent = userSubscription.subscription || 'Free';
-//     if (elements.paymentStatus) {
-//         if (isTrial) {
-//             elements.paymentStatus.textContent = `Trial (${daysLeft} days left)`;
-//             elements.paymentStatus.style.color = daysLeft <= 2 ? '#f44336' : '#ff9800';
-//         } else {
-//             elements.paymentStatus.textContent = userSubscription.paymentStatus || 'Active';
-//         }
-//     }
-//     if (elements.expiryDate) {
-//         elements.expiryDate.textContent = daysLeft > 0 ? `${daysLeft} days` : 'Expired';
-//         if (daysLeft <= 2 && isTrial) {
-//             elements.expiryDate.style.color = '#f44336';
-//             elements.expiryDate.style.fontWeight = 'bold';
-//         }
-//     }
-//     if (elements.maxSessions) elements.maxSessions.textContent = userSubscription.limits?.maxSessions || 1;
-//     if (elements.planDaysLeft) {
-//         elements.planDaysLeft.textContent = daysLeft;
-//         if (daysLeft <= 2 && isTrial) {
-//             elements.planDaysLeft.style.color = '#f44336';
-//             elements.planDaysLeft.style.fontWeight = 'bold';
-//         }
-//     }
-//     if (elements.planStatus) {
-//         elements.planStatus.textContent = isTrial ? `Trial - ${daysLeft} days left` : userSubscription.subscription || 'Free';
-//         if (daysLeft <= 2 && isTrial) {
-//             elements.planStatus.classList.add('urgent');
-//         }
-//     }
-//     if (elements.sessionLimit) elements.sessionLimit.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
-    
-//     // Show upgrade banner if trial is expiring soon
-//     if (isTrial && daysLeft <= 2) {
-//         showTrialExpiringBanner(daysLeft);
-//     }
-// }
-
 function updateSubscriptionDisplay() {
-    if (!userSubscription) return;
+    // ✅ Handle case when userSubscription is not loaded yet
+    if (!userSubscription && !currentUser?.user) {
+        console.warn('⚠️ No subscription data available yet');
+        return;
+    }
+    
+    // ✅ Use userSubscription if available, otherwise fall back to currentUser data
+    const subscription = userSubscription || {
+        subscription: currentUser?.user?.subscription || 'free',
+        paymentStatus: currentUser?.user?.paymentStatus || 'trial',
+        daysRemaining: 0,
+        limits: { maxSessions: 1 }
+    };
 
-    const daysLeft = userSubscription.daysRemaining || 0;
-    const isTrial = userSubscription.paymentStatus === 'trial';
+    console.log('📊 Updating subscription display:', subscription);
+
+    const daysLeft = subscription.daysRemaining || 0;
+    const isTrial = subscription.paymentStatus === 'trial';
     
     // Get DOM elements (with null checks)
     const currentPlanEl = document.getElementById('currentPlan');
@@ -1550,26 +1498,32 @@ function updateSubscriptionDisplay() {
     const planStatusEl = document.getElementById('planStatus');
     const sessionLimitEl = document.getElementById('sessionLimit');
     
-    // Update current plan
+    // ✅ Update current plan - capitalize properly
     if (currentPlanEl) {
-        currentPlanEl.textContent = userSubscription.subscription || 'Free';
+        const planName = subscription.subscription || 'free';
+        const displayName = planName.charAt(0).toUpperCase() + planName.slice(1);
+        currentPlanEl.textContent = displayName;
+        console.log('✅ Updated currentPlan to:', displayName);
+    } else {
+        console.warn('⚠️ currentPlan element not found');
     }
     
-    // Update payment status with trial info
+    // ✅ Update payment status with trial info
     if (paymentStatusEl) {
         if (isTrial) {
             paymentStatusEl.textContent = `Trial (${daysLeft} days left)`;
             paymentStatusEl.style.color = daysLeft <= 2 ? '#f44336' : daysLeft <= 5 ? '#ff9800' : '#4CAF50';
-        } else if (userSubscription.paymentStatus === 'expired') {
+        } else if (subscription.paymentStatus === 'expired') {
             paymentStatusEl.textContent = 'Expired';
             paymentStatusEl.style.color = '#f44336';
         } else {
-            paymentStatusEl.textContent = userSubscription.paymentStatus || 'Active';
+            paymentStatusEl.textContent = subscription.paymentStatus || 'Active';
             paymentStatusEl.style.color = '#4CAF50';
         }
+        console.log('✅ Updated paymentStatus to:', paymentStatusEl.textContent);
     }
     
-    // Update expiry date
+    // ✅ Update expiry date
     if (expiryDateEl) {
         if (daysLeft > 0) {
             expiryDateEl.textContent = `${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
@@ -1577,19 +1531,23 @@ function updateSubscriptionDisplay() {
                 expiryDateEl.style.color = '#f44336';
                 expiryDateEl.style.fontWeight = 'bold';
             }
-        } else {
+        } else if (subscription.paymentStatus === 'trial' || subscription.paymentStatus === 'expired') {
             expiryDateEl.textContent = 'Expired';
             expiryDateEl.style.color = '#f44336';
             expiryDateEl.style.fontWeight = 'bold';
+        } else {
+            expiryDateEl.textContent = 'Never';
         }
+        console.log('✅ Updated expiryDate to:', expiryDateEl.textContent);
     }
     
-    // Update max sessions
+    // ✅ Update max sessions
     if (maxSessionsEl) {
-        maxSessionsEl.textContent = userSubscription.limits?.maxSessions || 1;
+        maxSessionsEl.textContent = subscription.limits?.maxSessions || 1;
+        console.log('✅ Updated maxSessions to:', maxSessionsEl.textContent);
     }
     
-    // Update plan days left
+    // ✅ Update plan days left
     if (planDaysLeftEl) {
         planDaysLeftEl.textContent = daysLeft;
         if (daysLeft <= 2 && isTrial) {
@@ -1598,30 +1556,33 @@ function updateSubscriptionDisplay() {
         }
     }
     
-    // Update plan status
+    // ✅ Update plan status
     if (planStatusEl) {
         if (isTrial) {
             planStatusEl.textContent = `Trial - ${daysLeft} days left`;
-        } else if (userSubscription.paymentStatus === 'expired') {
+        } else if (subscription.paymentStatus === 'expired') {
             planStatusEl.textContent = 'Expired';
         } else {
-            planStatusEl.textContent = userSubscription.subscription || 'Free';
+            const planName = subscription.subscription || 'free';
+            planStatusEl.textContent = planName.charAt(0).toUpperCase() + planName.slice(1);
         }
         
         if (daysLeft <= 2 && isTrial) {
             planStatusEl.classList.add('urgent');
         }
+        console.log('✅ Updated planStatus to:', planStatusEl.textContent);
     }
     
-    // Update session limit
+    // ✅ Update session limit
     if (sessionLimitEl) {
-        sessionLimitEl.textContent = `Limit: ${userSubscription.limits?.maxSessions || 1}`;
+        sessionLimitEl.textContent = `Limit: ${subscription.limits?.maxSessions || 1}`;
+        console.log('✅ Updated sessionLimit to:', sessionLimitEl.textContent);
     }
     
     // Show upgrade banner if trial is expiring soon or expired
     if (isTrial && daysLeft <= 2) {
         showTrialExpiringBanner(daysLeft);
-    } else if (userSubscription.paymentStatus === 'expired') {
+    } else if (subscription.paymentStatus === 'expired') {
         showTrialExpiredBanner();
     }
 }
@@ -2505,7 +2466,7 @@ function showLoading(show) {
 function updateSessionStats() {
     const totalSessions = userSessions.length;
     const activeSessions = userSessions.filter(s => 
-        s.status === 'connected' || s.status === 'ready'
+        s.status === 'connected' || s.status === 'ready' || s.status === 'active'
     ).length;
     const totalMessages = userSessions.reduce((sum, session) => sum + (session.messageCount || 0), 0);
 
@@ -2513,10 +2474,10 @@ function updateSessionStats() {
         totalSessions, 
         activeSessions, 
         totalMessages,
-        sessionStatuses: userSessions.map(s => s.status)
+        sessionStatuses: userSessions.map(s => ({ id: s.sessionId, status: s.status }))
     });
 
-    // Update all relevant elements
+    // Get all relevant elements
     const elements = {
         mySessionCount: document.getElementById('mySessionCount'),
         activeSessionsCount: document.getElementById('activeSessionsCount'),
@@ -2525,11 +2486,11 @@ function updateSessionStats() {
         groupsManaged: document.getElementById('groupsManaged')
     };
 
-    // Update session count with color coding
+    // ✅ Update session count badge in sidebar
     if (elements.mySessionCount) {
         elements.mySessionCount.textContent = activeSessions;
         
-        // Update badge color
+        // Update badge color based on active sessions
         if (activeSessions > 0) {
             elements.mySessionCount.style.backgroundColor = '#48bb78'; // Green
             elements.mySessionCount.style.color = 'white';
@@ -2541,28 +2502,49 @@ function updateSessionStats() {
             elements.mySessionCount.classList.remove('badge-success');
             elements.mySessionCount.classList.add('badge-error');
         }
+        console.log('✅ Updated mySessionCount badge to:', activeSessions);
+    } else {
+        console.warn('⚠️ mySessionCount element not found');
     }
     
-   // Update other stats
-if (elements.activeSessionsCount) elements.activeSessionsCount.textContent = activeSessions;
-if (elements.totalMessagesCount) elements.totalMessagesCount.textContent = totalMessages.toLocaleString();
+    // ✅ Update active sessions count in overview
+    if (elements.activeSessionsCount) {
+        elements.activeSessionsCount.textContent = activeSessions;
+        console.log('✅ Updated activeSessionsCount to:', activeSessions);
+    } else {
+        console.warn('⚠️ activeSessionsCount element not found');
+    }
+    
+    // ✅ Update total messages count
+    if (elements.totalMessagesCount) {
+        elements.totalMessagesCount.textContent = totalMessages.toLocaleString();
+        console.log('✅ Updated totalMessagesCount to:', totalMessages);
+    }
 
-// ✅ Calculate from actual session usage data
-const totalMessagesToday = userSessions.reduce((sum, session) => {
-    // If session has today's message count, use it
-    return sum + (session.messagesToday || 0);
-}, 0);
+    // ✅ Calculate messages sent today from session data
+    const totalMessagesToday = userSessions.reduce((sum, session) => {
+        return sum + (session.messagesToday || 0);
+    }, 0);
 
-const totalGroupsManaged = userSessions.reduce((sum, session) => {
-    // Get groups managed from session usage
-    return sum + (session.usage?.groupsTagged || 0);
-}, 0);
+    // ✅ Calculate total groups managed from session data
+    const totalGroupsManaged = userSessions.reduce((sum, session) => {
+        return sum + (session.usage?.groupsTagged || 0);
+    }, 0);
 
-if (elements.messagesToday) elements.messagesToday.textContent = totalMessagesToday.toLocaleString();
-if (elements.groupsManaged) elements.groupsManaged.textContent = totalGroupsManaged;
+    // ✅ Update messages today
+    if (elements.messagesToday) {
+        elements.messagesToday.textContent = totalMessagesToday.toLocaleString();
+        console.log('✅ Updated messagesToday to:', totalMessagesToday);
+    }
+    
+    // ✅ Update groups managed
+    if (elements.groupsManaged) {
+        elements.groupsManaged.textContent = totalGroupsManaged;
+        console.log('✅ Updated groupsManaged to:', totalGroupsManaged);
+    }
 
-// ✅ Also refresh from API to get most accurate data
-loadUserStatistics('today').catch(err => console.error('Error loading statistics:', err));
+    // ✅ Refresh statistics from API for most accurate data
+    loadUserStatistics('today').catch(err => console.error('❌ Error loading statistics:', err));
 }
 
 function updateMessageStats() {

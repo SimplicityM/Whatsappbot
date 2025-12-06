@@ -10,6 +10,7 @@ const Contact = require('./models/Contact');
 const PhoneRecord = require('./models/PhoneRecord');
 const Session = require('./models/Session');
 const TagUsage = require('./models/TagUsage');
+const Usage = require('./models/Usage');
 const SavedGroupList = require('./models/SavedGroupList');
 const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
@@ -20,6 +21,10 @@ const RestorationMonitor = require('./restorationMonitor');
 
 // Create a global monitor instance
 const restorationMonitor = new RestorationMonitor();
+
+const BASE_AUTH_PATH = path.join(__dirname, '..', '.wwebjs_auth'); 
+// or use process.cwd() if bot.js is not in worker folder
+// console.log("Auth path:", BASE_AUTH_PATH);
 
 
 // bot.js (multi-session, isolated per-client implementation)
@@ -279,7 +284,7 @@ function createClientOptions(sessionId) {
   return {
     authStrategy: new (require('whatsapp-web.js').LocalAuth)({
       clientId: sessionId,
-      dataPath: './.wwebjs_auth',
+      dataPath: BASE_AUTH_PATH,  // ✅ ABSOLUTE PATH
       store: store
     }),
 
@@ -428,9 +433,6 @@ function normalizeJid(jid) {
     }
   });
 
-  client.on('authenticated', () => {
-    logger.info(`[${sessionName}] authenticated`);
-  });
 
   client.on('auth_failure', (err) => {
     logger.error(`[${sessionName}] auth failure`, err && err.message ? err.message : err);
@@ -881,7 +883,49 @@ client.on('message_create', async (message) => {
         if (userId) {
             await trackDailyUsage(userId, 'message');
         }
-
+        
+// Auto-save contact when they message the bot
+if (!message.fromMe && message.from !== 'status@broadcast') {
+    try {
+        const contact = await message.getContact();
+        const chat = await message.getChat();
+        
+        // Get user email from session
+        const sessionDoc = await Session.findOne({ sessionId }).populate('userId');
+        const userEmail = sessionDoc?.userId?.email;
+        
+        if (userId && userEmail) {
+            await Contact.findOneAndUpdate(
+                { 
+                    sessionId: sessionId,
+                    whatsappId: message.from
+                },
+                {
+                    sessionId: sessionId,
+                    userId: userId,
+                    whatsappId: message.from,
+                    name: contact.pushname || contact.name || message.from.split('@')[0],
+                    phone: message.from.split('@')[0],
+                    type: chat.isGroup ? 'group' : 'individual',
+                    isGroup: chat.isGroup || false,
+                    groupId: chat.isGroup ? chat.id._serialized : null,
+                    groupName: chat.isGroup ? chat.name : null,
+                    hasMessagedBot: true,
+                    lastMessageAt: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            
+            // Update user's contactsSaved count
+            await User.findByIdAndUpdate(userId, {
+                $inc: { 'usage.contactsSaved': 1 }
+            });
+        }
+    } catch (err) {
+        logger.error(`[${sessionName}] Error auto-saving contact:`, err);
+    }
+}
+        
     // ✅ Track message processing
     try {
     const sessionDoc = await Session.findOne({ sessionId });
@@ -929,6 +973,88 @@ client.on('message_create', async (message) => {
     } catch (e) {
       // ignore db errors
     }
+
+// --------------------------------------------------
+// 🟢 AUTO-SAVE INDIVIDUAL CONTACTS (NEW)
+// --------------------------------------------------
+// Save individual contacts when they first message the bot
+if (!message.fromMe && message.from !== 'status@broadcast') {
+    try {
+        const chat = await message.getChat().catch(() => null);
+        
+        // Only save individual contacts (not groups, not group members)
+        if (chat && !chat.isGroup) {
+            const contact = await message.getContact().catch(() => null);
+            
+            if (contact && userId) {
+                // Get user email from User model
+                const User = require('./models/User');
+                const userDoc = await User.findById(userId).select('email').lean();
+                const userEmail = userDoc?.email;
+                
+                if (userEmail) {
+                    // Extract phone number from WhatsApp ID
+                    const phoneNumber = message.from.split('@')[0];
+                    
+                    // Get contact name (priority: pushname > name > phone)
+                    const contactName = contact.pushname || 
+                                      contact.name || 
+                                      contact.verifiedName || 
+                                      phoneNumber;
+                    
+                    // Try to get profile picture
+                    let profilePicUrl = null;
+                    try {
+                        profilePicUrl = await contact.getProfilePicUrl().catch(() => null);
+                    } catch {}
+                    
+                    // Save or update contact in database
+                    const savedContact = await Contact.findOneAndUpdate(
+                        { 
+                            sessionId: sessionId,
+                            whatsappId: message.from
+                        },
+                        {
+                            $set: {
+                                sessionId: sessionId,
+                                userId: userId,
+                                whatsappId: message.from,
+                                name: contactName,
+                                phone: phoneNumber,
+                                type: 'individual',
+                                isGroup: false,
+                                profilePicture: profilePicUrl,
+                                hasMessagedBot: true,
+                                lastMessageAt: new Date()
+                            },
+                            $setOnInsert: {
+                                addedAt: new Date()
+                            }
+                        },
+                        { 
+                            upsert: true, 
+                            new: true 
+                        }
+                    );
+                    
+                    // Only increment contactsSaved if this is a NEW contact
+                    if (savedContact && !savedContact.hasMessagedBot) {
+                        await User.findByIdAndUpdate(
+                            userId,
+                            { $inc: { 'usage.contactsSaved': 1 } }
+                        );
+                    }
+                    
+                    logger.info(`[${sessionName}] ✅ Contact saved: ${contactName} (${phoneNumber}) for user ${userEmail}`);
+                }
+            }
+        }
+    } catch (e) {
+        logger.error(`[${sessionName}] Error auto-saving individual contact:`, e);
+    }
+}
+// --------------------------------------------------
+
     // --------------------------------------------------
 
     // --------------------------------------------------
@@ -1255,61 +1381,86 @@ try {
     console.error('Error updating command usage:', err);
 }
 
-    // --------------------------------------------------
-    // 🟢 COMMAND PERMISSION CHECK
-    // --------------------------------------------------
-    
-    if (userId) {
-        try {
-            // Fetch user document from database
-            const userDoc = await User.findById(userId).lean();
-            
-            if (userDoc) {
-                // Define subscription plan hierarchy and their allowed commands
-               const subscriptionPlans = {
-                'free': ['ping', 'help', 'status', 'list', 'tag'], // ✅ Added free plan
-                'starter': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept'],
-                'professional': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler'],
-                'business': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'export', 'dmall', 'tagfew', 'forward'],
-                'enterprise': 'all' // All commands
-            };
+ // --------------------------------------------------
+// 🟢 COMMAND PERMISSION CHECK (UNIFIED & SECURE)
+// --------------------------------------------------
 
-                const userSubscription = userDoc.subscription || 'starter';
-                const allowedCommands = subscriptionPlans[userSubscription] || [];
-                
-                // Check if command is allowed by subscription
-                const hasAccess = allowedCommands === 'all' || allowedCommands.includes(cmd);
-                
-                // Check if user has custom command access
-                const userCustomCommands = userDoc.customCommands || [];
-                const hasCustomAccess = userCustomCommands.includes(cmd);
+if (userId) {
+    try {
+        // Fetch user document
+        const User = require('./models/User');
+        const userDoc = await User.findById(userId);
+        
+        if (!userDoc) {
+            await safeSend(message.from, '❌ User not found. Please contact support.');
+            return;
+        }
 
-                // Check if subscription is active (not expired)
-                const now = new Date();
-                const isSubscriptionActive = userDoc.subscriptionExpiry && new Date(userDoc.subscriptionExpiry) > now;
-                const isPaymentValid = userDoc.paymentStatus === 'paid' || userDoc.exemptFromPayment;
+        // ✅ 1. Check if user is exempt (owner, admin, or payment-exempt)
+        const isExempt = userDoc.isExemptFromPayment() || 
+                        userDoc.isBotOwner() || 
+                        (userDoc.isSystemAdmin && userDoc.isSystemAdmin());
+        
+        if (isExempt) {
+            // Exempt users bypass all checks - allow command execution
+            logger.info(`[${sessionId}] ✅ Exempt user ${userDoc.email} executing: !${cmd}`);
+            // Continue to command execution below
+        } else {
+            // ✅ 2. Check subscription status (expiry & payment)
+            const now = new Date();
+            const isSubscriptionActive = userDoc.subscriptionExpiry && 
+                                        new Date(userDoc.subscriptionExpiry) > now;
+            const isPaymentValid = userDoc.paymentStatus === 'paid' || 
+                                  userDoc.paymentStatus === 'trial';
 
-                // If subscription expired and payment not valid, block all premium commands
-                if (!isSubscriptionActive && !isPaymentValid && !['ping', 'help', 'status'].includes(cmd)) {
-                    await safeSend(message.from, `❌ Your subscription has expired. Please renew to continue using premium commands.\n\nVisit: https://yourwebsite.com/pricing`);
-                    return;
-                }
-
-                // If command not allowed by subscription and not in custom commands
-                if (!hasAccess && !hasCustomAccess) {
-                    const requiredPlan = Object.keys(subscriptionPlans).find(plan => 
-                        subscriptionPlans[plan] === 'all' || subscriptionPlans[plan].includes(cmd)
-                    ) || 'business';
-                    
-                    await safeSend(message.from, `❌ Command !${cmd} requires ${requiredPlan} subscription or higher.\n\nYour current plan: ${userSubscription}\n\nUpgrade at: https://yourwebsite.com/pricing`);
+            // Block expired subscriptions (except basic commands)
+            if (!isSubscriptionActive && !isPaymentValid) {
+                if (!['ping', 'help', 'status'].includes(cmd)) {
+                    await safeSend(
+                        message.from, 
+                        `❌ Your subscription has expired.\n\n` +
+                        `Please renew to continue using premium commands.\n\n` +
+                        `Visit: ${process.env.DOMAIN || 'https://yourwebsite.com'}/pricing`
+                    );
                     return;
                 }
             }
-        } catch (error) {
-            logger.error(`[${sessionId}] Permission check error:`, error);
-            // Continue anyway if there's an error checking permissions
+
+            // ✅ 3. Use canUseCommand helper for comprehensive permission check
+            const hasPermission = await canUseCommand(
+                userId, 
+                cmd, 
+                userDoc.subscription || 'free'
+            );
+
+            if (!hasPermission) {
+                // Get subscription plans from server (single source of truth)
+                const { subscriptionPlans } = require('../server/server');
+                
+                // Find which plan includes this command
+                const requiredPlan = Object.keys(subscriptionPlans).find(plan => {
+                    const planCommands = subscriptionPlans[plan].allowedCommands;
+                    return planCommands === 'all' || 
+                           (Array.isArray(planCommands) && planCommands.includes(cmd));
+                }) || 'business';
+                
+                await safeSend(
+                    message.from, 
+                    `❌ Command !${cmd} requires ${requiredPlan} subscription or higher.\n\n` +
+                    `Your current plan: ${userDoc.subscription || 'free'}\n\n` +
+                    `Upgrade at: ${process.env.DOMAIN || 'https://tagthemall.com.ng'}/pricing\n\n` +
+                    `💡 Or contact admin for special access.`
+                );
+                return;
+            }
         }
+        
+    } catch (error) {
+        logger.error(`[${sessionId}] Permission check error:`, error);
+        // Continue anyway if there's an error checking permissions
+        // Change to 'return;' for fail-closed security (deny on error)
     }
+}
 
     // --------------------------------------------------
     // Your entire command switch block stays exactly as is
@@ -4357,11 +4508,10 @@ try {
   }
 }
 
-// ---------------- Session creation / management API ----------------
 function createClient(sessionId) {
+  // MongoStore handles auth restoration automatically
   const opts = createClientOptions(sessionId);
   const client = new Client(opts);
-  // ensure event handlers are unique per client
   setupClientEvents(client, sessionId, global.io || null);
   return client;
 }
@@ -4407,6 +4557,11 @@ async function createBotSession(userId, sessionId, workerIO) {
  * Configuration for session restoration
  */
 const RESTORE_CONFIG = config.restoration;
+
+function ensureDir(p) {
+  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+}
+
 
 /**
  * Restore sessions in batches with prioritization
@@ -4756,41 +4911,51 @@ function start(count = 1) {
 async function canUseCommand(userId, commandName, userSubscription) {
     try {
         const User = require('./models/User');
-        const CommandGrant = require('./models/CommandGrant');
+        const CommandGrant = require('../models/CommandGrant');
         const { subscriptionPlans } = require('../server/server');
         
-        // Get user
         const user = await User.findById(userId);
         if (!user) return false;
         
-        // Check if user is exempt (admin, owner, etc.)
-        if (user.isExemptFromPayment() || user.isBotOwner()) {
-            return true;
-        }
+        // ✅ 1. Exemptions (always work)
+        if (user.isExemptFromPayment && user.isExemptFromPayment()) return true;
+        if (user.isBotOwner && user.isBotOwner()) return true;
+        if (user.isSystemAdmin && typeof user.isSystemAdmin === 'function' && user.isSystemAdmin()) return true;
         
-        // Get plan commands
-        const plan = subscriptionPlans[userSubscription] || subscriptionPlans.free;
-        
-        // Check if command is in plan
-        if (plan.allowedCommands === 'all') {
-            return true;
-        }
-        
-        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(commandName)) {
-            return true;
-        }
-        
-        // Check for custom grants
+        // ✅ 2. Check if subscription is active
         const now = new Date();
+        const isSubscriptionActive = user.subscriptionExpiry && new Date(user.subscriptionExpiry) > now;
+        const isPaymentValid = user.paymentStatus === 'paid' || user.paymentStatus === 'trial';
+        
+        // If subscription expired, only allow basic commands
+        if (!isSubscriptionActive && !isPaymentValid) {
+            return ['ping', 'help', 'status'].includes(commandName);
+        }
+        
+        // ✅ 3. Plan commands
+        const plan = subscriptionPlans[userSubscription] || subscriptionPlans.free;
+        if (plan.allowedCommands === 'all') return true;
+        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(commandName)) return true;
+        
+        // ✅ 4. User.customCommands (only if subscription active)
+        if (Array.isArray(user.customCommands) && user.customCommands.includes(commandName)) return true;
+        
+        // ✅ 5. CommandGrant (only for CURRENT plan)
         const customGrant = await CommandGrant.findOne({
-            $or: [
-                { userId: userId, commandName: commandName },
-                { planType: userSubscription, commandName: commandName }
-            ],
-            isActive: true,
-            $or: [
-                { expiresAt: null },
-                { expiresAt: { $gt: now } }
+            $and: [
+                {
+                    $or: [
+                        { userId: userId, commandName: commandName },
+                        { planType: userSubscription, commandName: commandName } // CURRENT plan only
+                    ]
+                },
+                { isActive: true },
+                {
+                    $or: [
+                        { expiresAt: null },
+                        { expiresAt: { $gt: now } }
+                    ]
+                }
             ]
         });
         
@@ -4801,7 +4966,6 @@ async function canUseCommand(userId, commandName, userSubscription) {
         return false;
     }
 }
-
 
 // Find where commands are processed and add this check:
 async function handleCommand(message, sessionId, userId, userSubscription) {
