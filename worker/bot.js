@@ -282,11 +282,11 @@ function createClientOptions(sessionId) {
   const store = new MongoStore(sessionId);
   
   return {
-    authStrategy: new (require('whatsapp-web.js').LocalAuth)({
-      clientId: sessionId,
-      dataPath: BASE_AUTH_PATH,  // ✅ ABSOLUTE PATH
-      store: store
-    }),
+    authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
+    clientId: sessionId,
+    store: store,
+    backupSyncIntervalMs: 300000 // Backup every 5 minutes
+}),
 
     puppeteer: {
       headless: true,
