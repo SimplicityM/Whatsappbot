@@ -349,7 +349,7 @@ const subscriptionPlans = {
     name: 'Business Plan',
     maxSessions: 1, // ✅ Changed from 100 to 1
     amount: 2200, // $22/month (in cents)
-    allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export'],
+    allowedCommands: ['ping', 'help', 'status', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'tag', 'tagexcept', 'list', 'export', 'dmall', 'tagfew', 'forward'],
     features: ['basic_messaging', 'broadcast', 'auto_reply', 'analytics', 'scheduling', 'custom_commands', 'group_tagging', 'advanced_commands', 'priority_support', 'data_export'],
     description: 'Comprehensive solution for established businesses',
     limits: {

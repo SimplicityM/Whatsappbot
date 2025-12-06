@@ -1381,61 +1381,86 @@ try {
     console.error('Error updating command usage:', err);
 }
 
-    // --------------------------------------------------
-    // 🟢 COMMAND PERMISSION CHECK
-    // --------------------------------------------------
-    
-    if (userId) {
-        try {
-            // Fetch user document from database
-            const userDoc = await User.findById(userId).lean();
-            
-            if (userDoc) {
-                // Define subscription plan hierarchy and their allowed commands
-               const subscriptionPlans = {
-                'free': ['ping', 'help', 'status', 'list', 'tag'], // ✅ Added free plan
-                'starter': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept'],
-                'professional': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler'],
-                'business': ['ping', 'help', 'status', 'list', 'tag', 'tagexcept', 'broadcast', 'auto_reply', 'analytics', 'scheduler', 'custom_commands', 'export', 'dmall', 'tagfew', 'forward'],
-                'enterprise': 'all' // All commands
-            };
+ // --------------------------------------------------
+// 🟢 COMMAND PERMISSION CHECK (UNIFIED & SECURE)
+// --------------------------------------------------
 
-                const userSubscription = userDoc.subscription || 'starter';
-                const allowedCommands = subscriptionPlans[userSubscription] || [];
-                
-                // Check if command is allowed by subscription
-                const hasAccess = allowedCommands === 'all' || allowedCommands.includes(cmd);
-                
-                // Check if user has custom command access
-                const userCustomCommands = userDoc.customCommands || [];
-                const hasCustomAccess = userCustomCommands.includes(cmd);
+if (userId) {
+    try {
+        // Fetch user document
+        const User = require('./models/User');
+        const userDoc = await User.findById(userId);
+        
+        if (!userDoc) {
+            await safeSend(message.from, '❌ User not found. Please contact support.');
+            return;
+        }
 
-                // Check if subscription is active (not expired)
-                const now = new Date();
-                const isSubscriptionActive = userDoc.subscriptionExpiry && new Date(userDoc.subscriptionExpiry) > now;
-                const isPaymentValid = userDoc.paymentStatus === 'paid' || userDoc.exemptFromPayment;
+        // ✅ 1. Check if user is exempt (owner, admin, or payment-exempt)
+        const isExempt = userDoc.isExemptFromPayment() || 
+                        userDoc.isBotOwner() || 
+                        (userDoc.isSystemAdmin && userDoc.isSystemAdmin());
+        
+        if (isExempt) {
+            // Exempt users bypass all checks - allow command execution
+            logger.info(`[${sessionId}] ✅ Exempt user ${userDoc.email} executing: !${cmd}`);
+            // Continue to command execution below
+        } else {
+            // ✅ 2. Check subscription status (expiry & payment)
+            const now = new Date();
+            const isSubscriptionActive = userDoc.subscriptionExpiry && 
+                                        new Date(userDoc.subscriptionExpiry) > now;
+            const isPaymentValid = userDoc.paymentStatus === 'paid' || 
+                                  userDoc.paymentStatus === 'trial';
 
-                // If subscription expired and payment not valid, block all premium commands
-                if (!isSubscriptionActive && !isPaymentValid && !['ping', 'help', 'status'].includes(cmd)) {
-                    await safeSend(message.from, `❌ Your subscription has expired. Please renew to continue using premium commands.\n\nVisit: https://yourwebsite.com/pricing`);
-                    return;
-                }
-
-                // If command not allowed by subscription and not in custom commands
-                if (!hasAccess && !hasCustomAccess) {
-                    const requiredPlan = Object.keys(subscriptionPlans).find(plan => 
-                        subscriptionPlans[plan] === 'all' || subscriptionPlans[plan].includes(cmd)
-                    ) || 'business';
-                    
-                    await safeSend(message.from, `❌ Command !${cmd} requires ${requiredPlan} subscription or higher.\n\nYour current plan: ${userSubscription}\n\nUpgrade at: https://yourwebsite.com/pricing`);
+            // Block expired subscriptions (except basic commands)
+            if (!isSubscriptionActive && !isPaymentValid) {
+                if (!['ping', 'help', 'status'].includes(cmd)) {
+                    await safeSend(
+                        message.from, 
+                        `❌ Your subscription has expired.\n\n` +
+                        `Please renew to continue using premium commands.\n\n` +
+                        `Visit: ${process.env.DOMAIN || 'https://yourwebsite.com'}/pricing`
+                    );
                     return;
                 }
             }
-        } catch (error) {
-            logger.error(`[${sessionId}] Permission check error:`, error);
-            // Continue anyway if there's an error checking permissions
+
+            // ✅ 3. Use canUseCommand helper for comprehensive permission check
+            const hasPermission = await canUseCommand(
+                userId, 
+                cmd, 
+                userDoc.subscription || 'free'
+            );
+
+            if (!hasPermission) {
+                // Get subscription plans from server (single source of truth)
+                const { subscriptionPlans } = require('../server/server');
+                
+                // Find which plan includes this command
+                const requiredPlan = Object.keys(subscriptionPlans).find(plan => {
+                    const planCommands = subscriptionPlans[plan].allowedCommands;
+                    return planCommands === 'all' || 
+                           (Array.isArray(planCommands) && planCommands.includes(cmd));
+                }) || 'business';
+                
+                await safeSend(
+                    message.from, 
+                    `❌ Command !${cmd} requires ${requiredPlan} subscription or higher.\n\n` +
+                    `Your current plan: ${userDoc.subscription || 'free'}\n\n` +
+                    `Upgrade at: ${process.env.DOMAIN || 'https://tagthemall.com.ng'}/pricing\n\n` +
+                    `💡 Or contact admin for special access.`
+                );
+                return;
+            }
         }
+        
+    } catch (error) {
+        logger.error(`[${sessionId}] Permission check error:`, error);
+        // Continue anyway if there's an error checking permissions
+        // Change to 'return;' for fail-closed security (deny on error)
     }
+}
 
     // --------------------------------------------------
     // Your entire command switch block stays exactly as is
@@ -4886,41 +4911,51 @@ function start(count = 1) {
 async function canUseCommand(userId, commandName, userSubscription) {
     try {
         const User = require('./models/User');
-        const CommandGrant = require('./models/CommandGrant');
+        const CommandGrant = require('../models/CommandGrant');
         const { subscriptionPlans } = require('../server/server');
         
-        // Get user
         const user = await User.findById(userId);
         if (!user) return false;
         
-        // Check if user is exempt (admin, owner, etc.)
-        if (user.isExemptFromPayment() || user.isBotOwner()) {
-            return true;
-        }
+        // ✅ 1. Exemptions (always work)
+        if (user.isExemptFromPayment && user.isExemptFromPayment()) return true;
+        if (user.isBotOwner && user.isBotOwner()) return true;
+        if (user.isSystemAdmin && typeof user.isSystemAdmin === 'function' && user.isSystemAdmin()) return true;
         
-        // Get plan commands
-        const plan = subscriptionPlans[userSubscription] || subscriptionPlans.free;
-        
-        // Check if command is in plan
-        if (plan.allowedCommands === 'all') {
-            return true;
-        }
-        
-        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(commandName)) {
-            return true;
-        }
-        
-        // Check for custom grants
+        // ✅ 2. Check if subscription is active
         const now = new Date();
+        const isSubscriptionActive = user.subscriptionExpiry && new Date(user.subscriptionExpiry) > now;
+        const isPaymentValid = user.paymentStatus === 'paid' || user.paymentStatus === 'trial';
+        
+        // If subscription expired, only allow basic commands
+        if (!isSubscriptionActive && !isPaymentValid) {
+            return ['ping', 'help', 'status'].includes(commandName);
+        }
+        
+        // ✅ 3. Plan commands
+        const plan = subscriptionPlans[userSubscription] || subscriptionPlans.free;
+        if (plan.allowedCommands === 'all') return true;
+        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(commandName)) return true;
+        
+        // ✅ 4. User.customCommands (only if subscription active)
+        if (Array.isArray(user.customCommands) && user.customCommands.includes(commandName)) return true;
+        
+        // ✅ 5. CommandGrant (only for CURRENT plan)
         const customGrant = await CommandGrant.findOne({
-            $or: [
-                { userId: userId, commandName: commandName },
-                { planType: userSubscription, commandName: commandName }
-            ],
-            isActive: true,
-            $or: [
-                { expiresAt: null },
-                { expiresAt: { $gt: now } }
+            $and: [
+                {
+                    $or: [
+                        { userId: userId, commandName: commandName },
+                        { planType: userSubscription, commandName: commandName } // CURRENT plan only
+                    ]
+                },
+                { isActive: true },
+                {
+                    $or: [
+                        { expiresAt: null },
+                        { expiresAt: { $gt: now } }
+                    ]
+                }
             ]
         });
         
@@ -4931,7 +4966,6 @@ async function canUseCommand(userId, commandName, userSubscription) {
         return false;
     }
 }
-
 
 // Find where commands are processed and add this check:
 async function handleCommand(message, sessionId, userId, userSubscription) {
