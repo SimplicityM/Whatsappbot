@@ -284,7 +284,7 @@ function createClientOptions(sessionId) {
   return {
     authStrategy: new (require('whatsapp-web.js').LocalAuth)({
       clientId: sessionId,
-      dataPath: './.wwebjs_auth',
+      dataPath: BASE_AUTH_PATH,  // ✅ ABSOLUTE PATH
       store: store
     }),
 
@@ -432,46 +432,6 @@ function normalizeJid(jid) {
       workerIO.emit('qrCode', { sessionId, qr });
     }
   });
-
-//   client.on('authenticated', () => {
-//     logger.info(`[${sessionName}] authenticated`);
-//   });
-
-client.on('authenticated', async () => {
-    try {
-        logger.info(`[${sessionName}] authenticated — saving auth files...`);
-
-        const sessionFolder = path.join(BASE_AUTH_PATH, sessionId);
-        if (!fs.existsSync(sessionFolder)) {
-            logger.warn(`[${sessionName}] Auth folder does not exist: ${sessionFolder}`);
-            return;
-        }
-
-        const files = fs.readdirSync(sessionFolder);
-        const authObj = {};
-
-        for (const file of files) {
-            try {
-                const filePath = path.join(sessionFolder, file);
-                const data = fs.readFileSync(filePath);
-                authObj[file] = data.toString('base64');
-            } catch (err) {
-                logger.warn(`[${sessionName}] Failed to read auth file ${file}: ${err.message}`);
-            }
-        }
-
-        await SessionAuth.findOneAndUpdate(
-            { sessionId },
-            { authData: JSON.stringify(authObj), updatedAt: new Date() },
-            { upsert: true }
-        );
-
-        logger.info(`[${sessionName}] Authentication data saved to DB.`);
-
-    } catch (err) {
-        logger.error(`[${sessionName}] Error saving authentication data: ${err.message}`);
-    }
-});
 
 
   client.on('auth_failure', (err) => {
@@ -923,7 +883,49 @@ client.on('message_create', async (message) => {
         if (userId) {
             await trackDailyUsage(userId, 'message');
         }
-
+        
+// Auto-save contact when they message the bot
+if (!message.fromMe && message.from !== 'status@broadcast') {
+    try {
+        const contact = await message.getContact();
+        const chat = await message.getChat();
+        
+        // Get user email from session
+        const sessionDoc = await Session.findOne({ sessionId }).populate('userId');
+        const userEmail = sessionDoc?.userId?.email;
+        
+        if (userId && userEmail) {
+            await Contact.findOneAndUpdate(
+                { 
+                    sessionId: sessionId,
+                    whatsappId: message.from
+                },
+                {
+                    sessionId: sessionId,
+                    userId: userId,
+                    whatsappId: message.from,
+                    name: contact.pushname || contact.name || message.from.split('@')[0],
+                    phone: message.from.split('@')[0],
+                    type: chat.isGroup ? 'group' : 'individual',
+                    isGroup: chat.isGroup || false,
+                    groupId: chat.isGroup ? chat.id._serialized : null,
+                    groupName: chat.isGroup ? chat.name : null,
+                    hasMessagedBot: true,
+                    lastMessageAt: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            
+            // Update user's contactsSaved count
+            await User.findByIdAndUpdate(userId, {
+                $inc: { 'usage.contactsSaved': 1 }
+            });
+        }
+    } catch (err) {
+        logger.error(`[${sessionName}] Error auto-saving contact:`, err);
+    }
+}
+        
     // ✅ Track message processing
     try {
     const sessionDoc = await Session.findOne({ sessionId });
@@ -971,6 +973,88 @@ client.on('message_create', async (message) => {
     } catch (e) {
       // ignore db errors
     }
+
+// --------------------------------------------------
+// 🟢 AUTO-SAVE INDIVIDUAL CONTACTS (NEW)
+// --------------------------------------------------
+// Save individual contacts when they first message the bot
+if (!message.fromMe && message.from !== 'status@broadcast') {
+    try {
+        const chat = await message.getChat().catch(() => null);
+        
+        // Only save individual contacts (not groups, not group members)
+        if (chat && !chat.isGroup) {
+            const contact = await message.getContact().catch(() => null);
+            
+            if (contact && userId) {
+                // Get user email from User model
+                const User = require('./models/User');
+                const userDoc = await User.findById(userId).select('email').lean();
+                const userEmail = userDoc?.email;
+                
+                if (userEmail) {
+                    // Extract phone number from WhatsApp ID
+                    const phoneNumber = message.from.split('@')[0];
+                    
+                    // Get contact name (priority: pushname > name > phone)
+                    const contactName = contact.pushname || 
+                                      contact.name || 
+                                      contact.verifiedName || 
+                                      phoneNumber;
+                    
+                    // Try to get profile picture
+                    let profilePicUrl = null;
+                    try {
+                        profilePicUrl = await contact.getProfilePicUrl().catch(() => null);
+                    } catch {}
+                    
+                    // Save or update contact in database
+                    const savedContact = await Contact.findOneAndUpdate(
+                        { 
+                            sessionId: sessionId,
+                            whatsappId: message.from
+                        },
+                        {
+                            $set: {
+                                sessionId: sessionId,
+                                userId: userId,
+                                whatsappId: message.from,
+                                name: contactName,
+                                phone: phoneNumber,
+                                type: 'individual',
+                                isGroup: false,
+                                profilePicture: profilePicUrl,
+                                hasMessagedBot: true,
+                                lastMessageAt: new Date()
+                            },
+                            $setOnInsert: {
+                                addedAt: new Date()
+                            }
+                        },
+                        { 
+                            upsert: true, 
+                            new: true 
+                        }
+                    );
+                    
+                    // Only increment contactsSaved if this is a NEW contact
+                    if (savedContact && !savedContact.hasMessagedBot) {
+                        await User.findByIdAndUpdate(
+                            userId,
+                            { $inc: { 'usage.contactsSaved': 1 } }
+                        );
+                    }
+                    
+                    logger.info(`[${sessionName}] ✅ Contact saved: ${contactName} (${phoneNumber}) for user ${userEmail}`);
+                }
+            }
+        }
+    } catch (e) {
+        logger.error(`[${sessionName}] Error auto-saving individual contact:`, e);
+    }
+}
+// --------------------------------------------------
+
     // --------------------------------------------------
 
     // --------------------------------------------------
@@ -4399,41 +4483,20 @@ try {
   }
 }
 
-// ---------------- Session creation / management API ----------------
-// function createClient(sessionId) {
-//   const opts = createClientOptions(sessionId);
-//   const client = new Client(opts);
-//   // ensure event handlers are unique per client
-//   setupClientEvents(client, sessionId, global.io || null);
-//   return client;
-// }
-
-async function createClient(sessionId) {
-  // 1. Restore auth files BEFORE creating client
-  await restoreAuthForSession(sessionId);
-
-  // 2. Make sure LocalAuth uses the correct folder
+function createClient(sessionId) {
+  // MongoStore handles auth restoration automatically
   const opts = createClientOptions(sessionId);
-
-  // override dataPath to absolute path for safety
-  opts.authStrategy = new (require('whatsapp-web.js').LocalAuth)({
-    clientId: sessionId,
-    dataPath: BASE_AUTH_PATH
-  });
-
   const client = new Client(opts);
   setupClientEvents(client, sessionId, global.io || null);
   return client;
 }
 
-
-async function createSession(sessionId) {
+function createSession(sessionId) {
   if (clients.has(sessionId)) {
     logger.info(`Session ${sessionId} already exists`);
     return clients.get(sessionId);
   }
-//   const client = createClient(sessionId);
-const client = await createClient(sessionId);
+  const client = createClient(sessionId);
   clients.set(sessionId, client);
   client.initialize().catch(err => {
     logger.error(`Failed to initialize client ${sessionId}`, err);
@@ -4474,36 +4537,6 @@ function ensureDir(p) {
   try { fs.mkdirSync(p, { recursive: true }); } catch {}
 }
 
-async function restoreAuthForSession(sessionId) {
-  try {
-    const session = await SessionAuth.findOne({ sessionId }).lean();
-    if (!session || !session.authData) {
-      return false;
-    }
-
-    let authObj;
-    try {
-      authObj = JSON.parse(session.authData);
-    } catch {
-      return false;
-    }
-
-    const sessionFolder = path.join(BASE_AUTH_PATH, sessionId);
-    ensureDir(sessionFolder);
-
-    // authObj must be an object of filename -> base64 contents
-    for (const filename of Object.keys(authObj)) {
-      const filePath = path.join(sessionFolder, filename);
-      fs.writeFileSync(filePath, Buffer.from(authObj[filename], 'base64'));
-    }
-
-    return true;
-
-  } catch (err) {
-    console.log("restoreAuthForSession error:", err);
-    return false;
-  }
-}
 
 /**
  * Restore sessions in batches with prioritization
