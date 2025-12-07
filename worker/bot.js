@@ -2911,48 +2911,74 @@ Sent to **${delivered}** members in *${resolved.group.name}*.`
 }
 
 
-      /* ---------- MEMBERS ---------- */
+ /* ---------- MEMBERS ---------- */
 case 'members': {
     // 1️⃣ Parse group index (or use active group)
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
     
-    // 2️⃣ Resolve Group from ALL groups
+    // 2️⃣ Resolve Group from ADMIN groups (same as !list) ✅ FIXED
     let resolved = { index: null, group: null };
     
     if (providedIdx) {
         try {
-            // Load cached ALL groups
-            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            // ✅ Load cached ADMIN groups (matches !list)
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId })
                 .lean()
                 .catch(() => null);
 
-            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            let adminGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
 
-            // If no cache, rebuild from all groups
-            if (!allGroups.length) {
+            // If no cache, rebuild from admin groups
+            if (!adminGroups.length) {
                 const chats = await client.getChats();
-                allGroups = chats
-                    .filter(c => c.isGroup)
-                    .map(c => ({
-                        name: c.name || "Unnamed Group",
-                        groupId: c.id._serialized
-                    }));
+                const mySelf = client.info.wid._serialized;
+                
+                for (const c of chats) {
+                    if (!c.isGroup) continue;
 
-                // Save cache
-                await SavedGroupList.findOneAndUpdate(
-                    { sessionId: sessionId + "_all" },
-                    { groups: allGroups, updatedAt: new Date() },
-                    { upsert: true }
-                ).catch(() => null);
+                    let participants = [];
+                    try {
+                        if (Array.isArray(c.participants) && c.participants.length) {
+                            participants = c.participants;
+                        } else if (typeof c.getParticipants === "function") {
+                            participants = await c.getParticipants();
+                        }
+                    } catch {
+                        participants = [];
+                    }
+
+                    const amIAdmin = participants.some(
+                        p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin)
+                    );
+                    
+                    if (amIAdmin) {
+                        adminGroups.push({
+                            name: c.name || 'Unnamed group',
+                            groupId: c.id._serialized
+                        });
+                    }
+                }
+
+                // ✅ Save cache (admin groups only)
+                if (adminGroups.length) {
+                    await SavedGroupList.findOneAndUpdate(
+                        { sessionId: sessionId },
+                        { groups: adminGroups, updatedAt: new Date() },
+                        { upsert: true }
+                    ).catch(() => null);
+                }
             }
 
             // Resolve group by index
             const arrayIndex = providedIdx - 1;
-            if (allGroups[arrayIndex]) {
+            if (adminGroups[arrayIndex]) {
                 resolved = {
                     index: providedIdx,
-                    group: allGroups[arrayIndex]
+                    group: adminGroups[arrayIndex]
                 };
+            } else {
+                await safeSend(message.from, `❌ Invalid index. Use !list to see available groups (1-${adminGroups.length})`);
+                break;
             }
         } catch (err) {
             logger.error('Error resolving group:', err);
@@ -2962,14 +2988,14 @@ case 'members': {
         const lastActive = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
         
         if (lastActive && lastActive.groupId) {
-            // Load all groups to find the active one
-            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            // ✅ Load admin groups to find the active one
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId })
                 .lean()
                 .catch(() => null);
 
-            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            let adminGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
             
-            const found = allGroups.find(g => g.groupId === lastActive.groupId);
+            const found = adminGroups.find(g => g.groupId === lastActive.groupId);
             if (found) {
                 resolved = { index: null, group: found };
             }
@@ -2977,7 +3003,7 @@ case 'members': {
     }
 
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Use !listall to see all groups or !use <index> to set default');
+        await safeSend(message.from, '❌ No target group found. Use !list to see admin groups or !use <index> to set default');
         break;
     }
 
@@ -3035,7 +3061,7 @@ case 'members': {
             message.from,
             `⚠ Cannot list members of *${resolved.group.name}*.\n` +
             `Group may be a WhatsApp Community subgroup (restricted).\n` +
-            `Try using: !syncmembers after promoting bot to admin.`
+            `Try using: !syncmembers ${resolved.index || ''} after promoting bot to admin.`
         );
         break;
     }
@@ -3359,66 +3385,82 @@ case 'tag': {
         // Parallel contact fetch
         await fetchContactsMerged(filteredJIDs, 30);
 
-        // Chunked sending
-        const chunkSize = CHUNK_SIZE || 100;
-        const chunks = [];
-        for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
-            chunks.push(filteredJIDs.slice(i, i + chunkSize));
-        }
+        // ✅ Chunked sending - SINGLE visible message + silent mentions
+const chunkSize = CHUNK_SIZE || 100;
+const chunks = [];
+for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
+    chunks.push(filteredJIDs.slice(i, i + chunkSize));
+}
 
-        let totalSent = 0;
-        let totalChunks = 0;
+let totalSent = 0;
+let sendError = false;
 
-        for (const chunk of chunks) {
-            const mentions = [];
+for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const mentions = [];
 
-            for (const jid of chunk) {
-                const c = contactCache.get(jid);
-                if (!c) continue;
-                const jidSerialized = c.id?._serialized || jid;
-                mentions.push(jidSerialized);
-            }
-
-            if (!mentions.length) continue;
-
-            // SEND ONLY MESSAGE TEXT – NO visible @names
-            const chunkMessage = messageText;
-
-            try {
-                await client.sendMessage(groupId, chunkMessage, { mentions });
-                totalSent += mentions.length;
-                totalChunks++;
-            } catch (err) {
-                logger.error(`[${sessionName}] tag chunk failed`, err);
-
-                // Retry once
-                try {
-                    await new Promise(r => setTimeout(r, 500));
-                    await client.sendMessage(groupId, chunkMessage, { mentions });
-                    totalSent += mentions.length;
-                    totalChunks++;
-                } catch (e) {
-                    logger.error(`[${sessionName}] retry failed`, e);
-                }
-            }
-
-            await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
-        }
-
-        successfulGroups.push(
-            `${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`
-        );
-
-        await new Promise(r => setTimeout(r, 600));
+    for (const jid of chunks[chunkIndex]) {
+        const c = contactCache.get(jid);
+        if (!c) continue;
+        const jidSerialized = c.id?._serialized || jid;
+        mentions.push(jidSerialized);
     }
 
-    if (!successfulGroups.length) {
-        await safeSend(message.from, "❌ No groups tagged.");
-    } else {
-        await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
+    if (!mentions.length) continue;
+
+    try {
+        if (chunkIndex === 0) {
+            // ✅ FIRST CHUNK: Send the actual message (visible)
+            await client.sendMessage(groupId, messageText, { mentions });
+            logger.info(`[${sessionName}] Sent visible message to ${resolved.group.name}`);
+        } else {
+            // ✅ SUBSEQUENT CHUNKS: Send invisible mention (zero-width space)
+            await client.sendMessage(groupId, '‎', { mentions });
+            logger.info(`[${sessionName}] Sent silent mention chunk ${chunkIndex + 1}/${chunks.length}`);
+        }
+        
+        totalSent += mentions.length;
+    } catch (err) {
+        logger.error(`[${sessionName}] tag chunk ${chunkIndex + 1} failed`, err);
+        
+        // Retry once
+        try {
+            await new Promise(r => setTimeout(r, 500));
+            if (chunkIndex === 0) {
+                await client.sendMessage(groupId, messageText, { mentions });
+            } else {
+                await client.sendMessage(groupId, '‎', { mentions });
+            }
+            totalSent += mentions.length;
+        } catch (e) {
+            logger.error(`[${sessionName}] retry failed`, e);
+            sendError = true;
+        }
     }
 
-    break;
+    // Delay between chunks to avoid rate limiting
+    await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
+}
+
+if (sendError) {
+    successfulGroups.push(
+        `${resolved.group.name} (${totalSent} members tagged - some failed)`
+    );
+} else {
+    successfulGroups.push(
+        `${resolved.group.name} (${totalSent} members tagged)`
+    );
+}
+
+await new Promise(r => setTimeout(r, 600));
+}
+
+if (!successfulGroups.length) {
+    await safeSend(message.from, "❌ No groups tagged.");
+} else {
+    await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
+}
+
+break;
 }
 
 case 'tagexcept': {
