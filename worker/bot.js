@@ -644,6 +644,7 @@ Quick Start:
 • !autoreply help
 
 💡 Type *!help* for full command list & *!autoreply* for full autoreply command list.
+*For Help Chat: +2347067012884*
         `);
 
         // 🔄 -----------------------------------------

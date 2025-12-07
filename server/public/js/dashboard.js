@@ -906,7 +906,6 @@ function renderFilteredSessions(sessions) {
     userSessions = originalSessions;
 }
 
-
 async function createNewSession(usePairingCode = false) {
     console.log('🔍 DEBUG: Starting createNewSession, usePairingCode:', usePairingCode);
     
@@ -919,7 +918,12 @@ async function createNewSession(usePairingCode = false) {
     
     // If pairing code method, prompt for phone number first
     if (usePairingCode) {
-        phoneNumber = prompt('Enter your WhatsApp phone number (with country code):\n\nExample: +2348012345678');
+        phoneNumber = prompt(
+            'Enter your WhatsApp phone number (with country code):\n\n' +
+            'Example: +2348012345678\n\n' +
+            'After entering, a pairing code will be generated.\n' +
+            'You will then enter this code in your WhatsApp app.'
+        );
         
         if (!phoneNumber) {
             showNotification('Phone number is required for pairing code method', 'error');
@@ -929,14 +933,14 @@ async function createNewSession(usePairingCode = false) {
         // Validate phone number format
         const cleanPhone = phoneNumber.replace(/[^0-9+]/g, '');
         if (cleanPhone.length < 10) {
-            showNotification('Invalid phone number format. Please include country code.', 'error');
+            showNotification('Invalid phone number format. Please include country code (e.g., +234...)', 'error');
             return;
         }
         
         phoneNumber = cleanPhone;
     }
 
-    // ✅ Show loading modal IMMEDIATELY (before any async operations)
+    // ✅ Show loading modal IMMEDIATELY
     const loadingModal = document.createElement('div');
     loadingModal.className = 'modal active';
     loadingModal.id = 'sessionLoadingModal';
@@ -948,7 +952,11 @@ async function createNewSession(usePairingCode = false) {
             <div class="modal-body" style="text-align: center; padding: 40px;">
                 <div class="spinner"></div>
                 <p style="margin-top: 20px;">Initializing WhatsApp session...</p>
-                <p style="color: #666; font-size: 14px;">This may take a few moments</p>
+                <p style="color: #666; font-size: 14px;">
+                    ${usePairingCode 
+                        ? 'Generating your pairing code...' 
+                        : 'This may take a few moments'}
+                </p>
             </div>
         </div>
     `;
@@ -972,7 +980,7 @@ async function createNewSession(usePairingCode = false) {
             }
         }
         
-        // Clear any existing QR/pairing timeouts
+        // Clear any existing timeouts
         if (window.currentQRTimeout) {
             clearTimeout(window.currentQRTimeout);
             window.currentQRTimeout = null;
@@ -987,11 +995,9 @@ async function createNewSession(usePairingCode = false) {
         const sessionQRHandler = (data) => {
             console.log('🎯 SESSION QR EVENT:', data);
             
-            // Only handle QR for the current session being created
             if (currentSessionId && data.sessionId === currentSessionId && data.qr) {
                 qrReceived = true;
                 
-                // Clear timeout when QR is received
                 if (window.currentQRTimeout) {
                     clearTimeout(window.currentQRTimeout);
                     window.currentQRTimeout = null;
@@ -999,8 +1005,6 @@ async function createNewSession(usePairingCode = false) {
                 }
                 
                 displayQRCode(data.qr, data.sessionId);
-                
-                // Remove this specific handler after use
                 socket.off('qrCode', sessionQRHandler);
                 console.log('🧹 Removed session-specific QR handler');
             }
@@ -1010,11 +1014,9 @@ async function createNewSession(usePairingCode = false) {
         const sessionPairingHandler = (data) => {
             console.log('🎯 SESSION PAIRING CODE EVENT:', data);
             
-            // Only handle pairing code for the current session being created
             if (currentSessionId && data.sessionId === currentSessionId && data.code) {
                 pairingCodeReceived = true;
                 
-                // Clear timeout when pairing code is received
                 if (window.currentQRTimeout) {
                     clearTimeout(window.currentQRTimeout);
                     window.currentQRTimeout = null;
@@ -1022,8 +1024,6 @@ async function createNewSession(usePairingCode = false) {
                 }
                 
                 displayPairingCode(data.code, data.sessionId, data.phoneNumber);
-                
-                // Remove this specific handler after use
                 socket.off('pairingCode', sessionPairingHandler);
                 console.log('🧹 Removed session-specific pairing handler');
             }
@@ -1050,7 +1050,6 @@ async function createNewSession(usePairingCode = false) {
             body: JSON.stringify(requestBody)
         });
         
-        // ✅ Handle response properly
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.message || 'Failed to create session');
@@ -1092,7 +1091,7 @@ async function createNewSession(usePairingCode = false) {
             renderUserSessions();
             
             const methodText = usePairingCode ? 'pairing code' : 'QR code';
-            showNotification(`New session created! Waiting for ${methodText}...`, 'success');
+            showNotification(`Session created! Generating ${methodText}...`, 'success');
             showQRModal();
             
             // Show loading state in modal
@@ -1105,12 +1104,18 @@ async function createNewSession(usePairingCode = false) {
                 if (pairingCodeDisplay) {
                     pairingCodeDisplay.style.display = 'block';
                     pairingCodeDisplay.innerHTML = `
-                        <div style="text-align: center; padding: 20px;">
-                            <i class="fas fa-mobile-alt" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
-                            <p>Generating Pairing Code...</p>
-                            <p>Phone: ${phoneNumber}</p>
-                            <p>Session: ${currentSessionId}</p>
-                            <div class="loading-spinner"></div>
+                        <div style="text-align: center; padding: 30px;">
+                            <i class="fas fa-mobile-alt" style="font-size: 64px; color: #667eea; margin-bottom: 20px; animation: pulse 2s infinite;"></i>
+                            <h3 style="color: #2d3748; margin-bottom: 10px;">Generating Pairing Code...</h3>
+                            <p style="color: #666; margin-bottom: 20px;">
+                                WhatsApp is creating your 8-digit pairing code.<br>
+                                Once generated, you'll enter it in your WhatsApp app.
+                            </p>
+                            <div class="loading-spinner" style="margin: 20px auto;"></div>
+                            <p style="font-size: 12px; color: #999; margin-top: 20px;">
+                                Phone: ${phoneNumber}<br>
+                                Session: ${currentSessionId}
+                            </p>
                         </div>
                     `;
                 }
@@ -1131,8 +1136,6 @@ async function createNewSession(usePairingCode = false) {
                             <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
                             <p>Generating QR Code...</p>
                             <p>Session: ${currentSessionId}</p>
-                            <p style="font-size: 12px; color: #666;">Socket ID: ${socket.id}</p>
-                            <p style="font-size: 12px; color: #666;">User Room: user-${userId}</p>
                             <div class="loading-spinner"></div>
                         </div>
                     `;
@@ -1145,7 +1148,7 @@ async function createNewSession(usePairingCode = false) {
                 if (pairingBtn) pairingBtn.classList.remove('active');
             }
             
-            // Set up timeout for code generation
+            // Set up timeout
             window.currentQRTimeout = setTimeout(() => {
                 const codeReceived = usePairingCode ? pairingCodeReceived : qrReceived;
                 const qrModal = document.getElementById('qrModal');
@@ -1158,38 +1161,32 @@ async function createNewSession(usePairingCode = false) {
                         <div style="text-align: center; padding: 20px;">
                             <i class="fas fa-clock" style="font-size: 48px; color: #f39c12; margin-bottom: 10px;"></i>
                             <h4>${codeType} Timeout</h4>
-                            <p>The ${codeType.toLowerCase()} took too long to generate or has expired.</p>
-                            <p style="font-size: 14px; color: #666;">This usually happens when:</p>
+                            <p>The ${codeType.toLowerCase()} took too long to generate.</p>
+                            <p style="font-size: 14px; color: #666;">Possible reasons:</p>
                             <ul style="text-align: left; color: #666; font-size: 14px; max-width: 300px; margin: 10px auto;">
                                 <li>Server is overloaded</li>
                                 <li>WhatsApp service is busy</li>
                                 <li>Network connectivity issues</li>
-                                ${!usePairingCode ? '<li>QR code expired (they expire every 20 seconds)</li>' : ''}
-                                ${usePairingCode ? '<li>Invalid phone number format</li>' : ''}
+                                ${usePairingCode ? '<li>Invalid phone number format</li>' : '<li>QR code expired</li>'}
                             </ul>
                             <div style="margin-top: 20px;">
-                                <button onclick="closeQRModal(); setTimeout(() => createNewSession(${usePairingCode}), 500);" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                                <button onclick="closeQRModal(); setTimeout(() => createNewSession(${usePairingCode}), 500);" 
+                                    style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
                                     <i class="fas fa-redo"></i> Try Again
                                 </button>
-                                <button onclick="closeQRModal()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                                <button onclick="closeQRModal()" 
+                                    style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
                                     <i class="fas fa-times"></i> Cancel
                                 </button>
                             </div>
-                            <p style="font-size: 12px; color: #999; margin-top: 15px;">
-                                Session: ${currentSessionId}<br>
-                                Socket: ${socket?.connected ? 'Connected' : 'Disconnected'}<br>
-                                Room: user-${userId}
-                                ${usePairingCode ? `<br>Phone: ${phoneNumber}` : ''}
-                            </p>
                         </div>
                     `;
                 }
                 
-                // Clean up handlers
                 socket.off('qrCode', sessionQRHandler);
                 socket.off('pairingCode', sessionPairingHandler);
                 window.currentQRTimeout = null;
-            }, 45000); // 45 seconds timeout
+            }, 45000);
             
         } else {
             throw new Error(data.message || 'Session creation failed');
@@ -1197,13 +1194,11 @@ async function createNewSession(usePairingCode = false) {
     } catch (error) {
         console.error('❌ Session creation failed:', error.message);
         
-        // Remove loading modal if it exists
         const existingModal = document.getElementById('sessionLoadingModal');
         if (existingModal) {
             existingModal.remove();
         }
         
-        // ✅ Better error message for DB connection issues
         if (error.message.includes('Database connection')) {
             showNotification('Server is starting up. Please wait 30 seconds and try again.', 'warning');
         } else {
@@ -1212,7 +1207,7 @@ async function createNewSession(usePairingCode = false) {
     }
 }
 
-// Display pairing code (called when socket receives pairing code)
+// Display pairing code with clear instructions
 function displayPairingCode(code, sessionId, phoneNumber) {
     console.log('📱 Displaying pairing code:', code);
     
@@ -1233,25 +1228,42 @@ function displayPairingCode(code, sessionId, phoneNumber) {
     
     pairingCodeDisplay.innerHTML = `
         <div class="pairing-code-box">
-            <h4>Enter this code in WhatsApp:</h4>
+            <h4 style="margin-bottom: 15px;">
+                <i class="fas fa-mobile-alt"></i> Your Pairing Code
+            </h4>
             <div class="pairing-code" id="pairingCodeValue">
                 <span class="code-digits">${formattedCode}</span>
             </div>
-            <p class="pairing-instructions">
-                1. Open WhatsApp on your phone<br>
-                2. Go to Settings → Linked Devices<br>
-                3. Tap "Link a Device"<br>
-                4. Tap "Link with phone number instead"<br>
-                5. Enter the code: <strong>${formattedCode}</strong>
-            </p>
-            <p style="font-size: 12px; opacity: 0.8; margin-top: 15px;">
-                Phone: ${phoneNumber || 'N/A'}<br>
-                Session: ${sessionId}
+            
+            <div class="pairing-instructions">
+                <h5 style="margin-bottom: 10px; color: white;">
+                    <i class="fas fa-info-circle"></i> How to Link:
+                </h5>
+                <ol style="text-align: left; line-height: 2;">
+                    <li>Open <strong>WhatsApp</strong> on your phone</li>
+                    <li>Go to <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                    <li>Tap <strong>"Link a Device"</strong></li>
+                    <li>Tap <strong>"Link with phone number instead"</strong></li>
+                    <li>Enter this code: <strong style="font-size: 18px; color: #ffd700;">${formattedCode}</strong></li>
+                </ol>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.15); border-radius: 8px;">
+                <p style="font-size: 13px; margin: 0;">
+                    <i class="fas fa-phone"></i> Phone: <strong>${phoneNumber || 'N/A'}</strong>
+                </p>
+                <p style="font-size: 11px; margin: 5px 0 0 0; opacity: 0.8;">
+                    Session: ${sessionId}
+                </p>
+            </div>
+            
+            <p style="font-size: 12px; margin-top: 15px; opacity: 0.9;">
+                <i class="fas fa-clock"></i> This code will expire in a few minutes
             </p>
         </div>
     `;
     
-    showNotification(`Pairing code: ${formattedCode}. Enter it in WhatsApp now!`, 'success');
+    showNotification(`Pairing code generated: ${formattedCode}`, 'success');
 }
 
 // Switch between QR code and pairing code methods

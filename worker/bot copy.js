@@ -22,9 +22,15 @@ const RestorationMonitor = require('./restorationMonitor');
 // Create a global monitor instance
 const restorationMonitor = new RestorationMonitor();
 
-const BASE_AUTH_PATH = path.join(__dirname, '..', '.wwebjs_auth'); 
-// or use process.cwd() if bot.js is not in worker folder
-// console.log("Auth path:", BASE_AUTH_PATH);
+const BASE_AUTH_PATH = path.resolve('/app/.wwebjs_auth');
+
+// Add directory creation with proper permissions
+if (!fs.existsSync(BASE_AUTH_PATH)) {
+    fs.mkdirSync(BASE_AUTH_PATH, { recursive: true, mode: 0o777 });
+    console.log(`✅ Created auth directory: ${BASE_AUTH_PATH}`);
+} else {
+    console.log(`✅ Auth directory exists: ${BASE_AUTH_PATH}`);
+}
 
 
 // bot.js (multi-session, isolated per-client implementation)
@@ -295,10 +301,11 @@ function createClientOptions(sessionId) {
   
   return {
     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
-    clientId: sessionId,
-    store: store,
-    backupSyncIntervalMs: 300000 // Backup every 5 minutes
-}),
+      clientId: sessionId,
+      store: store,
+      backupSyncIntervalMs: 300000, // Backup every 5 minutes
+      dataPath: BASE_AUTH_PATH // Add this line - tells RemoteAuth where to store browser data
+    }),
 
     puppeteer: {
       headless: true,
@@ -328,9 +335,9 @@ function createClientOptions(sessionId) {
     takeoverOnConflict: true,
     takeoverTimeoutMs: 0,
     qrMaxRetries: 3,
-
     webVersionCache: {
-      type: "local"
+      type: "local",
+      path: path.join(BASE_AUTH_PATH, 'wwebVersion.json') // Add this line - cache WhatsApp Web version
     }
   };
 }
@@ -627,7 +634,16 @@ This policy prevents trial abuse and ensures fair access for all users.`);
 • !dmall — DM all members
 • !dmselected — DM selected members only
 
-💡 Type *!help* for full command list.
+  
+📋 AUTO-REPLY COMMANDS
+
+Quick Start:
+• !autoreply - Reply a certain message
+• !autoreply addgroup - Choose group command works on 
+• !autoreply status
+• !autoreply help
+
+💡 Type *!help* for full command list & *!autoreply* for full autoreply command list.
         `);
 
         // 🔄 -----------------------------------------
@@ -1922,22 +1938,30 @@ case 'list': {
     break;
 }
 
+/* ---------- AUTOREPLY (CLEANED) — PART 1 of 3 ---------- */
+/* Paste Part 1, then Part 2, then Part 3 in order into your switch-case. */
+
 case 'autoreply': {
     if (!isSelfChat) return;
 
     const sub = (args[0] || '').toLowerCase();
 
-    // ============= ADD RULE =============
+    // =====================================================
+    // GLOBAL RULES
+    // =====================================================
     if (sub === 'add') {
         const full = args.slice(1).join(' ');
         const pipe = full.indexOf('|');
 
         if (pipe === -1) {
             await safeSend(message.from,
-                'Usage:\n' +
-                '!autoreply add <keyword> | <response>\n\n' +
-                'Example:\n!autoreply add hi | Hello there!'
-            );
+`Usage:
+!autoreply add <keyword> | <response>
+
+Example:
+!autoreply add hi | Hello there!
+
+This adds a GLOBAL rule (works in all allowed groups).`);
             break;
         }
 
@@ -1950,56 +1974,63 @@ case 'autoreply': {
         }
 
         let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
-        if (!doc) doc = await AutoReply.create({ sessionId, rules: [] });
+        if (!doc) {
+            doc = await AutoReply.create({
+                sessionId,
+                globalRules: [],
+                groupRules: [],
+                allowedGroups: [],
+                disabledGroups: []
+            });
+        }
 
-        doc.rules.push({ keyword, response });
+        if (!doc.globalRules) doc.globalRules = [];
+
+        doc.globalRules.push({ keyword, response });
         await doc.save();
 
         await safeSend(message.from,
-            `✅ Auto-reply added.\nKeyword: *${keyword}*\nResponse: ${response}`
-        );
+`✅ Global auto-reply added.
+Keyword: ${keyword}
+Response: ${response}
 
+Works in all allowed groups.`);
         break;
     }
 
-        // ============= REMOVE RULE =============
     if (sub === 'remove') {
         const keyword = args.slice(1).join(' ').trim().toLowerCase();
 
         if (!keyword) {
-            await safeSend(message.from,
-                'Usage:\n!autoreply remove <keyword>'
-            );
+            await safeSend(message.from, 'Usage:\n!autoreply remove <keyword>');
             break;
         }
 
         const doc = await AutoReply.findOne({ sessionId });
-        if (!doc || !doc.rules.length) {
-            await safeSend(message.from, '❌ No rules saved.');
+
+        if (!doc || !doc.globalRules?.length) {
+            await safeSend(message.from, '❌ No global rules saved.');
             break;
         }
 
-        doc.rules = doc.rules.filter(r => r.keyword.toLowerCase() !== keyword);
+        doc.globalRules = doc.globalRules.filter(r => r.keyword.toLowerCase() !== keyword);
         await doc.save();
 
-        await safeSend(message.from,
-            `🗑 Removed auto-reply for keyword: *${keyword}*`
-        );
-
+        await safeSend(message.from, `🗑 Removed global auto-reply for keyword: *${keyword}*`);
         break;
     }
 
-        // ============= LIST RULES =============
     if (sub === 'list') {
         const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
 
-        if (!doc || !doc.rules.length) {
-            await safeSend(message.from, '📭 No auto-reply rules saved.');
+        if (!doc || !doc.globalRules?.length) {
+            await safeSend(message.from, '📭 No global auto-reply rules saved.');
             break;
         }
 
-        let out = '*📄 AUTO-REPLY RULES:*\n\n';
-        doc.rules.forEach((r, i) => {
+        let out = '*📄 GLOBAL AUTO-REPLY RULES:*\n\n';
+
+        doc.globalRules.forEach((r, i) => {
             out += `${i + 1}. Keyword: *${r.keyword}*\n   Reply: ${r.response}\n\n`;
         });
 
@@ -2007,95 +2038,759 @@ case 'autoreply': {
         break;
     }
 
-        await safeSend(message.from,
-        'Usage:\n' +
-        '!autoreply add <keyword> | <response>\n' +
-        '!autoreply remove <keyword>\n' +
-        '!autoreply list'
-    );
+    // =====================================================
+    // GROUP-SPECIFIC RULES
+    // =====================================================
+    if (sub === 'addgroup') {
+        const groupIndex = parseInt(args[1]);
 
-    break;
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply addgroup <index> <keyword> | <response>
+
+Example:
+!autoreply addgroup 3 price | Our prices start at $10`);
+            break;
+        }
+
+        const full = args.slice(2).join(' ');
+        const pipe = full.indexOf('|');
+
+        if (pipe === -1) {
+            await safeSend(message.from, '❗ Missing | separator.\nFormat: keyword | response');
+            break;
+        }
+
+        const keyword = full.slice(0, pipe).trim();
+        const response = full.slice(pipe + 1).trim();
+
+        if (!keyword || !response) {
+            await safeSend(message.from, '❗ Keyword or response missing.');
+            break;
+        }
+
+        // Resolve group list (cached or from client)
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats.filter(c => c.isGroup).map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+            }
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index. Use !listall');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+        if (!doc) {
+            doc = await AutoReply.create({
+                sessionId,
+                globalRules: [],
+                groupRules: [],
+                allowedGroups: [],
+                disabledGroups: []
+            });
+        }
+
+        if (!doc.groupRules) doc.groupRules = [];
+
+        let groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule) {
+            groupRule = {
+                groupId: group.groupId,
+                groupName: group.name,
+                enabled: true,
+                rules: [],
+                mediaRules: [],
+                overrideGlobal: false
+            };
+            doc.groupRules.push(groupRule);
+        }
+
+        groupRule.rules.push({ keyword, response });
+        await doc.save();
+
+        await safeSend(message.from,
+`✅ Group-specific auto-reply added.
+Group: ${group.name}
+Keyword: ${keyword}
+Response: ${response}`);
+        break;
+    }
+
+    if (sub === 'removegroup') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from, 'Usage:\n!autoreply removegroup <index> <keyword>');
+            break;
+        }
+
+        const keyword = args.slice(2).join(' ').trim().toLowerCase();
+
+        if (!keyword) {
+            await safeSend(message.from, '❗ Keyword missing.');
+            break;
+        }
+
+        // Resolve group list (cached)
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId });
+        if (!doc || !doc.groupRules) {
+            await safeSend(message.from, '❌ No group rules saved.');
+            break;
+        }
+
+        let groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule || !groupRule.rules?.length) {
+            await safeSend(message.from, `❌ No rules for *${group.name}*.`);
+            break;
+        }
+
+        groupRule.rules = groupRule.rules.filter(r => r.keyword.toLowerCase() !== keyword);
+        await doc.save();
+
+        await safeSend(message.from, `🗑 Removed auto-reply for *${group.name}*\nKeyword: *${keyword}*`);
+        break;
+    }
+
+    if (sub === 'listgroup') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from, 'Usage:\n!autoreply listgroup <index>');
+            break;
+        }
+
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+
+        if (!doc?.groupRules) {
+            await safeSend(message.from, `📭 No rules for *${group.name}*.`);
+            break;
+        }
+
+        const groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule?.rules?.length) {
+            await safeSend(message.from, `📭 No rules for *${group.name}*.`);
+            break;
+        }
+
+        let out = `*📄 AUTO-REPLY RULES FOR: ${group.name}*\n\n`;
+
+        groupRule.rules.forEach((r, i) => {
+            out += `${i + 1}. Keyword: *${r.keyword}*\n   Reply: ${r.response}\n\n`;
+        });
+
+        await safeSend(message.from, out);
+        break;
+    }
+
+    // --- PART 1 END ---
 }
 
-if (sub === 'addmedia') {
-    const full = args.slice(1).join(' ');
-    const pipe = full.indexOf('|');
+/* ---------- AUTOREPLY (CLEANED) — PART 2 of 3 ---------- */
 
-    if (pipe === -1) {
+    // =====================================================
+    // GROUP FILTERING (WHITELIST / BLACKLIST)
+    // =====================================================
+
+    if (sub === 'allow') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply allow <index>
+
+Example:
+!autoreply allow 3
+
+Adds group to whitelist. Auto-reply will ONLY work in whitelisted groups.`);
+            break;
+        }
+
+        // Resolve group
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats.filter(c => c.isGroup).map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+            }
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index. Use !listall');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+        if (!doc) {
+            doc = await AutoReply.create({
+                sessionId,
+                globalRules: [],
+                groupRules: [],
+                allowedGroups: [],
+                disabledGroups: []
+            });
+        }
+
+        if (!doc.allowedGroups) doc.allowedGroups = [];
+        if (!doc.disabledGroups) doc.disabledGroups = [];
+
+        // Remove from blacklist if present
+        doc.disabledGroups = doc.disabledGroups.filter(gid => gid !== group.groupId);
+
+        // Add to whitelist if not already there
+        if (doc.allowedGroups.includes(group.groupId)) {
+            await safeSend(message.from, `⚠ *${group.name}* is already in the whitelist.`);
+            break;
+        }
+
+        doc.allowedGroups.push(group.groupId);
+        await doc.save();
+
         await safeSend(message.from,
-            'Usage:\n!autoreply addmedia <type> | <response>\n\n' +
-            'Types: image, video, audio, sticker, document'
-        );
+`✅ Added to whitelist: *${group.name}*
+Total whitelisted groups: ${doc.allowedGroups.length}
+
+⚠️ Auto-reply now ONLY works in whitelisted groups.
+To allow all groups, use: !autoreply clearwhitelist`);
         break;
     }
 
-    const type = full.slice(0, pipe).trim().toLowerCase();
-    const response = full.slice(pipe + 1).trim();
+    if (sub === 'disallow') {
+        const groupIndex = parseInt(args[1]);
 
-    const valid = ['image', 'video', 'audio', 'sticker', 'document'];
-    if (!valid.includes(type)) {
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply disallow <index>
+
+Example:
+!autoreply disallow 3
+
+Removes group from whitelist.`);
+            break;
+        }
+
+        // Resolve group
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId });
+
+        if (!doc?.allowedGroups?.length) {
+            await safeSend(message.from, '❌ No whitelist configured.');
+            break;
+        }
+
+        doc.allowedGroups = doc.allowedGroups.filter(gid => gid !== group.groupId);
+        await doc.save();
+
         await safeSend(message.from,
-            `❌ Invalid type. Use: ${valid.join(', ')}`
-        );
+`🗑 Removed from whitelist: *${group.name}*
+Remaining whitelisted groups: ${doc.allowedGroups.length}`);
         break;
     }
 
-    let doc = await AutoReply.findOne({ sessionId });
-    if (!doc) doc = await AutoReply.create({ sessionId, rules: [], mediaRules: [] });
+    if (sub === 'disable') {
+        const groupIndex = parseInt(args[1]);
 
-    doc.mediaRules.push({ type, response });
-    await doc.save();
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply disable <index>
 
-    await safeSend(message.from,
-        `✅ Media auto-reply added.\nType: *${type}*\nResponse: ${response}`
-    );
-    break;
-}
+Example:
+!autoreply disable 3
 
+Adds group to blacklist. Auto-reply will NOT work in this group.`);
+            break;
+        }
 
-if (sub === 'removemedia') {
-    const type = args[1]?.toLowerCase();
+        // Resolve group
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
 
-    if (!type) {
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats.filter(c => c.isGroup).map(c => ({
+                    name: c.name || "Unnamed Group",
+                    groupId: c.id._serialized
+                }));
+            }
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index. Use !listall');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+        if (!doc) {
+            doc = await AutoReply.create({
+                sessionId,
+                globalRules: [],
+                groupRules: [],
+                allowedGroups: [],
+                disabledGroups: []
+            });
+        }
+
+        if (!doc.disabledGroups) doc.disabledGroups = [];
+        if (!doc.allowedGroups) doc.allowedGroups = [];
+
+        // Remove from whitelist if present
+        doc.allowedGroups = doc.allowedGroups.filter(gid => gid !== group.groupId);
+
+        // Add to blacklist if not already there
+        if (doc.disabledGroups.includes(group.groupId)) {
+            await safeSend(message.from, `⚠ *${group.name}* is already disabled.`);
+            break;
+        }
+
+        doc.disabledGroups.push(group.groupId);
+        await doc.save();
+
         await safeSend(message.from,
-            'Usage:\n!autoreply removemedia <type>'
-        );
+`❌ Auto-reply disabled for: *${group.name}*
+Total disabled groups: ${doc.disabledGroups.length}`);
         break;
     }
 
-    let doc = await AutoReply.findOne({ sessionId });
-    if (!doc || !doc.mediaRules.length) {
-        await safeSend(message.from, '❌ No media auto-reply rules saved.');
+    if (sub === 'enable') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply enable <index>
+
+Example:
+!autoreply enable 3
+
+Removes group from blacklist.`);
+            break;
+        }
+
+        // Resolve group
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" }).lean().catch(() => null);
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId });
+
+        if (!doc?.disabledGroups?.length) {
+            await safeSend(message.from, '✅ Group is not disabled.');
+            break;
+        }
+
+        doc.disabledGroups = doc.disabledGroups.filter(gid => gid !== group.groupId);
+        await doc.save();
+
+        await safeSend(message.from,
+`✅ Auto-reply enabled for: *${group.name}*
+Remaining disabled groups: ${doc.disabledGroups.length}`);
         break;
     }
 
-    doc.mediaRules = doc.mediaRules.filter(r => r.type !== type);
-    await doc.save();
+    if (sub === 'clearwhitelist') {
+        let doc = await AutoReply.findOne({ sessionId });
 
-    await safeSend(message.from,
-        `🗑 Removed media auto-reply for type: *${type}*`
-    );
-    break;
-}
+        if (!doc?.allowedGroups?.length) {
+            await safeSend(message.from,
+'✅ No whitelist configured. Auto-reply works in all groups (except disabled).');
+            break;
+        }
 
+        const count = doc.allowedGroups.length;
+        doc.allowedGroups = [];
+        await doc.save();
 
-if (sub === 'listmedia') {
-    const doc = await AutoReply.findOne({ sessionId }).lean();
-
-    if (!doc || !doc.mediaRules.length) {
-        await safeSend(message.from, '📭 No media auto-reply rules saved.');
+        await safeSend(message.from,
+`✅ Whitelist cleared (${count} groups removed).
+Auto-reply now works in ALL groups (except disabled ones).`);
         break;
     }
 
-    let out = '*📄 MEDIA AUTO-REPLY RULES:*\n\n';
-    doc.mediaRules.forEach((r, i) => {
-        out += `${i + 1}. Type: *${r.type}*\n   Reply: ${r.response}\n\n`;
-    });
+    if (sub === 'clearblacklist') {
+        let doc = await AutoReply.findOne({ sessionId });
 
-    await safeSend(message.from, out);
-    break;
-}
+        if (!doc?.disabledGroups?.length) {
+            await safeSend(message.from, '✅ No blacklist configured.');
+            break;
+        }
 
+        const count = doc.disabledGroups.length;
+        doc.disabledGroups = [];
+        await doc.save();
+
+        await safeSend(message.from,
+`✅ Blacklist cleared (${count} groups removed).
+All groups are now enabled for auto-reply.`);
+        break;
+    }
+
+    // --- PART 2 END ---
+
+    /* ---------- AUTOREPLY (CLEANED) — PART 3 of 3 ---------- */
+
+    // =====================================================
+    // GROUP RULE SETTINGS (ENABLE / DISABLE / OVERRIDE)
+    // =====================================================
+
+    if (sub === 'enablegroup') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply enablegroup <index>
+
+Enables group-specific rules for the selected group.`);
+            break;
+        }
+
+        // Resolve groups
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({
+                sessionId: sessionId + "_all"
+            }).lean().catch(() => null);
+
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId });
+
+        if (!doc?.groupRules) {
+            await safeSend(message.from, `❌ No rules configured for *${group.name}*.`);
+            break;
+        }
+
+        const groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule) {
+            await safeSend(message.from, `❌ No rules configured for *${group.name}*.`);
+            break;
+        }
+
+        groupRule.enabled = true;
+        await doc.save();
+
+        await safeSend(message.from, `✅ Group-specific rules enabled for *${group.name}*`);
+        break;
+    }
+
+    if (sub === 'disablegroup') {
+        const groupIndex = parseInt(args[1]);
+
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply disablegroup <index>
+
+Disables group-specific rules for the selected group.`);
+            break;
+        }
+
+        // Resolve groups
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({
+                sessionId: sessionId + "_all"
+            }).lean().catch(() => null);
+
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId });
+
+        if (!doc?.groupRules) {
+            await safeSend(message.from, `❌ No rules configured for *${group.name}*.`);
+            break;
+        }
+
+        const groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule) {
+            await safeSend(message.from, `❌ No rules configured for *${group.name}*.`);
+            break;
+        }
+
+        groupRule.enabled = false;
+        await doc.save();
+
+        await safeSend(message.from, `❌ Group-specific rules disabled for *${group.name}*`);
+        break;
+    }
+
+    if (sub === 'override') {
+        const groupIndex = parseInt(args[1]);
+        const mode = (args[2] || '').toLowerCase();
+
+        if (isNaN(groupIndex) || !['on', 'off'].includes(mode)) {
+            await safeSend(message.from,
+`Usage:
+!autoreply override <index> <on/off>
+
+Example:
+!autoreply override 3 on
+
+When ON:
+• Only group-specific rules apply
+• Global rules are ignored
+
+When OFF:
+• Global + group rules both apply`);
+            break;
+        }
+
+        // Resolve groups
+        let allGroups = [];
+        try {
+            const cached = await SavedGroupList.findOne({
+                sessionId: sessionId + "_all"
+            }).lean().catch(() => null);
+
+            if (cached?.groups) allGroups = cached.groups;
+        } catch {}
+
+        const group = allGroups[groupIndex - 1];
+
+        if (!group) {
+            await safeSend(message.from, '❌ Invalid group index.');
+            break;
+        }
+
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+
+        if (!doc) {
+            doc = await AutoReply.create({
+                sessionId,
+                globalRules: [],
+                groupRules: [],
+                allowedGroups: [],
+                disabledGroups: []
+            });
+        }
+
+        if (!doc.groupRules) doc.groupRules = [];
+
+        let groupRule = doc.groupRules.find(gr => gr.groupId === group.groupId);
+
+        if (!groupRule) {
+            groupRule = {
+                groupId: group.groupId,
+                groupName: group.name,
+                enabled: true,
+                rules: [],
+                mediaRules: [],
+                overrideGlobal: false
+            };
+            doc.groupRules.push(groupRule);
+        }
+
+        groupRule.overrideGlobal = (mode === 'on');
+        await doc.save();
+
+        await safeSend(message.from,
+`${mode === 'on' ? '🔒 OVERRIDE ENABLED' : '🔓 OVERRIDE DISABLED'} for *${group.name}*
+
+${mode === 'on'
+? '• ONLY group-specific rules will apply\n• Global rules are ignored'
+: '• Both global AND group-specific rules will apply'}`);
+        break;
+    }
+
+    // =====================================================
+    // OVERVIEW / STATUS
+    // =====================================================
+
+    if (sub === 'listall' || sub === 'status') {
+        const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+
+        if (!doc) {
+            await safeSend(message.from, '📭 No auto-reply rules configured.');
+            break;
+        }
+
+        let out = '*📋 AUTO-REPLY CONFIGURATION*\n\n';
+
+        // Global status
+        out += `*🌍 GLOBAL STATUS:* ${doc.globalEnabled !== false ? '✅ Enabled' : '❌ Disabled'}\n\n`;
+
+        // Whitelist
+        if (doc.allowedGroups?.length) {
+            out += `*✅ WHITELIST (${doc.allowedGroups.length} groups):*\nAuto-reply ONLY works in these groups.\n\n`;
+        } else {
+            out += `*✅ WHITELIST:* None (works in all groups)\n\n`;
+        }
+
+        // Blacklist
+        if (doc.disabledGroups?.length) {
+            out += `*❌ BLACKLIST (${doc.disabledGroups.length} groups):*\nAuto-reply disabled in these groups.\n\n`;
+        } else {
+            out += `*❌ BLACKLIST:* None\n\n`;
+        }
+
+        // Global rules
+        if (doc.globalRules?.length) {
+            out += `*🌍 GLOBAL RULES (${doc.globalRules.length}):*\n`;
+            doc.globalRules.forEach((r, i) => {
+                out += `${i + 1}. ${r.keyword} → ${r.response.substring(0, 20)}...\n`;
+            });
+            out += '\n';
+        } else {
+            out += '*🌍 GLOBAL RULES:* None\n\n';
+        }
+
+        // Group rules
+        if (doc.groupRules?.length) {
+            out += `*📁 GROUP-SPECIFIC RULES (${doc.groupRules.length} groups):*\n\n`;
+            doc.groupRules.forEach((gr, i) => {
+                const status = gr.enabled ? '✅' : '❌';
+                const override = gr.overrideGlobal ? '🔒' : '🔓';
+
+                out += `${i + 1}. *${gr.groupName}* ${status} ${override}\n`;
+                out += `   Rules: ${gr.rules.length}\n\n`;
+            });
+        } else {
+            out += '*📁 GROUP-SPECIFIC RULES:* None\n';
+        }
+
+        out += `\n💡 Use !autoreply help for all commands`;
+
+        await safeSend(message.from, out);
+        break;
+    }
+
+    // =====================================================
+    // HELP MENU
+    // =====================================================
+
+    if (sub === 'help') {
+        await safeSend(message.from,
+`*📚 AUTO-REPLY HELP MENU*
+
+*GLOBAL RULES*
+• !autoreply add <keyword> | <response>
+• !autoreply remove <keyword>
+• !autoreply list
+
+*GROUP-SPECIFIC RULES*
+• !autoreply addgroup <index> <keyword> | <response>
+• !autoreply removegroup <index> <keyword>
+• !autoreply listgroup <index>
+• !autoreply enablegroup <index>
+• !autoreply disablegroup <index>
+• !autoreply override <index> <on/off>
+
+*GROUP FILTERING*
+• !autoreply allow <index>  — Add to whitelist
+• !autoreply disallow <index>  — Remove from whitelist
+• !autoreply disable <index>  — Add to blacklist
+• !autoreply enable <index>  — Remove from blacklist
+• !autoreply clearwhitelist
+• !autoreply clearblacklist
+
+*OVERVIEW*
+• !autoreply status
+• !autoreply listall
+• !autoreply help
+
+Examples:
+!autoreply add hi | Hello!
+!autoreply addgroup 3 price | ₦10,000
+!autoreply allow 5
+!autoreply disable 7
+!autoreply override 3 on`);
+        break;
+    }
 
 
 case 'broadcast': {
