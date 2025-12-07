@@ -5666,7 +5666,7 @@ async function restoreAllSessions(io) {
 
         // Get total session count first
         const totalCount = await Session.countDocuments({
-            status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
+            status: { $nin: ["disconnected", "failed", "auth_failed", "error", "connected", "waiting_qr", "connecting", "syncing", "ready"] }
         });
 
         if (totalCount === 0) {
