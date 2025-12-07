@@ -452,6 +452,28 @@ function normalizeJid(jid) {
     }
   });
 
+  // 📱 ADD THIS: Pairing Code Handler
+client.on('code', (code) => {
+  logger.info(`[${sessionName}] Pairing code generated: ${code}`);
+  
+  if (workerIO) {
+    // Extract userId from sessionId
+    const userMatch = sessionId.match(/^session-([^-]+)-/);
+    const userId = userMatch ? userMatch[1] : null;
+    
+    if (userId) {
+      workerIO.to(`user-${userId}`).emit('pairingCode', { 
+        sessionId, 
+        code,
+        phoneNumber: null // Will be set if available
+      });
+      logger.info(`[${sessionName}] Pairing code emitted to user-${userId}`);
+    }
+    
+    // Global broadcast
+    workerIO.emit('pairingCode', { sessionId, code });
+  }
+});
 
   client.on('auth_failure', (err) => {
     logger.error(`[${sessionName}] auth failure`, err && err.message ? err.message : err);
