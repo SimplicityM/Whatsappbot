@@ -216,22 +216,33 @@ function checkRateLimit(userId) {
   return { allowed: false, remaining: 0, retryAfter: RATE_LIMIT_WINDOW_MS - elapsed };
 }
 
-// Chunked sender with bounded concurrency & retries
+// ✅ FIXED: Chunked sender with SINGLE visible message + silent mentions
 async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHUNK_SIZE, concurrency=CONCURRENCY, delayMs=CHUNK_DELAY_MS }) {
   if (!Array.isArray(jids) || !jids.length) return { sent: 0, chunks: 0 };
+  
   const chunks = [];
   for (let i = 0; i < jids.length; i += chunkSize) chunks.push(jids.slice(i, i+chunkSize));
+  
   let sent = 0;
   let idx = 0;
+  
   const workers = new Array(Math.min(concurrency, chunks.length)).fill(0).map(async () => {
     while (true) {
       if (idx >= chunks.length) break;
       const my = idx++;
       const c = chunks[my];
       let attempt = 0, ok = false;
+      
       while (attempt < MAX_RETRIES && !ok) {
         try {
-          await client.sendMessage(groupId, text, { mentions: c });
+          // ✅ FIRST CHUNK: Send visible message, OTHERS: Send invisible
+          if (my === 0) {
+            await client.sendMessage(groupId, text, { mentions: c });
+            logger.info(`Sent visible message (chunk 1/${chunks.length})`);
+          } else {
+            await client.sendMessage(groupId, '‎', { mentions: c }); // Zero-width space
+            logger.info(`Sent silent mention (chunk ${my + 1}/${chunks.length})`);
+          }
           sent += c.length;
           ok = true;
         } catch (err) {
@@ -243,6 +254,7 @@ async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHU
       await new Promise(r => setTimeout(r, delayMs));
     }
   });
+  
   await Promise.all(workers);
   return { sent, chunks: chunks.length };
 }
@@ -282,11 +294,11 @@ function createClientOptions(sessionId) {
   const store = new MongoStore(sessionId);
   
   return {
-    authStrategy: new (require('whatsapp-web.js').LocalAuth)({
-      clientId: sessionId,
-      dataPath: BASE_AUTH_PATH,  // ✅ ABSOLUTE PATH
-      store: store
-    }),
+    authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
+    clientId: sessionId,
+    store: store,
+    backupSyncIntervalMs: 300000 // Backup every 5 minutes
+}),
 
     puppeteer: {
       headless: true,
@@ -1095,28 +1107,102 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
       }
 
   }  
-    // --------------------------------------------------
-// 🟢 AUTO-REPLY TRIGGER (works in all groups & chats)
+  // --------------------------------------------------
+// 🟢 AUTO-REPLY TRIGGER (COMBINED: Filtering + Group-Specific Rules)
 // --------------------------------------------------
 try {
     const chat = await message.getChat();
     const text = (message.body || '').toLowerCase().trim();
 
     // Ignore own messages to prevent loops
-    if (message.fromMe) {
-        // allow commands but ignore auto reply triggers
-    } else {
-        // Fetch rules once per session
+    if (!message.fromMe && text) {
+        // Fetch auto-reply configuration
         const auto = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
 
-        if (auto && Array.isArray(auto.rules)) {
-            for (const rule of auto.rules) {
-                const key = rule.keyword.toLowerCase();
+        if (auto && auto.globalEnabled !== false) {
+            let shouldProcess = true;
+            let rulesToCheck = [];
+            let groupRule = null;
+            const isGroup = chat.isGroup;
+            const currentGroupId = isGroup ? (chat.id._serialized || chat.id) : null;
 
-                // keyword match (contains)
-                if (text.includes(key)) {
-                    await safeSend(message.from, rule.response);
-                    break; // stop after first match
+            // ============================================
+            // STEP 1: CHECK IF AUTO-REPLY IS ALLOWED FOR THIS GROUP
+            // ============================================
+            if (isGroup && currentGroupId) {
+                // Check if group is explicitly disabled
+                if (auto.disabledGroups && auto.disabledGroups.includes(currentGroupId)) {
+                    shouldProcess = false;
+                }
+                
+                // Check whitelist (if allowedGroups has items, only those groups are allowed)
+                if (shouldProcess && auto.allowedGroups && auto.allowedGroups.length > 0) {
+                    if (!auto.allowedGroups.includes(currentGroupId)) {
+                        shouldProcess = false;
+                    }
+                }
+            }
+
+            // ============================================
+            // STEP 2: DETERMINE WHICH RULES TO USE
+            // ============================================
+            if (shouldProcess) {
+                if (isGroup && currentGroupId) {
+                    // Find group-specific rules
+                    if (auto.groupRules && auto.groupRules.length) {
+                        groupRule = auto.groupRules.find(gr => gr.groupId === currentGroupId);
+                    }
+
+                    // Determine rule priority
+                    if (groupRule && groupRule.enabled) {
+                        if (groupRule.overrideGlobal) {
+                            // ONLY use group rules (ignore global)
+                            rulesToCheck = groupRule.rules || [];
+                        } else {
+                            // MERGE: Use BOTH global and group rules
+                            const globalRules = auto.globalRules || auto.rules || [];
+                            const specificRules = groupRule.rules || [];
+                            rulesToCheck = [...globalRules, ...specificRules];
+                        }
+                    } else {
+                        // No group-specific rules, use global only
+                        rulesToCheck = auto.globalRules || auto.rules || [];
+                    }
+                } else {
+                    // For individual chats, always use global rules
+                    rulesToCheck = auto.globalRules || auto.rules || [];
+                }
+
+                // ============================================
+                // STEP 3: CHECK RULES FOR MATCHES
+                // ============================================
+                for (const rule of rulesToCheck) {
+                    if (!rule.active) continue; // Skip inactive rules
+
+                    const key = rule.keyword.toLowerCase();
+                    let matched = false;
+
+                    // Match based on matchType
+                    switch (rule.matchType) {
+                        case 'exact':
+                            matched = (text === key);
+                            break;
+                        case 'starts':
+                            matched = text.startsWith(key);
+                            break;
+                        case 'ends':
+                            matched = text.endsWith(key);
+                            break;
+                        case 'contains':
+                        default:
+                            matched = text.includes(key);
+                            break;
+                    }
+
+                    if (matched) {
+                        await safeSend(message.from, rule.response);
+                        break; // Stop after first match
+                    }
                 }
             }
         }
@@ -2306,188 +2392,403 @@ case 'status': {
         break;
       }
 
-      /* ---------- DMALL ---------- */
+/* ---------- DMALL (ENHANCED WITH RANGE & DIRECT PHONE PASTE) ---------- */
 case 'dmall': {
     if (!isSelfChat) return;
 
     // ------------------------------------------------------------
-    // 1️⃣ PARSE GROUP INDEX AND MESSAGE
+    // 1️⃣ PARSE INPUT - Detect if using group index or direct phones
     // ------------------------------------------------------------
     const pipeIndex = message.body.indexOf('|');
     if (pipeIndex === -1) {
         await safeSend(message.from,
-            '❗ Usage:\n!dmall <groupIndex> | <message>');
+            `❗ Usage:
+
+*Method 1: Group Index (All Members)*
+!dmall <groupIndex> | <message>
+
+*Method 2: Group Index (Selected Members)*
+!dmall <groupIndex> <targets> | <message>
+
+*Method 3: Direct Phone Numbers*
+!dmall <phone1> <phone2> ... | <message>
+
+Examples:
+!dmall 3 | Hello everyone!
+!dmall 3 1,3,5 | Hello selected members!
+!dmall 3 1-30 | Hello first 30 members!
+!dmall 234801234567 234809876543 | Direct paste!
+!dmall 3 @john 08123456789 1-10 | Mixed targets`);
         break;
     }
 
     const beforePipe = message.body.substring(0, pipeIndex).trim();
     const afterPipe = message.body.substring(pipeIndex + 1).trim();
+    const msgText = afterPipe;
 
-    const parts = beforePipe.split(/\s+/);
-    const groupIndex = parseInt(parts[1]);
-
-    if (isNaN(groupIndex)) {
-        await safeSend(message.from,
-            '❗ First argument must be the group index.\nExample:\n!dmall 3 | Hello');
-        break;
-    }
-
-    if (!afterPipe.length) {
+    if (!msgText.length) {
         await safeSend(message.from,
             '❗ Empty message detected.\nPut your message after the "|" symbol.');
         break;
     }
 
-    const msgText = afterPipe;
-    
+    const parts = beforePipe.split(/\s+/);
+    const firstArg = parts[1];
+
     // ------------------------------------------------------------
-    // 2️⃣ RESOLVE THE GROUP FROM INDEX (USING listall CACHE)
+    // 2️⃣ DETERMINE MODE: Group-based OR Direct Phone Numbers
     // ------------------------------------------------------------
-    let allGroups = [];
+    let mode = 'unknown';
+    let groupIndex = null;
+    let targetPart = '';
+    let directPhones = [];
 
-    try {
-        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
-            .lean()
-            .catch(() => null);
-
-        if (cached && Array.isArray(cached.groups)) {
-            allGroups = cached.groups;
+    // Check if first argument is a group index (small number like 1-999)
+    if (firstArg && /^\d+$/.test(firstArg)) {
+        const num = parseInt(firstArg);
+        
+        // If it's a small number (likely group index)
+        if (num <= 999) {
+            mode = 'group';
+            groupIndex = num;
+            targetPart = parts.slice(2).join(' ').trim();
+        } 
+        // If it's a long number (likely phone number)
+        else if (firstArg.length >= 10) {
+            mode = 'direct';
+            directPhones = parts.slice(1); // All parts are phone numbers
         }
-
-        if (!allGroups.length) {
-            const chats = await client.getChats();
-            allGroups = chats
-                .filter(c => c.isGroup)
-                .map(c => ({
-                    name: c.name || "Unnamed Group",
-                    groupId: c.id._serialized
-                }));
-
-            await SavedGroupList.findOneAndUpdate(
-                { sessionId: sessionId + "_all" },
-                { groups: allGroups, updatedAt: new Date() },
-                { upsert: true }
-            );
+        else {
+            mode = 'group';
+            groupIndex = num;
+            targetPart = parts.slice(2).join(' ').trim();
         }
-    } catch {}
-
-    const arrayIndex = groupIndex - 1;
-    const group = allGroups[arrayIndex];
-
-    if (!group) {
+    } else {
         await safeSend(message.from,
-            '❌ Invalid group index.\nUse !listall to see indexes.');
-        break;
-    }
-
-    const groupId = group.groupId;
-    const chat = await client.getChatById(groupId).catch(() => null);
-
-    if (!chat) {
-        await safeSend(message.from,
-            '❌ Could not load group. Bot may not be a member.');
+            '❗ Invalid format. First argument must be group index or phone number.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ REFRESH MEMBERS ALWAYS (YOUR CHOICE C)
+    // 3️⃣ MODE A: DIRECT PHONE NUMBERS (No group needed)
     // ------------------------------------------------------------
-    let participants = [];
+    if (mode === 'direct') {
+        const targetSet = new Set();
 
-    try {
-        // Always fetch fresh members
-        const fetched = await chat.getParticipants().catch(() => []);
-
-        if (fetched.length) {
-            participants = fetched;
-            await setMembersForGroup(
-                sessionId,
-                groupId,
-                fetched.map(p => p.id._serialized)
-            );
-        }
-    } catch {}
-
-    if (!participants.length) {
-        await safeSend(message.from,
-            `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin.`);
-        break;
-    }
-
-    // Convert to JIDs
-    const allJIDs = participants
-        .map(p => p.id._serialized)
-        .filter(j => j !== mySelf);
-
-    if (!allJIDs.length) {
-        await safeSend(message.from,
-            '⚠ No eligible members found.');
-        break;
-    }
-
-    // ------------------------------------------------------------
-    // 4️⃣ AUTO-BATCH SETUP
-    // ------------------------------------------------------------
-    const batchSize = 60;               // safe batch
-    const delayPerMessage = () => 1200 + Math.random() * 1300;  // strong safety
-    const batchDelay = 10 * 60 * 1000;  // 10 minutes = 600000 ms
-
-    const batches = [];
-    for (let i = 0; i < allJIDs.length; i += batchSize) {
-        batches.push(allJIDs.slice(i, i + batchSize));
-    }
-
-    await safeSend(
-        message.from,
-        `📨 *DM-All Started (Auto-Batch Mode)*  
-Group: *${chat.name}*  
-Total Members: *${allJIDs.length}*  
-Total Batches: *${batches.length}*  
-Batch Size: *60*  
-Delay Between Batches: *10 minutes*
-
-Sending first batch now…`
-    );
-
-    // ------------------------------------------------------------
-    // 5️⃣ AUTO-BATCH EXECUTION (NO USER INTERACTION NEEDED)
-    // ------------------------------------------------------------
-    async function sendBatch(batchIndex) {
-        if (batchIndex >= batches.length) {
-            await safeSend(
-                message.from,
-                `🎉 *DM-All Completed!*  
-Total messages sent: *${allJIDs.length}*`
-            );
-            return;
+        for (const phone of directPhones) {
+            // Clean and format phone number
+            const cleaned = phone.replace(/[^0-9]/g, '');
+            
+            if (cleaned.length >= 10) {
+                // Auto-format: if doesn't start with country code, add 234
+                let formatted = cleaned;
+                if (!formatted.startsWith('234') && formatted.startsWith('0')) {
+                    formatted = '234' + formatted.substring(1);
+                } else if (!formatted.startsWith('234')) {
+                    formatted = '234' + formatted;
+                }
+                targetSet.add(`${formatted}@c.us`);
+            }
         }
 
-        const batch = batches[batchIndex];
+        if (!targetSet.size) {
+            await safeSend(message.from, '❗ No valid phone numbers detected.');
+            break;
+        }
+
+        const targetJIDs = Array.from(targetSet);
+
+        await safeSend(
+            message.from,
+            `📨 *DM-Direct Mode*  
+Target Count: *${targetJIDs.length}*  
+
+Sending messages now...`
+        );
+
+        // Send messages with throttling
         let sent = 0;
+        const delayPerMessage = () => 1200 + Math.random() * 1300;
 
-        for (const jid of batch) {
+        for (const jid of targetJIDs) {
             try {
                 await client.sendMessage(jid, msgText);
                 sent++;
-            } catch {}
+            } catch (err) {
+                console.log(`Failed to send to ${jid}:`, err.message);
+            }
             await new Promise(r => setTimeout(r, delayPerMessage()));
         }
 
         await safeSend(
             message.from,
-            `📦 *Batch ${batchIndex + 1}/${batches.length} complete*  
-Sent: *${sent}/${batch.length}*  
-Next batch in 10 minutes…`
+            `🎉 *Completed!*  
+Messages sent: *${sent}/${targetJIDs.length}*`
         );
 
-        // Schedule next batch after 10 minutes
-        setTimeout(() => {
-            sendBatch(batchIndex + 1);
-        }, batchDelay);
+        break;
     }
 
-    // Start first batch
-    sendBatch(0);
+    // ------------------------------------------------------------
+    // 4️⃣ MODE B: GROUP-BASED (Original + Enhanced)
+    // ------------------------------------------------------------
+    if (mode === 'group') {
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+                '❗ Group index must be a number.\nExample:\n!dmall 3 | Hello');
+            break;
+        }
+
+        const hasTargets = targetPart.length > 0;
+
+        // Resolve the group from index
+        let allGroups = [];
+
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            if (cached && Array.isArray(cached.groups)) {
+                allGroups = cached.groups;
+            }
+
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats
+                    .filter(c => c.isGroup)
+                    .map(c => ({
+                        name: c.name || "Unnamed Group",
+                        groupId: c.id._serialized
+                    }));
+
+                await SavedGroupList.findOneAndUpdate(
+                    { sessionId: sessionId + "_all" },
+                    { groups: allGroups, updatedAt: new Date() },
+                    { upsert: true }
+                );
+            }
+        } catch {}
+
+        const arrayIndex = groupIndex - 1;
+        const group = allGroups[arrayIndex];
+
+        if (!group) {
+            await safeSend(message.from,
+                '❌ Invalid group index.\nUse !listall to see indexes.');
+            break;
+        }
+
+        const groupId = group.groupId;
+        const chat = await client.getChatById(groupId).catch(() => null);
+
+        if (!chat) {
+            await safeSend(message.from,
+                '❌ Could not load group. Bot may not be a member.');
+            break;
+        }
+
+        // Fetch members
+        let participants = [];
+
+        try {
+            const dbList = await getMembersFromDB(sessionId, groupId);
+            
+            if (Array.isArray(dbList) && dbList.length) {
+                participants = dbList.map(j => ({ id: { _serialized: j } }));
+            } 
+            else if (typeof chat.getParticipants === "function") {
+                const fetched = await chat.getParticipants().catch(() => []);
+                if (fetched.length) {
+                    participants = fetched;
+                    await setMembersForGroup(
+                        sessionId,
+                        groupId,
+                        fetched.map(p => p.id._serialized)
+                    );
+                }
+            }
+            else if (Array.isArray(chat.participants) && chat.participants.length) {
+                participants = chat.participants;
+                const jids = participants
+                    .map(p => p.id?._serialized || null)
+                    .filter(Boolean);
+                if (jids.length) {
+                    await setMembersForGroup(sessionId, groupId, jids);
+                }
+            }
+        } catch {}
+
+        if (!participants.length) {
+            await safeSend(message.from,
+                `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin.`);
+            break;
+        }
+
+        const participantJIDs = participants
+            .map(p => p.id._serialized)
+            .filter(j => j !== mySelf);
+
+        if (!participantJIDs.length) {
+            await safeSend(message.from,
+                '⚠ No eligible members found.');
+            break;
+        }
+
+        // Determine target list (ALL or SELECTED)
+        let targetJIDs = [];
+
+        if (hasTargets) {
+            // Parse targets with ENHANCED range support
+            const targetSet = new Set();
+            const tokens = targetPart.split(/\s+/);
+
+            for (const token of tokens) {
+                // A — @mentions (@john)
+                if (token.includes('@')) {
+                    const num = token.replace(/[^0-9]/g, '');
+                    if (num.length >= 7) targetSet.add(`${num}@c.us`);
+                }
+                // B — Phone numbers (081..., 234..., 090...)
+                else if (/^\d+$/.test(token) && token.length >= 10) {
+                    let formatted = token;
+                    if (formatted.startsWith('0')) {
+                        formatted = '234' + formatted.substring(1);
+                    } else if (!formatted.startsWith('234')) {
+                        formatted = '234' + formatted;
+                    }
+                    targetSet.add(`${formatted}@c.us`);
+                }
+                // C — Range (1-30) ✨ NEW ENHANCED FEATURE
+                else if (/^\d+-\d+$/.test(token)) {
+                    const [start, end] = token.split('-').map(n => parseInt(n.trim()));
+                    const actualEnd = Math.min(end, participantJIDs.length);
+                    
+                    for (let i = start; i <= actualEnd; i++) {
+                        const jid = participantJIDs[i - 1];
+                        if (jid) targetSet.add(jid);
+                    }
+                }
+                // D — Index list (1,3,5)
+                else if (/^\d+(,\d+)*$/.test(token)) {
+                    const idxs = token.split(',').map(n => parseInt(n.trim()));
+                    for (const i of idxs) {
+                        const jid = participantJIDs[i - 1];
+                        if (jid) targetSet.add(jid);
+                    }
+                }
+                // E — Single index (5)
+                else if (/^\d+$/.test(token)) {
+                    const idx = parseInt(token);
+                    const jid = participantJIDs[idx - 1];
+                    if (jid) targetSet.add(jid);
+                }
+            }
+
+            if (!targetSet.size) {
+                await safeSend(message.from, '❗ No valid targets detected from your selection.');
+                break;
+            }
+
+            targetJIDs = Array.from(targetSet);
+            
+            await safeSend(
+                message.from,
+                `📨 *DM-Selected Mode*  
+Group: *${chat.name}*  
+Selected Members: *${targetJIDs.length}*  
+
+Sending messages now...`
+            );
+        } else {
+            // Send to ALL members
+            targetJIDs = participantJIDs;
+            
+            await safeSend(
+                message.from,
+                `📨 *DM-All Mode (All Members)*  
+Group: *${chat.name}*  
+Total Members: *${targetJIDs.length}*  
+
+Sending messages now...`
+            );
+        }
+
+        // Send messages with smart batching
+        const batchSize = 60;
+        const delayPerMessage = () => 1200 + Math.random() * 1300;
+        const batchDelay = 10 * 60 * 1000; // 10 minutes
+
+        const batches = [];
+        for (let i = 0; i < targetJIDs.length; i += batchSize) {
+            batches.push(targetJIDs.slice(i, i + batchSize));
+        }
+
+        // If small enough, send immediately without batching
+        if (targetJIDs.length <= batchSize) {
+            let sent = 0;
+            for (const jid of targetJIDs) {
+                try {
+                    await client.sendMessage(jid, msgText);
+                    sent++;
+                } catch {}
+                await new Promise(r => setTimeout(r, delayPerMessage()));
+            }
+
+            await safeSend(
+                message.from,
+                `🎉 *Completed!*  
+Messages sent: *${sent}/${targetJIDs.length}*`
+            );
+        } else {
+            // Use batching for large lists
+            await safeSend(
+                message.from,
+                `Total Batches: *${batches.length}*  
+Batch Size: *60*  
+Delay Between Batches: *10 minutes*
+
+Sending first batch now…`
+            );
+
+            async function sendBatch(batchIndex) {
+                if (batchIndex >= batches.length) {
+                    await safeSend(
+                        message.from,
+                        `🎉 *DM-All Completed!*  
+Total messages sent: *${targetJIDs.length}*`
+                    );
+                    return;
+                }
+
+                const batch = batches[batchIndex];
+                let sent = 0;
+
+                for (const jid of batch) {
+                    try {
+                        await client.sendMessage(jid, msgText);
+                        sent++;
+                    } catch {}
+                    await new Promise(r => setTimeout(r, delayPerMessage()));
+                }
+
+                await safeSend(
+                    message.from,
+                    `📦 *Batch ${batchIndex + 1}/${batches.length} complete*  
+Sent: *${sent}/${batch.length}*  
+Next batch in 10 minutes…`
+                );
+
+                // Schedule next batch after 10 minutes
+                setTimeout(() => {
+                    sendBatch(batchIndex + 1);
+                }, batchDelay);
+            }
+
+            // Start first batch
+            sendBatch(0);
+        }
+    }
 
     break;
 }
@@ -2911,48 +3212,74 @@ Sent to **${delivered}** members in *${resolved.group.name}*.`
 }
 
 
-      /* ---------- MEMBERS ---------- */
+ /* ---------- MEMBERS ---------- */
 case 'members': {
     // 1️⃣ Parse group index (or use active group)
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
     
-    // 2️⃣ Resolve Group from ALL groups
+    // 2️⃣ Resolve Group from ADMIN groups (same as !list) ✅ FIXED
     let resolved = { index: null, group: null };
     
     if (providedIdx) {
         try {
-            // Load cached ALL groups
-            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            // ✅ Load cached ADMIN groups (matches !list)
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId })
                 .lean()
                 .catch(() => null);
 
-            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            let adminGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
 
-            // If no cache, rebuild from all groups
-            if (!allGroups.length) {
+            // If no cache, rebuild from admin groups
+            if (!adminGroups.length) {
                 const chats = await client.getChats();
-                allGroups = chats
-                    .filter(c => c.isGroup)
-                    .map(c => ({
-                        name: c.name || "Unnamed Group",
-                        groupId: c.id._serialized
-                    }));
+                const mySelf = client.info.wid._serialized;
+                
+                for (const c of chats) {
+                    if (!c.isGroup) continue;
 
-                // Save cache
-                await SavedGroupList.findOneAndUpdate(
-                    { sessionId: sessionId + "_all" },
-                    { groups: allGroups, updatedAt: new Date() },
-                    { upsert: true }
-                ).catch(() => null);
+                    let participants = [];
+                    try {
+                        if (Array.isArray(c.participants) && c.participants.length) {
+                            participants = c.participants;
+                        } else if (typeof c.getParticipants === "function") {
+                            participants = await c.getParticipants();
+                        }
+                    } catch {
+                        participants = [];
+                    }
+
+                    const amIAdmin = participants.some(
+                        p => p.id._serialized === mySelf && (p.isAdmin || p.isSuperAdmin)
+                    );
+                    
+                    if (amIAdmin) {
+                        adminGroups.push({
+                            name: c.name || 'Unnamed group',
+                            groupId: c.id._serialized
+                        });
+                    }
+                }
+
+                // ✅ Save cache (admin groups only)
+                if (adminGroups.length) {
+                    await SavedGroupList.findOneAndUpdate(
+                        { sessionId: sessionId },
+                        { groups: adminGroups, updatedAt: new Date() },
+                        { upsert: true }
+                    ).catch(() => null);
+                }
             }
 
             // Resolve group by index
             const arrayIndex = providedIdx - 1;
-            if (allGroups[arrayIndex]) {
+            if (adminGroups[arrayIndex]) {
                 resolved = {
                     index: providedIdx,
-                    group: allGroups[arrayIndex]
+                    group: adminGroups[arrayIndex]
                 };
+            } else {
+                await safeSend(message.from, `❌ Invalid index. Use !list to see available groups (1-${adminGroups.length})`);
+                break;
             }
         } catch (err) {
             logger.error('Error resolving group:', err);
@@ -2962,14 +3289,14 @@ case 'members': {
         const lastActive = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
         
         if (lastActive && lastActive.groupId) {
-            // Load all groups to find the active one
-            let cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+            // ✅ Load admin groups to find the active one
+            let cached = await SavedGroupList.findOne({ sessionId: sessionId })
                 .lean()
                 .catch(() => null);
 
-            let allGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
+            let adminGroups = cached && Array.isArray(cached.groups) ? cached.groups : [];
             
-            const found = allGroups.find(g => g.groupId === lastActive.groupId);
+            const found = adminGroups.find(g => g.groupId === lastActive.groupId);
             if (found) {
                 resolved = { index: null, group: found };
             }
@@ -2977,7 +3304,7 @@ case 'members': {
     }
 
     if (!resolved.group) {
-        await safeSend(message.from, '❌ No target group found. Use !listall to see all groups or !use <index> to set default');
+        await safeSend(message.from, '❌ No target group found. Use !list to see admin groups or !use <index> to set default');
         break;
     }
 
@@ -3035,7 +3362,7 @@ case 'members': {
             message.from,
             `⚠ Cannot list members of *${resolved.group.name}*.\n` +
             `Group may be a WhatsApp Community subgroup (restricted).\n` +
-            `Try using: !syncmembers after promoting bot to admin.`
+            `Try using: !syncmembers ${resolved.index || ''} after promoting bot to admin.`
         );
         break;
     }
@@ -3056,7 +3383,7 @@ case 'members': {
 }
 
 
-/* ---------- ADMINS ---------- */
+/* ---------- ADMINS (FIXED VERSION) ---------- */
 case 'admins': {
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
     
@@ -3127,66 +3454,87 @@ case 'admins': {
 
     const groupId = resolved.group.groupId;
 
-    let participants = [];
-
+    // ============================================================
+    // 🔧 FIX: Fetch group metadata to get admin information
+    // ============================================================
     try {
-        // 1️⃣ Try DB members first
-        const dbList = await getMembersFromDB(sessionId, groupId);
-        if (Array.isArray(dbList) && dbList.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j } }));
+        const chat = await client.getChatById(groupId).catch(() => null);
+        
+        if (!chat) {
+            await safeSend(message.from, '❌ Could not fetch group chat.');
+            break;
         }
 
-        // 2️⃣ Try official getParticipants
-        if (!participants.length) {
-            const chat = await client.getChatById(groupId).catch(() => null);
-            if (chat && typeof chat.getParticipants === 'function') {
-                const fetched = await chat.getParticipants().catch(() => []);
-                if (fetched.length) {
-                    participants = fetched;
+        // Try to get group metadata (contains admin info)
+        let groupMetadata = null;
+        
+        try {
+            // Method 1: Try groupMetadata (most reliable for admin info)
+            groupMetadata = await client.pupPage.evaluate(async (groupId) => {
+                return await window.WWebJS.getGroupMetadata(groupId);
+            }, groupId).catch(() => null);
+        } catch {}
 
-                    // update DB cache
-                    const jids = fetched.map(p => p.id._serialized);
-                    await setMembersForGroup(sessionId, groupId, jids);
-                }
-            }
+        let admins = [];
+
+        // If we got metadata, extract admins from there
+        if (groupMetadata && groupMetadata.participants) {
+            admins = groupMetadata.participants
+                .filter(p => p.isAdmin || p.isSuperAdmin)
+                .map(p => ({
+                    id: { _serialized: p.id._serialized || p.id },
+                    isAdmin: p.isAdmin,
+                    isSuperAdmin: p.isSuperAdmin
+                }));
+        } 
+        // Fallback: Try chat.participants
+        else if (chat.participants && Array.isArray(chat.participants)) {
+            admins = chat.participants.filter(p => p.isAdmin || p.isSuperAdmin);
+        }
+        // Fallback: Try getParticipants
+        else if (typeof chat.getParticipants === 'function') {
+            const participants = await chat.getParticipants().catch(() => []);
+            admins = participants.filter(p => p.isAdmin || p.isSuperAdmin);
         }
 
-        // 3️⃣ Fallback to chat.participants
-        if (!participants.length) {
-            const chat = await client.getChatById(groupId).catch(() => null);
-            if (chat && Array.isArray(chat.participants) && chat.participants.length) {
-                participants = chat.participants;
+        if (!admins.length) {
+            await safeSend(
+                message.from, 
+                `⚠ No admin data available for *${resolved.group.name}*.
 
-                // update DB
-                const jids = participants.map(p => p.id._serialized);
-                await setMembersForGroup(sessionId, groupId, jids);
-            }
+This can happen because:
+• WhatsApp doesn't provide admin flags for this group
+• Bot needs to be promoted to admin first
+• Group is a WhatsApp Community (limited API access)
+
+💡 Try: Make bot an admin in the group, then use !syncmembers ${providedIdx || ''}`
+            );
+            break;
         }
-    } catch (e) {
-        participants = [];
-    }
 
-    if (!participants.length) {
+        let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
+        admins.forEach((a, i) => {
+            const jid = a.id._serialized || a.id;
+            const num = jid.split('@')[0];
+            const role = a.isSuperAdmin ? '👑 Super Admin' : '🛡 Admin';
+            out += `${i + 1}. ${num} (${role})\n`;
+        });
+
+        await safeSend(message.from, out);
+
+    } catch (error) {
+        logger.error('Error fetching admins:', error);
         await safeSend(
             message.from,
-            `⚠ Unable to fetch admins for ${resolved.group.name}.\nThis is common for Community groups.\nTry:\n• Promote bot to admin\n• Use !syncmembers <index>\n• Ask members to send a short message`
+            `❌ Error fetching admin list for *${resolved.group.name}*.
+            
+Try:
+• Promote bot to group admin
+• Use !syncmembers ${providedIdx || ''}
+• Check if group is a Community (limited support)`
         );
-        break;
     }
 
-    const admins = participants.filter(p => p.isAdmin || p.isSuperAdmin);
-
-    if (!admins.length) {
-        await safeSend(message.from, `⚠ No admin data available for ${resolved.group.name}.`);
-        break;
-    }
-
-    let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
-    admins.forEach((a, i) => {
-        out += `${i + 1}. ${a.id._serialized.split('@')[0]}\n`;
-    });
-
-    await safeSend(message.from, out);
     break;
 }
 
@@ -3359,66 +3707,82 @@ case 'tag': {
         // Parallel contact fetch
         await fetchContactsMerged(filteredJIDs, 30);
 
-        // Chunked sending
-        const chunkSize = CHUNK_SIZE || 100;
-        const chunks = [];
-        for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
-            chunks.push(filteredJIDs.slice(i, i + chunkSize));
-        }
+        // ✅ Chunked sending - SINGLE visible message + silent mentions
+const chunkSize = CHUNK_SIZE || 100;
+const chunks = [];
+for (let i = 0; i < filteredJIDs.length; i += chunkSize) {
+    chunks.push(filteredJIDs.slice(i, i + chunkSize));
+}
 
-        let totalSent = 0;
-        let totalChunks = 0;
+let totalSent = 0;
+let sendError = false;
 
-        for (const chunk of chunks) {
-            const mentions = [];
+for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const mentions = [];
 
-            for (const jid of chunk) {
-                const c = contactCache.get(jid);
-                if (!c) continue;
-                const jidSerialized = c.id?._serialized || jid;
-                mentions.push(jidSerialized);
-            }
-
-            if (!mentions.length) continue;
-
-            // SEND ONLY MESSAGE TEXT – NO visible @names
-            const chunkMessage = messageText;
-
-            try {
-                await client.sendMessage(groupId, chunkMessage, { mentions });
-                totalSent += mentions.length;
-                totalChunks++;
-            } catch (err) {
-                logger.error(`[${sessionName}] tag chunk failed`, err);
-
-                // Retry once
-                try {
-                    await new Promise(r => setTimeout(r, 500));
-                    await client.sendMessage(groupId, chunkMessage, { mentions });
-                    totalSent += mentions.length;
-                    totalChunks++;
-                } catch (e) {
-                    logger.error(`[${sessionName}] retry failed`, e);
-                }
-            }
-
-            await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
-        }
-
-        successfulGroups.push(
-            `${resolved.group.name} (${totalSent} mentions across ${totalChunks} chunks)`
-        );
-
-        await new Promise(r => setTimeout(r, 600));
+    for (const jid of chunks[chunkIndex]) {
+        const c = contactCache.get(jid);
+        if (!c) continue;
+        const jidSerialized = c.id?._serialized || jid;
+        mentions.push(jidSerialized);
     }
 
-    if (!successfulGroups.length) {
-        await safeSend(message.from, "❌ No groups tagged.");
-    } else {
-        await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
+    if (!mentions.length) continue;
+
+    try {
+        if (chunkIndex === 0) {
+            // ✅ FIRST CHUNK: Send the actual message (visible)
+            await client.sendMessage(groupId, messageText, { mentions });
+            logger.info(`[${sessionName}] Sent visible message to ${resolved.group.name}`);
+        } else {
+            // ✅ SUBSEQUENT CHUNKS: Send invisible mention (zero-width space)
+            await client.sendMessage(groupId, '‎', { mentions });
+            logger.info(`[${sessionName}] Sent silent mention chunk ${chunkIndex + 1}/${chunks.length}`);
+        }
+        
+        totalSent += mentions.length;
+    } catch (err) {
+        logger.error(`[${sessionName}] tag chunk ${chunkIndex + 1} failed`, err);
+        
+        // Retry once
+        try {
+            await new Promise(r => setTimeout(r, 500));
+            if (chunkIndex === 0) {
+                await client.sendMessage(groupId, messageText, { mentions });
+            } else {
+                await client.sendMessage(groupId, '‎', { mentions });
+            }
+            totalSent += mentions.length;
+        } catch (e) {
+            logger.error(`[${sessionName}] retry failed`, e);
+            sendError = true;
+        }
     }
 
-    break;
+    // Delay between chunks to avoid rate limiting
+    await new Promise(r => setTimeout(r, CHUNK_DELAY_MS || 400));
+}
+
+if (sendError) {
+    successfulGroups.push(
+        `${resolved.group.name} (${totalSent} members tagged - some failed)`
+    );
+} else {
+    successfulGroups.push(
+        `${resolved.group.name} (${totalSent} members tagged)`
+    );
+}
+
+await new Promise(r => setTimeout(r, 600));
+}
+
+if (!successfulGroups.length) {
+    await safeSend(message.from, "❌ No groups tagged.");
+} else {
+    await safeSend(message.from, `✅ Tag executed in:\n• ${successfulGroups.join("\n• ")}`);
+}
+
+break;
 }
 
 case 'tagexcept': {
@@ -3642,21 +4006,28 @@ Examples:
     }
 
     // ------------------------------------------------------------
-    // 6️⃣ SEND SAFELY (CHUNKED)
-    // ------------------------------------------------------------
-    async function sendInChunks(list, chunkSize = 50) {
-        for (let i = 0; i < list.length; i += chunkSize) {
-            const chunk = list.slice(i, i + chunkSize);
-            try {
+// 6️⃣ SEND SAFELY (CHUNKED) - ✅ FIXED: Single visible message
+// ------------------------------------------------------------
+async function sendInChunks(list, chunkSize = 50) {
+    for (let i = 0; i < list.length; i += chunkSize) {
+        const chunk = list.slice(i, i + chunkSize);
+        try {
+            // ✅ FIRST CHUNK: Send visible message, OTHERS: Send invisible
+            if (i === 0) {
                 await client.sendMessage(groupId, finalMsg, { mentions: chunk });
-                await new Promise(r => setTimeout(r, 600));
-            } catch (e) {
-                logger.error(`[${sessionName}] tagfew chunk error`, e);
+                logger.info(`[${sessionName}] tagfew: Sent visible message (chunk 1)`);
+            } else {
+                await client.sendMessage(groupId, '‎', { mentions: chunk }); // Zero-width space
+                logger.info(`[${sessionName}] tagfew: Sent silent mention (chunk ${(i / chunkSize) + 1})`);
             }
+            await new Promise(r => setTimeout(r, 600));
+        } catch (e) {
+            logger.error(`[${sessionName}] tagfew chunk error`, e);
         }
     }
+}
 
-    await sendInChunks(finalMentions);
+await sendInChunks(finalMentions);
 
     // ------------------------------------------------------------
     // 7️⃣ CONFIRMATION
