@@ -4,7 +4,7 @@ const sessionSchema = new mongoose.Schema({
     sessionId: {
         type: String,
         required: true,
-        unique: true
+        // unique: true
     },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -27,6 +27,19 @@ const sessionSchema = new mongoose.Schema({
     qrCodeExpiry: {
         type: Date,
         default: () => new Date(Date.now() + 5 * 60 * 1000) // 5 minutes from now
+    },
+        
+    // Add these new fields
+    pairingCode: {
+        type: String,
+    },
+    pairingCodeExpiry: {
+        type: Date,
+    },
+    linkingMethod: {
+        type: String,
+        enum: ['qr', 'pairing_code'],
+        default: 'qr'
     },
     connectionData: {
         clientInfo: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -76,7 +89,8 @@ const sessionSchema = new mongoose.Schema({
 
 // Index for faster queries
 sessionSchema.index({ userId: 1, status: 1 });
-sessionSchema.index({ sessionId: 1 });
+// sessionSchema.index({ sessionId: 1 });
+sessionSchema.index({ sessionId: 1 }, { unique: true }); // ✅ Explicit unique index
 sessionSchema.index({ whatsappNumber: 1 });
 
 // Check if QR code is expired

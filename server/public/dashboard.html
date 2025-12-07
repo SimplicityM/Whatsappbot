@@ -535,21 +535,51 @@
         </div>
     </main>
 
-    <!-- Add this to your dashboard.html -->
+   <!-- QR/Pairing Code Modal -->
 <div id="qrModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Scan QR Code</h3>
+            <h3>Connect WhatsApp</h3>
             <button class="close-btn" onclick="closeQRModal()">&times;</button>
         </div>
         <div class="modal-body">
+            <!-- Method Selector -->
+            <div class="linking-method-selector">
+                <button class="method-btn active" data-method="qr" onclick="switchLinkingMethod('qr')">
+                    <i class="fas fa-qrcode"></i> QR Code
+                </button>
+                <button class="method-btn" data-method="pairing" onclick="switchLinkingMethod('pairing')">
+                    <i class="fas fa-mobile-alt"></i> Phone Number
+                </button>
+            </div>
+            
+            <!-- QR Code Display -->
             <div id="qrCodeDisplay" class="qr-code-display">
                 <i class="fas fa-qrcode"></i>
                 <p>Generating QR Code...</p>
             </div>
-            <div class="qr-instructions">
+            
+            <!-- Pairing Code Display (hidden by default) -->
+            <div id="pairingCodeDisplay" class="pairing-code-display" style="display: none;">
+                <div class="pairing-code-box">
+                    <h4>Enter this code in WhatsApp:</h4>
+                    <div class="pairing-code" id="pairingCodeValue">
+                        <span>Loading...</span>
+                    </div>
+                    <p class="pairing-instructions">
+                        1. Open WhatsApp on your phone<br>
+                        2. Go to Settings → Linked Devices<br>
+                        3. Tap "Link a Device"<br>
+                        4. Tap "Link with phone number instead"<br>
+                        5. Enter the code above
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Instructions (dynamic based on method) -->
+            <div class="qr-instructions" id="linkingInstructions">
                 <h4>How to Connect:</h4>
-                <ol>
+                <ol id="instructionsList">
                     <li>Open WhatsApp on your phone</li>
                     <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
                     <li>Tap <strong>"Link a Device"</strong></li>

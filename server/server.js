@@ -300,6 +300,93 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
+    try {
+        console.log('📱 Creating session with phone number for user:', req.user.id);
+        
+        const { phoneNumber, usePairingCode } = req.body; // Add usePairingCode flag
+        
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number is required'
+            });
+        }
+
+        // Format phone number (remove all non-digits)
+        const formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
+        
+        // Validate phone number
+        if (formattedPhone.length < 10 || formattedPhone.length > 13) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid phone number format'
+            });
+        }
+
+        // Check subscription limits
+        const user = await User.findById(req.user.id);
+        const userSessions = await Session.find({ 
+            userId: req.user.id, 
+            status: { $in: ['connected', 'waiting_qr', 'connecting'] } 
+        });
+        
+        const maxSessions = subscriptionPlans[user.subscription]?.maxSessions || 1;
+        
+        if (maxSessions !== -1 && userSessions.length >= maxSessions) {
+            return res.status(403).json({
+                success: false,
+                message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions.`
+            });
+        }
+
+        const sessionId = `session-${req.user.id}-${Date.now()}`;
+
+        // Create session record
+        const session = new Session({
+            userId: req.user.id,
+            sessionId,
+            phone: formattedPhone,
+            status: 'waiting_qr',
+            linkingMethod: usePairingCode ? 'pairing_code' : 'qr', // Track method
+            subscriptionAtTime: user.subscription,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+        await session.save();
+
+        // Create WhatsApp session with phone number for pairing
+        const workerSocket = req.app.get("workerSocket");
+        await createWhatsAppSession(
+            req.user.id, 
+            sessionId, 
+            workerSocket,
+            usePairingCode ? formattedPhone : null // Pass phone for pairing
+        );
+
+        res.json({
+            success: true,
+            data: { 
+                sessionId, 
+                phoneNumber: formattedPhone,
+                status: 'waiting_qr',
+                linkingMethod: usePairingCode ? 'pairing_code' : 'qr',
+                message: 'Session created successfully'
+            },
+            message: usePairingCode 
+                ? 'WhatsApp session created. Please enter the pairing code in your WhatsApp app.'
+                : 'WhatsApp session created. Please scan the QR code.'
+        });
+
+    } catch (error) {
+        console.error('❌ Phone session creation error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to create session'
+        });
+    }
+});
+
 
 // Global variables
 const activeClients = new Map();

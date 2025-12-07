@@ -28,6 +28,19 @@ const sessionSchema = new mongoose.Schema({
         type: Date,
         default: () => new Date(Date.now() + 5 * 60 * 1000) // 5 minutes from now
     },
+        
+    // Add these new fields
+    pairingCode: {
+        type: String,
+    },
+    pairingCodeExpiry: {
+        type: Date,
+    },
+    linkingMethod: {
+        type: String,
+        enum: ['qr', 'pairing_code'],
+        default: 'qr'
+    },
     connectionData: {
         clientInfo: { type: mongoose.Schema.Types.Mixed, default: null },
         batteryLevel: { type: Number, default: null },

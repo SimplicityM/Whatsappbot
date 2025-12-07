@@ -2777,3 +2777,65 @@ body.dark-theme .action-btn:hover {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
 }
+
+.linking-method-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+.method-btn {
+    flex: 1;
+    padding: 12px 20px;
+    border: 2px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.method-btn:hover {
+    border-color: #667eea;
+    background: #f7fafc;
+}
+
+.method-btn.active {
+    border-color: #667eea;
+    background: #667eea;
+    color: white;
+}
+
+.pairing-code-display {
+    text-align: center;
+    padding: 30px;
+}
+
+.pairing-code-box {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 30px;
+    color: white;
+}
+
+.pairing-code {
+    background: white;
+    color: #2d3748;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 20px 0;
+    font-size: 32px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.pairing-instructions {
+    text-align: left;
+    margin-top: 20px;
+    font-size: 14px;
+    line-height: 1.8;
+    opacity: 0.95;
+}

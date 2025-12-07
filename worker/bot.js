@@ -313,7 +313,6 @@ function createClientOptions(sessionId) {
       handleSIGTERM: false,
       handleSIGHUP: false,
       defaultViewport: null,
-      userDataDir: path.join(BASE_AUTH_PATH, sessionId),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
