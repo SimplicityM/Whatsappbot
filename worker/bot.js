@@ -22,9 +22,16 @@ const RestorationMonitor = require('./restorationMonitor');
 // Create a global monitor instance
 const restorationMonitor = new RestorationMonitor();
 
-const BASE_AUTH_PATH = path.join(__dirname, '..', '.wwebjs_auth'); 
-// or use process.cwd() if bot.js is not in worker folder
-// console.log("Auth path:", BASE_AUTH_PATH);
+const BASE_AUTH_PATH = path.resolve('/app/.wwebjs_auth');
+
+// Add directory creation with proper permissions
+const fs = require('fs');
+if (!fs.existsSync(BASE_AUTH_PATH)) {
+    fs.mkdirSync(BASE_AUTH_PATH, { recursive: true, mode: 0o777 });
+    console.log(`✅ Created auth directory: ${BASE_AUTH_PATH}`);
+} else {
+    console.log(`✅ Auth directory exists: ${BASE_AUTH_PATH}`);
+}
 
 
 // bot.js (multi-session, isolated per-client implementation)
@@ -295,10 +302,11 @@ function createClientOptions(sessionId) {
   
   return {
     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
-    clientId: sessionId,
-    store: store,
-    backupSyncIntervalMs: 300000 // Backup every 5 minutes
-}),
+      clientId: sessionId,
+      store: store,
+      backupSyncIntervalMs: 300000, // Backup every 5 minutes
+      dataPath: BASE_AUTH_PATH // Add this line - tells RemoteAuth where to store browser data
+    }),
 
     puppeteer: {
       headless: true,
@@ -306,6 +314,7 @@ function createClientOptions(sessionId) {
       handleSIGTERM: false,
       handleSIGHUP: false,
       defaultViewport: null,
+      userDataDir: path.join(BASE_AUTH_PATH, sessionId),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -328,9 +337,9 @@ function createClientOptions(sessionId) {
     takeoverOnConflict: true,
     takeoverTimeoutMs: 0,
     qrMaxRetries: 3,
-
     webVersionCache: {
-      type: "local"
+      type: "local",
+      path: path.join(BASE_AUTH_PATH, 'wwebVersion.json') // Add this line - cache WhatsApp Web version
     }
   };
 }
@@ -2776,21 +2785,21 @@ Examples:
         break;
     }
 
-    // =====================================================
-    // DEFAULT QUICK HELP
-    // =====================================================
-    await safeSend(message.from,
-`*📋 AUTO-REPLY COMMANDS*
+//     // =====================================================
+//     // DEFAULT QUICK HELP
+//     // =====================================================
+//     await safeSend(message.from,
+// `*📋 AUTO-REPLY COMMANDS*
 
-Quick Start:
-• !autoreply add <keyword> | <response>
-• !autoreply addgroup <index> <keyword> | <response>
-• !autoreply status
-• !autoreply help
+// Quick Start:
+// • !autoreply add <keyword> | <response>
+// • !autoreply addgroup <index> <keyword> | <response>
+// • !autoreply status
+// • !autoreply help
 
-Use !autoreply help for full command list.`);
-    break;
-} // <-- END OF CASE 'autoreply'
+// Use !autoreply help for full command list.`);
+//     break;
+// } // <-- END OF CASE 'autoreply'
 
 
 

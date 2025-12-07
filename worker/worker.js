@@ -80,6 +80,30 @@ server.listen(PORT, '0.0.0.0', () => {
         await mongoose.connect(mongoURI);
         console.log("📦 Worker connected to MongoDB");
 
+        // Add this logging to verify mounted disk
+        const fs = require('fs');
+        const path = require('path');
+        const authPath = path.resolve('/app/.wwebjs_auth');
+        
+        console.log(`📁 Auth path: ${authPath}`);
+        console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
+        
+        if (fs.existsSync(authPath)) {
+            const stats = fs.statSync(authPath);
+            console.log(`📁 Auth path is directory: ${stats.isDirectory()}`);
+            console.log(`📁 Auth path permissions: ${stats.mode.toString(8)}`);
+            
+            // List contents to verify it's writable
+            try {
+                const files = fs.readdirSync(authPath);
+                console.log(`📁 Auth path contents (${files.length} items):`, files.slice(0, 5));
+            } catch (err) {
+                console.error(`❌ Cannot read auth path:`, err.message);
+            }
+        } else {
+            console.log(`⚠️ Auth path does not exist - it will be created on first session`);
+        }
+
         // Restore all sessions and capture stats
         console.log("♻ Restoring existing WhatsApp sessions...");
         const startTime = Date.now();

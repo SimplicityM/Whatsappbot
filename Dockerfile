@@ -54,8 +54,7 @@ RUN npm install --omit=dev
 COPY . .
 
 # 🔥 CHANGED: Only create media folder (sessions now stored in MongoDB, auth not needed)
-RUN mkdir -p ./media ./.wwebjs_auth && \
-    chmod -R 777 ./.wwebjs_auth
+RUN mkdir -p ./media
 
 # Environment variables
 ENV NODE_ENV=production
