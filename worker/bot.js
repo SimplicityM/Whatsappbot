@@ -636,7 +636,16 @@ This policy prevents trial abuse and ensures fair access for all users.`);
 • !dmall — DM all members
 • !dmselected — DM selected members only
 
-💡 Type *!help* for full command list.
+  
+📋 AUTO-REPLY COMMANDS
+
+Quick Start:
+• !autoreply - Reply a certain message
+• !autoreply addgroup - Choose group command works on 
+• !autoreply status
+• !autoreply help
+
+💡 Type *!help* for full command list & *!autoreply* for full autoreply command list.
         `);
 
         // 🔄 -----------------------------------------
@@ -2784,23 +2793,6 @@ Examples:
 !autoreply override 3 on`);
         break;
     }
-
-//     // =====================================================
-//     // DEFAULT QUICK HELP
-//     // =====================================================
-//     await safeSend(message.from,
-// `*📋 AUTO-REPLY COMMANDS*
-
-// Quick Start:
-// • !autoreply add <keyword> | <response>
-// • !autoreply addgroup <index> <keyword> | <response>
-// • !autoreply status
-// • !autoreply help
-
-// Use !autoreply help for full command list.`);
-//     break;
-// } // <-- END OF CASE 'autoreply'
-
 
 
 case 'broadcast': {
