@@ -7,21 +7,41 @@ const AutoReplySchema = new mongoose.Schema({
         required: true,
         index: true 
     },
-    groupId: {
-        type: String,
-        default: null // null means applies to all groups for this session
-    },
-    enabled: {
+    
+    // ============================================
+    // GLOBAL SETTINGS
+    // ============================================
+    globalEnabled: {
         type: Boolean,
         default: true
     },
-    rules: [
+    
+    // ============================================
+    // GROUP FILTERING (Whitelist/Blacklist)
+    // ============================================
+    // If empty: works in ALL groups
+    // If has items: ONLY works in these groups
+    allowedGroups: {
+        type: [String],
+        default: [] // Empty = all groups allowed
+    },
+    
+    // Groups where auto-reply is explicitly disabled
+    disabledGroups: {
+        type: [String],
+        default: []
+    },
+    
+    // ============================================
+    // GLOBAL RULES (applies to all allowed groups)
+    // ============================================
+    globalRules: [
         {
             keyword: { 
                 type: String, 
                 required: true,
                 trim: true,
-                lowercase: true // Store keywords in lowercase for case-insensitive matching
+                lowercase: true
             },
             response: { 
                 type: String, 
@@ -38,7 +58,121 @@ const AutoReplySchema = new mongoose.Schema({
             }
         }
     ],
-    // Media auto-reply rules (moved outside of rules array)
+    
+    globalMediaRules: [
+        {
+            type: { 
+                type: String, 
+                enum: ['image', 'video', 'audio', 'sticker', 'document'],
+                required: true 
+            },
+            response: { 
+                type: String, 
+                required: true 
+            },
+            active: {
+                type: Boolean,
+                default: true
+            }
+        }
+    ],
+
+    // ============================================
+    // GROUP-SPECIFIC RULES (per group)
+    // ============================================
+    groupRules: [
+        {
+            groupId: {
+                type: String,
+                required: true,
+                index: true
+            },
+            groupName: {
+                type: String,
+                default: ''
+            },
+            enabled: {
+                type: Boolean,
+                default: true
+            },
+            rules: [
+                {
+                    keyword: { 
+                        type: String, 
+                        required: true,
+                        trim: true,
+                        lowercase: true
+                    },
+                    response: { 
+                        type: String, 
+                        required: true 
+                    },
+                    matchType: {
+                        type: String,
+                        enum: ['exact', 'contains', 'starts', 'ends'],
+                        default: 'contains'
+                    },
+                    active: {
+                        type: Boolean,
+                        default: true
+                    }
+                }
+            ],
+            mediaRules: [
+                {
+                    type: { 
+                        type: String, 
+                        enum: ['image', 'video', 'audio', 'sticker', 'document'],
+                        required: true 
+                    },
+                    response: { 
+                        type: String, 
+                        required: true 
+                    },
+                    active: {
+                        type: Boolean,
+                        default: true
+                    }
+                }
+            ],
+            // Priority: if true, ONLY group rules apply (ignores global)
+            overrideGlobal: {
+                type: Boolean,
+                default: false
+            }
+        }
+    ],
+
+    // ============================================
+    // BACKWARD COMPATIBILITY (old schema)
+    // ============================================
+    enabled: {
+        type: Boolean,
+        default: true
+    },
+    rules: [
+        {
+            keyword: { 
+                type: String, 
+                required: true,
+                trim: true,
+                lowercase: true
+            },
+            response: { 
+                type: String, 
+                required: true 
+            },
+            matchType: {
+                type: String,
+                enum: ['exact', 'contains', 'starts', 'ends'],
+                default: 'contains'
+            },
+            active: {
+                type: Boolean,
+                default: true
+            }
+        }
+    ],
     mediaRules: [
         {
             type: { 
@@ -59,6 +193,6 @@ const AutoReplySchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Index for faster queries
-AutoReplySchema.index({ sessionId: 1, groupId: 1 });
+AutoReplySchema.index({ sessionId: 1, 'groupRules.groupId': 1 });
 
-module.exports = mongoose.models.AutoReply || mongoose.model('AutoReply', autoReplySchema);
+module.exports = mongoose.models.AutoReply || mongoose.model('AutoReply', AutoReplySchema);

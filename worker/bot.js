@@ -1107,28 +1107,102 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
       }
 
   }  
-    // --------------------------------------------------
-// 🟢 AUTO-REPLY TRIGGER (works in all groups & chats)
+  // --------------------------------------------------
+// 🟢 AUTO-REPLY TRIGGER (COMBINED: Filtering + Group-Specific Rules)
 // --------------------------------------------------
 try {
     const chat = await message.getChat();
     const text = (message.body || '').toLowerCase().trim();
 
     // Ignore own messages to prevent loops
-    if (message.fromMe) {
-        // allow commands but ignore auto reply triggers
-    } else {
-        // Fetch rules once per session
+    if (!message.fromMe && text) {
+        // Fetch auto-reply configuration
         const auto = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
 
-        if (auto && Array.isArray(auto.rules)) {
-            for (const rule of auto.rules) {
-                const key = rule.keyword.toLowerCase();
+        if (auto && auto.globalEnabled !== false) {
+            let shouldProcess = true;
+            let rulesToCheck = [];
+            let groupRule = null;
+            const isGroup = chat.isGroup;
+            const currentGroupId = isGroup ? (chat.id._serialized || chat.id) : null;
 
-                // keyword match (contains)
-                if (text.includes(key)) {
-                    await safeSend(message.from, rule.response);
-                    break; // stop after first match
+            // ============================================
+            // STEP 1: CHECK IF AUTO-REPLY IS ALLOWED FOR THIS GROUP
+            // ============================================
+            if (isGroup && currentGroupId) {
+                // Check if group is explicitly disabled
+                if (auto.disabledGroups && auto.disabledGroups.includes(currentGroupId)) {
+                    shouldProcess = false;
+                }
+                
+                // Check whitelist (if allowedGroups has items, only those groups are allowed)
+                if (shouldProcess && auto.allowedGroups && auto.allowedGroups.length > 0) {
+                    if (!auto.allowedGroups.includes(currentGroupId)) {
+                        shouldProcess = false;
+                    }
+                }
+            }
+
+            // ============================================
+            // STEP 2: DETERMINE WHICH RULES TO USE
+            // ============================================
+            if (shouldProcess) {
+                if (isGroup && currentGroupId) {
+                    // Find group-specific rules
+                    if (auto.groupRules && auto.groupRules.length) {
+                        groupRule = auto.groupRules.find(gr => gr.groupId === currentGroupId);
+                    }
+
+                    // Determine rule priority
+                    if (groupRule && groupRule.enabled) {
+                        if (groupRule.overrideGlobal) {
+                            // ONLY use group rules (ignore global)
+                            rulesToCheck = groupRule.rules || [];
+                        } else {
+                            // MERGE: Use BOTH global and group rules
+                            const globalRules = auto.globalRules || auto.rules || [];
+                            const specificRules = groupRule.rules || [];
+                            rulesToCheck = [...globalRules, ...specificRules];
+                        }
+                    } else {
+                        // No group-specific rules, use global only
+                        rulesToCheck = auto.globalRules || auto.rules || [];
+                    }
+                } else {
+                    // For individual chats, always use global rules
+                    rulesToCheck = auto.globalRules || auto.rules || [];
+                }
+
+                // ============================================
+                // STEP 3: CHECK RULES FOR MATCHES
+                // ============================================
+                for (const rule of rulesToCheck) {
+                    if (!rule.active) continue; // Skip inactive rules
+
+                    const key = rule.keyword.toLowerCase();
+                    let matched = false;
+
+                    // Match based on matchType
+                    switch (rule.matchType) {
+                        case 'exact':
+                            matched = (text === key);
+                            break;
+                        case 'starts':
+                            matched = text.startsWith(key);
+                            break;
+                        case 'ends':
+                            matched = text.endsWith(key);
+                            break;
+                        case 'contains':
+                        default:
+                            matched = text.includes(key);
+                            break;
+                    }
+
+                    if (matched) {
+                        await safeSend(message.from, rule.response);
+                        break; // Stop after first match
+                    }
                 }
             }
         }
@@ -3309,7 +3383,7 @@ case 'members': {
 }
 
 
-/* ---------- ADMINS ---------- */
+/* ---------- ADMINS (FIXED VERSION) ---------- */
 case 'admins': {
     const providedIdx = args[0] && !isNaN(args[0]) ? parseInt(args[0]) : null;
     
@@ -3380,66 +3454,87 @@ case 'admins': {
 
     const groupId = resolved.group.groupId;
 
-    let participants = [];
-
+    // ============================================================
+    // 🔧 FIX: Fetch group metadata to get admin information
+    // ============================================================
     try {
-        // 1️⃣ Try DB members first
-        const dbList = await getMembersFromDB(sessionId, groupId);
-        if (Array.isArray(dbList) && dbList.length) {
-            participants = dbList.map(j => ({ id: { _serialized: j } }));
+        const chat = await client.getChatById(groupId).catch(() => null);
+        
+        if (!chat) {
+            await safeSend(message.from, '❌ Could not fetch group chat.');
+            break;
         }
 
-        // 2️⃣ Try official getParticipants
-        if (!participants.length) {
-            const chat = await client.getChatById(groupId).catch(() => null);
-            if (chat && typeof chat.getParticipants === 'function') {
-                const fetched = await chat.getParticipants().catch(() => []);
-                if (fetched.length) {
-                    participants = fetched;
+        // Try to get group metadata (contains admin info)
+        let groupMetadata = null;
+        
+        try {
+            // Method 1: Try groupMetadata (most reliable for admin info)
+            groupMetadata = await client.pupPage.evaluate(async (groupId) => {
+                return await window.WWebJS.getGroupMetadata(groupId);
+            }, groupId).catch(() => null);
+        } catch {}
 
-                    // update DB cache
-                    const jids = fetched.map(p => p.id._serialized);
-                    await setMembersForGroup(sessionId, groupId, jids);
-                }
-            }
+        let admins = [];
+
+        // If we got metadata, extract admins from there
+        if (groupMetadata && groupMetadata.participants) {
+            admins = groupMetadata.participants
+                .filter(p => p.isAdmin || p.isSuperAdmin)
+                .map(p => ({
+                    id: { _serialized: p.id._serialized || p.id },
+                    isAdmin: p.isAdmin,
+                    isSuperAdmin: p.isSuperAdmin
+                }));
+        } 
+        // Fallback: Try chat.participants
+        else if (chat.participants && Array.isArray(chat.participants)) {
+            admins = chat.participants.filter(p => p.isAdmin || p.isSuperAdmin);
+        }
+        // Fallback: Try getParticipants
+        else if (typeof chat.getParticipants === 'function') {
+            const participants = await chat.getParticipants().catch(() => []);
+            admins = participants.filter(p => p.isAdmin || p.isSuperAdmin);
         }
 
-        // 3️⃣ Fallback to chat.participants
-        if (!participants.length) {
-            const chat = await client.getChatById(groupId).catch(() => null);
-            if (chat && Array.isArray(chat.participants) && chat.participants.length) {
-                participants = chat.participants;
+        if (!admins.length) {
+            await safeSend(
+                message.from, 
+                `⚠ No admin data available for *${resolved.group.name}*.
 
-                // update DB
-                const jids = participants.map(p => p.id._serialized);
-                await setMembersForGroup(sessionId, groupId, jids);
-            }
+This can happen because:
+• WhatsApp doesn't provide admin flags for this group
+• Bot needs to be promoted to admin first
+• Group is a WhatsApp Community (limited API access)
+
+💡 Try: Make bot an admin in the group, then use !syncmembers ${providedIdx || ''}`
+            );
+            break;
         }
-    } catch (e) {
-        participants = [];
-    }
 
-    if (!participants.length) {
+        let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
+        admins.forEach((a, i) => {
+            const jid = a.id._serialized || a.id;
+            const num = jid.split('@')[0];
+            const role = a.isSuperAdmin ? '👑 Super Admin' : '🛡 Admin';
+            out += `${i + 1}. ${num} (${role})\n`;
+        });
+
+        await safeSend(message.from, out);
+
+    } catch (error) {
+        logger.error('Error fetching admins:', error);
         await safeSend(
             message.from,
-            `⚠ Unable to fetch admins for ${resolved.group.name}.\nThis is common for Community groups.\nTry:\n• Promote bot to admin\n• Use !syncmembers <index>\n• Ask members to send a short message`
+            `❌ Error fetching admin list for *${resolved.group.name}*.
+            
+Try:
+• Promote bot to group admin
+• Use !syncmembers ${providedIdx || ''}
+• Check if group is a Community (limited support)`
         );
-        break;
     }
 
-    const admins = participants.filter(p => p.isAdmin || p.isSuperAdmin);
-
-    if (!admins.length) {
-        await safeSend(message.from, `⚠ No admin data available for ${resolved.group.name}.`);
-        break;
-    }
-
-    let out = `*🛡 Admins of ${resolved.group.name}:*\n\n`;
-    admins.forEach((a, i) => {
-        out += `${i + 1}. ${a.id._serialized.split('@')[0]}\n`;
-    });
-
-    await safeSend(message.from, out);
     break;
 }
 
