@@ -25,7 +25,6 @@ const restorationMonitor = new RestorationMonitor();
 const BASE_AUTH_PATH = path.resolve('/app/.wwebjs_auth');
 
 // Add directory creation with proper permissions
-const fs = require('fs');
 if (!fs.existsSync(BASE_AUTH_PATH)) {
     fs.mkdirSync(BASE_AUTH_PATH, { recursive: true, mode: 0o777 });
     console.log(`✅ Created auth directory: ${BASE_AUTH_PATH}`);
