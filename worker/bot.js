@@ -216,22 +216,33 @@ function checkRateLimit(userId) {
   return { allowed: false, remaining: 0, retryAfter: RATE_LIMIT_WINDOW_MS - elapsed };
 }
 
-// Chunked sender with bounded concurrency & retries
+// ✅ FIXED: Chunked sender with SINGLE visible message + silent mentions
 async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHUNK_SIZE, concurrency=CONCURRENCY, delayMs=CHUNK_DELAY_MS }) {
   if (!Array.isArray(jids) || !jids.length) return { sent: 0, chunks: 0 };
+  
   const chunks = [];
   for (let i = 0; i < jids.length; i += chunkSize) chunks.push(jids.slice(i, i+chunkSize));
+  
   let sent = 0;
   let idx = 0;
+  
   const workers = new Array(Math.min(concurrency, chunks.length)).fill(0).map(async () => {
     while (true) {
       if (idx >= chunks.length) break;
       const my = idx++;
       const c = chunks[my];
       let attempt = 0, ok = false;
+      
       while (attempt < MAX_RETRIES && !ok) {
         try {
-          await client.sendMessage(groupId, text, { mentions: c });
+          // ✅ FIRST CHUNK: Send visible message, OTHERS: Send invisible
+          if (my === 0) {
+            await client.sendMessage(groupId, text, { mentions: c });
+            logger.info(`Sent visible message (chunk 1/${chunks.length})`);
+          } else {
+            await client.sendMessage(groupId, '‎', { mentions: c }); // Zero-width space
+            logger.info(`Sent silent mention (chunk ${my + 1}/${chunks.length})`);
+          }
           sent += c.length;
           ok = true;
         } catch (err) {
@@ -243,6 +254,7 @@ async function sendMentionsInChunks({ client, groupId, jids, text, chunkSize=CHU
       await new Promise(r => setTimeout(r, delayMs));
     }
   });
+  
   await Promise.all(workers);
   return { sent, chunks: chunks.length };
 }
@@ -2306,188 +2318,403 @@ case 'status': {
         break;
       }
 
-      /* ---------- DMALL ---------- */
+/* ---------- DMALL (ENHANCED WITH RANGE & DIRECT PHONE PASTE) ---------- */
 case 'dmall': {
     if (!isSelfChat) return;
 
     // ------------------------------------------------------------
-    // 1️⃣ PARSE GROUP INDEX AND MESSAGE
+    // 1️⃣ PARSE INPUT - Detect if using group index or direct phones
     // ------------------------------------------------------------
     const pipeIndex = message.body.indexOf('|');
     if (pipeIndex === -1) {
         await safeSend(message.from,
-            '❗ Usage:\n!dmall <groupIndex> | <message>');
+            `❗ Usage:
+
+*Method 1: Group Index (All Members)*
+!dmall <groupIndex> | <message>
+
+*Method 2: Group Index (Selected Members)*
+!dmall <groupIndex> <targets> | <message>
+
+*Method 3: Direct Phone Numbers*
+!dmall <phone1> <phone2> ... | <message>
+
+Examples:
+!dmall 3 | Hello everyone!
+!dmall 3 1,3,5 | Hello selected members!
+!dmall 3 1-30 | Hello first 30 members!
+!dmall 234801234567 234809876543 | Direct paste!
+!dmall 3 @john 08123456789 1-10 | Mixed targets`);
         break;
     }
 
     const beforePipe = message.body.substring(0, pipeIndex).trim();
     const afterPipe = message.body.substring(pipeIndex + 1).trim();
+    const msgText = afterPipe;
 
-    const parts = beforePipe.split(/\s+/);
-    const groupIndex = parseInt(parts[1]);
-
-    if (isNaN(groupIndex)) {
-        await safeSend(message.from,
-            '❗ First argument must be the group index.\nExample:\n!dmall 3 | Hello');
-        break;
-    }
-
-    if (!afterPipe.length) {
+    if (!msgText.length) {
         await safeSend(message.from,
             '❗ Empty message detected.\nPut your message after the "|" symbol.');
         break;
     }
 
-    const msgText = afterPipe;
-    
+    const parts = beforePipe.split(/\s+/);
+    const firstArg = parts[1];
+
     // ------------------------------------------------------------
-    // 2️⃣ RESOLVE THE GROUP FROM INDEX (USING listall CACHE)
+    // 2️⃣ DETERMINE MODE: Group-based OR Direct Phone Numbers
     // ------------------------------------------------------------
-    let allGroups = [];
+    let mode = 'unknown';
+    let groupIndex = null;
+    let targetPart = '';
+    let directPhones = [];
 
-    try {
-        const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
-            .lean()
-            .catch(() => null);
-
-        if (cached && Array.isArray(cached.groups)) {
-            allGroups = cached.groups;
+    // Check if first argument is a group index (small number like 1-999)
+    if (firstArg && /^\d+$/.test(firstArg)) {
+        const num = parseInt(firstArg);
+        
+        // If it's a small number (likely group index)
+        if (num <= 999) {
+            mode = 'group';
+            groupIndex = num;
+            targetPart = parts.slice(2).join(' ').trim();
+        } 
+        // If it's a long number (likely phone number)
+        else if (firstArg.length >= 10) {
+            mode = 'direct';
+            directPhones = parts.slice(1); // All parts are phone numbers
         }
-
-        if (!allGroups.length) {
-            const chats = await client.getChats();
-            allGroups = chats
-                .filter(c => c.isGroup)
-                .map(c => ({
-                    name: c.name || "Unnamed Group",
-                    groupId: c.id._serialized
-                }));
-
-            await SavedGroupList.findOneAndUpdate(
-                { sessionId: sessionId + "_all" },
-                { groups: allGroups, updatedAt: new Date() },
-                { upsert: true }
-            );
+        else {
+            mode = 'group';
+            groupIndex = num;
+            targetPart = parts.slice(2).join(' ').trim();
         }
-    } catch {}
-
-    const arrayIndex = groupIndex - 1;
-    const group = allGroups[arrayIndex];
-
-    if (!group) {
+    } else {
         await safeSend(message.from,
-            '❌ Invalid group index.\nUse !listall to see indexes.');
-        break;
-    }
-
-    const groupId = group.groupId;
-    const chat = await client.getChatById(groupId).catch(() => null);
-
-    if (!chat) {
-        await safeSend(message.from,
-            '❌ Could not load group. Bot may not be a member.');
+            '❗ Invalid format. First argument must be group index or phone number.');
         break;
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ REFRESH MEMBERS ALWAYS (YOUR CHOICE C)
+    // 3️⃣ MODE A: DIRECT PHONE NUMBERS (No group needed)
     // ------------------------------------------------------------
-    let participants = [];
+    if (mode === 'direct') {
+        const targetSet = new Set();
 
-    try {
-        // Always fetch fresh members
-        const fetched = await chat.getParticipants().catch(() => []);
-
-        if (fetched.length) {
-            participants = fetched;
-            await setMembersForGroup(
-                sessionId,
-                groupId,
-                fetched.map(p => p.id._serialized)
-            );
-        }
-    } catch {}
-
-    if (!participants.length) {
-        await safeSend(message.from,
-            `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin.`);
-        break;
-    }
-
-    // Convert to JIDs
-    const allJIDs = participants
-        .map(p => p.id._serialized)
-        .filter(j => j !== mySelf);
-
-    if (!allJIDs.length) {
-        await safeSend(message.from,
-            '⚠ No eligible members found.');
-        break;
-    }
-
-    // ------------------------------------------------------------
-    // 4️⃣ AUTO-BATCH SETUP
-    // ------------------------------------------------------------
-    const batchSize = 60;               // safe batch
-    const delayPerMessage = () => 1200 + Math.random() * 1300;  // strong safety
-    const batchDelay = 10 * 60 * 1000;  // 10 minutes = 600000 ms
-
-    const batches = [];
-    for (let i = 0; i < allJIDs.length; i += batchSize) {
-        batches.push(allJIDs.slice(i, i + batchSize));
-    }
-
-    await safeSend(
-        message.from,
-        `📨 *DM-All Started (Auto-Batch Mode)*  
-Group: *${chat.name}*  
-Total Members: *${allJIDs.length}*  
-Total Batches: *${batches.length}*  
-Batch Size: *60*  
-Delay Between Batches: *10 minutes*
-
-Sending first batch now…`
-    );
-
-    // ------------------------------------------------------------
-    // 5️⃣ AUTO-BATCH EXECUTION (NO USER INTERACTION NEEDED)
-    // ------------------------------------------------------------
-    async function sendBatch(batchIndex) {
-        if (batchIndex >= batches.length) {
-            await safeSend(
-                message.from,
-                `🎉 *DM-All Completed!*  
-Total messages sent: *${allJIDs.length}*`
-            );
-            return;
+        for (const phone of directPhones) {
+            // Clean and format phone number
+            const cleaned = phone.replace(/[^0-9]/g, '');
+            
+            if (cleaned.length >= 10) {
+                // Auto-format: if doesn't start with country code, add 234
+                let formatted = cleaned;
+                if (!formatted.startsWith('234') && formatted.startsWith('0')) {
+                    formatted = '234' + formatted.substring(1);
+                } else if (!formatted.startsWith('234')) {
+                    formatted = '234' + formatted;
+                }
+                targetSet.add(`${formatted}@c.us`);
+            }
         }
 
-        const batch = batches[batchIndex];
+        if (!targetSet.size) {
+            await safeSend(message.from, '❗ No valid phone numbers detected.');
+            break;
+        }
+
+        const targetJIDs = Array.from(targetSet);
+
+        await safeSend(
+            message.from,
+            `📨 *DM-Direct Mode*  
+Target Count: *${targetJIDs.length}*  
+
+Sending messages now...`
+        );
+
+        // Send messages with throttling
         let sent = 0;
+        const delayPerMessage = () => 1200 + Math.random() * 1300;
 
-        for (const jid of batch) {
+        for (const jid of targetJIDs) {
             try {
                 await client.sendMessage(jid, msgText);
                 sent++;
-            } catch {}
+            } catch (err) {
+                console.log(`Failed to send to ${jid}:`, err.message);
+            }
             await new Promise(r => setTimeout(r, delayPerMessage()));
         }
 
         await safeSend(
             message.from,
-            `📦 *Batch ${batchIndex + 1}/${batches.length} complete*  
-Sent: *${sent}/${batch.length}*  
-Next batch in 10 minutes…`
+            `🎉 *Completed!*  
+Messages sent: *${sent}/${targetJIDs.length}*`
         );
 
-        // Schedule next batch after 10 minutes
-        setTimeout(() => {
-            sendBatch(batchIndex + 1);
-        }, batchDelay);
+        break;
     }
 
-    // Start first batch
-    sendBatch(0);
+    // ------------------------------------------------------------
+    // 4️⃣ MODE B: GROUP-BASED (Original + Enhanced)
+    // ------------------------------------------------------------
+    if (mode === 'group') {
+        if (isNaN(groupIndex)) {
+            await safeSend(message.from,
+                '❗ Group index must be a number.\nExample:\n!dmall 3 | Hello');
+            break;
+        }
+
+        const hasTargets = targetPart.length > 0;
+
+        // Resolve the group from index
+        let allGroups = [];
+
+        try {
+            const cached = await SavedGroupList.findOne({ sessionId: sessionId + "_all" })
+                .lean()
+                .catch(() => null);
+
+            if (cached && Array.isArray(cached.groups)) {
+                allGroups = cached.groups;
+            }
+
+            if (!allGroups.length) {
+                const chats = await client.getChats();
+                allGroups = chats
+                    .filter(c => c.isGroup)
+                    .map(c => ({
+                        name: c.name || "Unnamed Group",
+                        groupId: c.id._serialized
+                    }));
+
+                await SavedGroupList.findOneAndUpdate(
+                    { sessionId: sessionId + "_all" },
+                    { groups: allGroups, updatedAt: new Date() },
+                    { upsert: true }
+                );
+            }
+        } catch {}
+
+        const arrayIndex = groupIndex - 1;
+        const group = allGroups[arrayIndex];
+
+        if (!group) {
+            await safeSend(message.from,
+                '❌ Invalid group index.\nUse !listall to see indexes.');
+            break;
+        }
+
+        const groupId = group.groupId;
+        const chat = await client.getChatById(groupId).catch(() => null);
+
+        if (!chat) {
+            await safeSend(message.from,
+                '❌ Could not load group. Bot may not be a member.');
+            break;
+        }
+
+        // Fetch members
+        let participants = [];
+
+        try {
+            const dbList = await getMembersFromDB(sessionId, groupId);
+            
+            if (Array.isArray(dbList) && dbList.length) {
+                participants = dbList.map(j => ({ id: { _serialized: j } }));
+            } 
+            else if (typeof chat.getParticipants === "function") {
+                const fetched = await chat.getParticipants().catch(() => []);
+                if (fetched.length) {
+                    participants = fetched;
+                    await setMembersForGroup(
+                        sessionId,
+                        groupId,
+                        fetched.map(p => p.id._serialized)
+                    );
+                }
+            }
+            else if (Array.isArray(chat.participants) && chat.participants.length) {
+                participants = chat.participants;
+                const jids = participants
+                    .map(p => p.id?._serialized || null)
+                    .filter(Boolean);
+                if (jids.length) {
+                    await setMembersForGroup(sessionId, groupId, jids);
+                }
+            }
+        } catch {}
+
+        if (!participants.length) {
+            await safeSend(message.from,
+                `⚠ Unable to fetch members for *${chat.name}*.\nTry promoting bot to admin.`);
+            break;
+        }
+
+        const participantJIDs = participants
+            .map(p => p.id._serialized)
+            .filter(j => j !== mySelf);
+
+        if (!participantJIDs.length) {
+            await safeSend(message.from,
+                '⚠ No eligible members found.');
+            break;
+        }
+
+        // Determine target list (ALL or SELECTED)
+        let targetJIDs = [];
+
+        if (hasTargets) {
+            // Parse targets with ENHANCED range support
+            const targetSet = new Set();
+            const tokens = targetPart.split(/\s+/);
+
+            for (const token of tokens) {
+                // A — @mentions (@john)
+                if (token.includes('@')) {
+                    const num = token.replace(/[^0-9]/g, '');
+                    if (num.length >= 7) targetSet.add(`${num}@c.us`);
+                }
+                // B — Phone numbers (081..., 234..., 090...)
+                else if (/^\d+$/.test(token) && token.length >= 10) {
+                    let formatted = token;
+                    if (formatted.startsWith('0')) {
+                        formatted = '234' + formatted.substring(1);
+                    } else if (!formatted.startsWith('234')) {
+                        formatted = '234' + formatted;
+                    }
+                    targetSet.add(`${formatted}@c.us`);
+                }
+                // C — Range (1-30) ✨ NEW ENHANCED FEATURE
+                else if (/^\d+-\d+$/.test(token)) {
+                    const [start, end] = token.split('-').map(n => parseInt(n.trim()));
+                    const actualEnd = Math.min(end, participantJIDs.length);
+                    
+                    for (let i = start; i <= actualEnd; i++) {
+                        const jid = participantJIDs[i - 1];
+                        if (jid) targetSet.add(jid);
+                    }
+                }
+                // D — Index list (1,3,5)
+                else if (/^\d+(,\d+)*$/.test(token)) {
+                    const idxs = token.split(',').map(n => parseInt(n.trim()));
+                    for (const i of idxs) {
+                        const jid = participantJIDs[i - 1];
+                        if (jid) targetSet.add(jid);
+                    }
+                }
+                // E — Single index (5)
+                else if (/^\d+$/.test(token)) {
+                    const idx = parseInt(token);
+                    const jid = participantJIDs[idx - 1];
+                    if (jid) targetSet.add(jid);
+                }
+            }
+
+            if (!targetSet.size) {
+                await safeSend(message.from, '❗ No valid targets detected from your selection.');
+                break;
+            }
+
+            targetJIDs = Array.from(targetSet);
+            
+            await safeSend(
+                message.from,
+                `📨 *DM-Selected Mode*  
+Group: *${chat.name}*  
+Selected Members: *${targetJIDs.length}*  
+
+Sending messages now...`
+            );
+        } else {
+            // Send to ALL members
+            targetJIDs = participantJIDs;
+            
+            await safeSend(
+                message.from,
+                `📨 *DM-All Mode (All Members)*  
+Group: *${chat.name}*  
+Total Members: *${targetJIDs.length}*  
+
+Sending messages now...`
+            );
+        }
+
+        // Send messages with smart batching
+        const batchSize = 60;
+        const delayPerMessage = () => 1200 + Math.random() * 1300;
+        const batchDelay = 10 * 60 * 1000; // 10 minutes
+
+        const batches = [];
+        for (let i = 0; i < targetJIDs.length; i += batchSize) {
+            batches.push(targetJIDs.slice(i, i + batchSize));
+        }
+
+        // If small enough, send immediately without batching
+        if (targetJIDs.length <= batchSize) {
+            let sent = 0;
+            for (const jid of targetJIDs) {
+                try {
+                    await client.sendMessage(jid, msgText);
+                    sent++;
+                } catch {}
+                await new Promise(r => setTimeout(r, delayPerMessage()));
+            }
+
+            await safeSend(
+                message.from,
+                `🎉 *Completed!*  
+Messages sent: *${sent}/${targetJIDs.length}*`
+            );
+        } else {
+            // Use batching for large lists
+            await safeSend(
+                message.from,
+                `Total Batches: *${batches.length}*  
+Batch Size: *60*  
+Delay Between Batches: *10 minutes*
+
+Sending first batch now…`
+            );
+
+            async function sendBatch(batchIndex) {
+                if (batchIndex >= batches.length) {
+                    await safeSend(
+                        message.from,
+                        `🎉 *DM-All Completed!*  
+Total messages sent: *${targetJIDs.length}*`
+                    );
+                    return;
+                }
+
+                const batch = batches[batchIndex];
+                let sent = 0;
+
+                for (const jid of batch) {
+                    try {
+                        await client.sendMessage(jid, msgText);
+                        sent++;
+                    } catch {}
+                    await new Promise(r => setTimeout(r, delayPerMessage()));
+                }
+
+                await safeSend(
+                    message.from,
+                    `📦 *Batch ${batchIndex + 1}/${batches.length} complete*  
+Sent: *${sent}/${batch.length}*  
+Next batch in 10 minutes…`
+                );
+
+                // Schedule next batch after 10 minutes
+                setTimeout(() => {
+                    sendBatch(batchIndex + 1);
+                }, batchDelay);
+            }
+
+            // Start first batch
+            sendBatch(0);
+        }
+    }
 
     break;
 }
@@ -3684,21 +3911,28 @@ Examples:
     }
 
     // ------------------------------------------------------------
-    // 6️⃣ SEND SAFELY (CHUNKED)
-    // ------------------------------------------------------------
-    async function sendInChunks(list, chunkSize = 50) {
-        for (let i = 0; i < list.length; i += chunkSize) {
-            const chunk = list.slice(i, i + chunkSize);
-            try {
+// 6️⃣ SEND SAFELY (CHUNKED) - ✅ FIXED: Single visible message
+// ------------------------------------------------------------
+async function sendInChunks(list, chunkSize = 50) {
+    for (let i = 0; i < list.length; i += chunkSize) {
+        const chunk = list.slice(i, i + chunkSize);
+        try {
+            // ✅ FIRST CHUNK: Send visible message, OTHERS: Send invisible
+            if (i === 0) {
                 await client.sendMessage(groupId, finalMsg, { mentions: chunk });
-                await new Promise(r => setTimeout(r, 600));
-            } catch (e) {
-                logger.error(`[${sessionName}] tagfew chunk error`, e);
+                logger.info(`[${sessionName}] tagfew: Sent visible message (chunk 1)`);
+            } else {
+                await client.sendMessage(groupId, '‎', { mentions: chunk }); // Zero-width space
+                logger.info(`[${sessionName}] tagfew: Sent silent mention (chunk ${(i / chunkSize) + 1})`);
             }
+            await new Promise(r => setTimeout(r, 600));
+        } catch (e) {
+            logger.error(`[${sessionName}] tagfew chunk error`, e);
         }
     }
+}
 
-    await sendInChunks(finalMentions);
+await sendInChunks(finalMentions);
 
     // ------------------------------------------------------------
     // 7️⃣ CONFIRMATION
