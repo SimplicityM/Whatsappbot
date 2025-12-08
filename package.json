@@ -10,5 +10,9 @@
     "start": "echo \"Select server or worker\"",
     "start:server": "npm --workspace server start",
     "start:worker": "npm --workspace worker start"
+  },
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "multer": "^2.0.2"
   }
 }
