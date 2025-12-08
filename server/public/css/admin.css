@@ -2215,26 +2215,210 @@ input:checked + .slider:before {
     to { opacity: 1; }
 }
 
- /* Payment Exemptions Quick Fix */
-        .owner-info-card, .exempt-form-card, .users-exemption-list {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .form-row { display: flex; gap: 16px; margin-bottom: 16px; }
-        .form-group { flex: 1; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; }
-        .form-group input { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; }
-        .form-actions { display: flex; gap: 12px; }
-        .privilege-badge { background: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
-        
-        @media (max-width: 768px) {
-            .form-row { flex-direction: column; }
-        }
+/* ==================== PAYMENT EXEMPTIONS SECTION ==================== */
+
+/* Owner Info Card - Enhanced with gradient */
+.owner-info-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.owner-info-card h3 {
+    margin: 0 0 15px 0;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.owner-details p {
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+.owner-details strong {
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.privilege-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Exemption Controls */
+.exemption-controls {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.exemption-controls h3 {
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    color: #1f2937;
+}
+
+/* Exempt Form Card */
+.exempt-form-card {
+    background: #f9fafb;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    border: 1px solid #e5e7eb;
+}
+
+.exempt-form-card h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #374151;
+}
+
+/* Users Exemption List */
+.users-exemption-list {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.users-exemption-list h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #374151;
+}
+
+/* Form Styles */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.form-group input,
+.form-group textarea {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Button Styles - Success (Green) */
+.btn-success {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-success:hover {
+    background: #059669;
+    transform: translateY(-1px);
+}
+
+.btn-success:active {
+    transform: translateY(0);
+}
+
+/* Button Styles - Danger (Red) */
+.btn-danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+}
+
+.btn-danger:active {
+    transform: translateY(0);
+}
+
+/* Small Button Variant */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+/* Table Container */
+.table-container {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .btn-success,
+    .btn-danger {
+        width: 100%;
+        justify-content: center;
+    }
+}
 
         /* contact group display */
         .contact-group-card {
@@ -2839,3 +3023,4 @@ body.dark-theme .action-btn:hover {
     line-height: 1.8;
     opacity: 0.95;
 }
+

@@ -561,55 +561,62 @@ function setupEventListeners() {
 
 }
 
-
-
 function switchSection(sectionName) {
-    currentSection = sectionName;
-
-    // Remove active class from all nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-
-    // Add active class to current nav item
-    const currentNavLink = document.querySelector(`[data-section="${sectionName}"]`);
-    if (currentNavLink) {
-        currentNavLink.parentElement.classList.add('active');
-    }
-
+    console.log('Switching to section:', sectionName);
+    
     // Hide all sections
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
     });
-
-    // Show current section
-    const currentSectionElement = document.getElementById(`${sectionName}-section`);
-    if (currentSectionElement) {
-        currentSectionElement.classList.add('active');
+    
+    // Show selected section
+    const targetSection = document.getElementById(`${sectionName}-section`);
+    if (targetSection) {
+        targetSection.classList.add('active');
     }
-
-        // Update page title
-        const titles = {
-            dashboard: 'Dashboard',
-            sessions: 'Bot Sessions',
-            users: 'Users & Groups',
-            contacts: 'Contacts',
-            messages: 'Messages',
-            reminders: 'Reminders',
-            analytics: 'Analytics',
-            settings: 'Settings',
-            exemptions: 'Payment Exemptions',
-            commands: 'Command Management' // ✅ ADD THIS
-        };
-
+    
+    // Update navigation
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.parentElement.classList.remove('active');
+    });
+    
+    const activeLink = document.querySelector(`[data-section="${sectionName}"]`);
+    if (activeLink) {
+        activeLink.parentElement.classList.add('active');
+    }
+    
+    // Update page title
+    const pageTitles = {
+        dashboard: 'Dashboard',
+        sessions: 'Bot Sessions',
+        users: 'Users & Groups',
+        contacts: 'Contacts',
+        messages: 'Messages',
+        reminders: 'Reminders',
+        analytics: 'Analytics',
+        settings: 'Settings',
+        exemptions: 'Payment Exemptions',
+        commands: 'Command Management'
+    };
+    
     const pageTitle = document.getElementById('pageTitle');
-    if (pageTitle && titles[sectionName]) {
-        pageTitle.textContent = titles[sectionName];
+    if (pageTitle) {
+        pageTitle.textContent = pageTitles[sectionName] || 'Admin Dashboard';
     }
-
-    // Load section-specific data
-    loadSectionData(sectionName);
+    
+    // Load data for specific sections
+    if (sectionName === 'sessions') {
+        fetchAllSessions();
+    } else if (sectionName === 'exemptions') {
+        loadOwnerInfo();
+        loadUsersExemptionStatus();
+    } else if (sectionName === 'commands') {
+        loadCommandGrants();
+    }
+    
+    currentSection = sectionName;
 }
+
 
 function loadSectionData(section) {
     switch(section) {
@@ -1334,44 +1341,115 @@ async function saveUserCommands(userId) {
 
 async function loadOwnerInfo() {
     try {
-        // For now, show placeholder data since the API endpoint doesn't exist yet
+        const response = await fetch('/api/admin/owner-info', {
+            headers: {
+                'Authorization': `Bearer ${getAuthToken()}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch owner info');
+        }
+
+        const result = await response.json();
+        
         const ownerNumberElement = document.getElementById('ownerNumber');
         const ownerStatusElement = document.getElementById('ownerStatus');
         
-        if (ownerNumberElement) ownerNumberElement.textContent = 'Not configured yet';
-        if (ownerStatusElement) ownerStatusElement.textContent = '⚠️ Configure in config.json';
+        if (result.success && result.data) {
+            const ownerNumber = result.data.ownerNumber || 'Not configured';
+            const isConfigured = result.data.isOwnerConfigured;
+            
+            if (ownerNumberElement) {
+                ownerNumberElement.textContent = ownerNumber;
+            }
+            
+            if (ownerStatusElement) {
+                ownerStatusElement.innerHTML = isConfigured 
+                    ? '<span style="color: #10b981;">✓ Configured</span>' 
+                    : '<span style="color: #ef4444;">⚠️ Not Configured</span>';
+            }
+        }
         
-        console.log('Owner info loaded (placeholder)');
+        console.log('✅ Owner info loaded');
     } catch (error) {
-        console.error('Error loading owner info:', error);
+        console.error('❌ Error loading owner info:', error);
+        showNotification('Failed to load owner information', 'error');
     }
 }
 
 async function loadUsersExemptionStatus() {
     try {
-        // For now, show placeholder data
+        const response = await fetch('/api/admin/users-exemption-status', {
+            headers: {
+                'Authorization': `Bearer ${getAuthToken()}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch users exemption status');
+        }
+
+        const result = await response.json();
         const tbody = document.getElementById('usersExemptionTableBody');
-        if (tbody) {
+        
+        if (!tbody) return;
+
+        if (!result.success || !result.data || result.data.users.length === 0) {
             tbody.innerHTML = `
                 <tr>
                     <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
-                        <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
-                        Exemption management will be available once authentication is configured
+                        <i class="fas fa-users" style="margin-right: 8px;"></i>
+                        No users found
                     </td>
                 </tr>
             `;
+            return;
         }
+
+        // Build table rows
+        tbody.innerHTML = result.data.users.map(user => {
+            const isExempt = user.exemptFromPayment === true;
+            const exemptDate = user.exemptedAt 
+                ? new Date(user.exemptedAt).toLocaleDateString() 
+                : '-';
+            
+            return `
+                <tr>
+                    <td>${user.email || 'N/A'}</td>
+                    <td>${user.whatsappNumber || 'Not connected'}</td>
+                    <td>
+                        ${isExempt 
+                            ? '<span style="padding: 4px 8px; background: #10b981; color: white; border-radius: 4px; font-size: 12px;">✓ Exempt</span>' 
+                            : '<span style="padding: 4px 8px; background: #ef4444; color: white; border-radius: 4px; font-size: 12px;">✗ Not Exempt</span>'}
+                    </td>
+                    <td>${user.exemptionReason || '-'}</td>
+                    <td>${exemptDate}</td>
+                    <td>
+                        ${isExempt 
+                            ? `<button class="btn-danger btn-sm" onclick="quickRemoveExemption('${user._id}')">
+                                <i class="fas fa-times"></i> Remove
+                              </button>`
+                            : `<button class="btn-success btn-sm" onclick="quickGrantExemption('${user._id}', '${user.email}')">
+                                <i class="fas fa-shield-alt"></i> Grant
+                              </button>`}
+                    </td>
+                </tr>
+            `;
+        }).join('');
         
-        console.log('Users exemption status loaded (placeholder)');
+        console.log(`✅ Loaded ${result.data.users.length} users exemption status`);
+        
     } catch (error) {
-        console.error('Error loading users exemption status:', error);
+        console.error('❌ Error loading users exemption status:', error);
+        showNotification('Failed to load users exemption status', 'error');
     }
 }
 
-// Exemption functions (placeholder for now)
-function exemptUser(grant) {
-    const userId = document.getElementById('exemptUserId')?.value;
-    const reason = document.getElementById('exemptReason')?.value;
+// Main exemption function
+async function exemptUser(grant) {
+    const userId = document.getElementById('exemptUserId')?.value.trim();
+    const reason = document.getElementById('exemptReason')?.value.trim();
     
     if (!userId) {
         showNotification('Please enter a User ID', 'error');
@@ -1383,15 +1461,113 @@ function exemptUser(grant) {
         return;
     }
     
-    const action = grant ? 'granted' : 'removed';
-    showNotification(`Exemption ${action} for user ${userId}`, 'success');
+    try {
+        const response = await fetch('/api/admin/exempt-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getAuthToken()}`
+            },
+            body: JSON.stringify({
+                userId: userId,
+                exempt: grant,
+                reason: grant ? reason : null
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            const action = grant ? 'granted to' : 'removed from';
+            showNotification(`Payment exemption ${action} user successfully!`, 'success');
+            
+            // Clear form
+            document.getElementById('exemptUserId').value = '';
+            document.getElementById('exemptReason').value = '';
+            
+            // Reload exemption data
+            await loadUsersExemptionStatus();
+        } else {
+            showNotification(result.message || 'Failed to update exemption', 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error updating exemption:', error);
+        showNotification('Failed to update exemption status', 'error');
+    }
+}
+
+// Quick grant exemption from table
+async function quickGrantExemption(userId, email) {
+    const reason = prompt(`Grant payment exemption to ${email}?\n\nEnter reason:`);
     
-    // Clear form
-    if (document.getElementById('exemptUserId')) document.getElementById('exemptUserId').value = '';
-    if (document.getElementById('exemptReason')) document.getElementById('exemptReason').value = '';
+    if (!reason) {
+        showNotification('Exemption cancelled - no reason provided', 'warning');
+        return;
+    }
     
-    // Reload exemption data
-    loadUsersExemptionStatus();
+    try {
+        const response = await fetch('/api/admin/exempt-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getAuthToken()}`
+            },
+            body: JSON.stringify({
+                userId: userId,
+                exempt: true,
+                reason: reason
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(`Payment exemption granted to ${email}!`, 'success');
+            await loadUsersExemptionStatus();
+        } else {
+            showNotification(result.message || 'Failed to grant exemption', 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error granting exemption:', error);
+        showNotification('Failed to grant exemption', 'error');
+    }
+}
+
+// Quick remove exemption from table
+async function quickRemoveExemption(userId) {
+    if (!confirm('Are you sure you want to remove payment exemption from this user?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/exempt-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getAuthToken()}`
+            },
+            body: JSON.stringify({
+                userId: userId,
+                exempt: false,
+                reason: null
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Payment exemption removed successfully!', 'success');
+            await loadUsersExemptionStatus();
+        } else {
+            showNotification(result.message || 'Failed to remove exemption', 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error removing exemption:', error);
+        showNotification('Failed to remove exemption', 'error');
+    }
 }
 
 function refreshExemptions() {
