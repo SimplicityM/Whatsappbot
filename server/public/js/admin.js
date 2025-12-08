@@ -629,6 +629,9 @@ function loadSectionData(section) {
         case 'users':
             loadUsers();
             break;
+        case 'contacts':  // ✅ ADD THIS
+            loadContacts();
+            break;
         case 'exemptions':
             loadOwnerInfo();
             loadUsersExemptionStatus();
@@ -1574,6 +1577,230 @@ function refreshExemptions() {
     showNotification('Refreshing exemption data...', 'info');
     loadOwnerInfo();
     loadUsersExemptionStatus();
+}
+
+// ==================== CONTACTS MANAGEMENT ====================
+
+let currentContactsPage = 1;
+let contactsFilter = 'all';
+let contactsSearchQuery = '';
+
+async function loadContacts(page = 1) {
+    try {
+        const contactsGrid = document.getElementById('contactsGrid');
+        if (!contactsGrid) return;
+
+        // Show loading state
+        contactsGrid.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #666;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 32px; margin-bottom: 10px;"></i>
+                <p>Loading contacts...</p>
+            </div>
+        `;
+
+        const token = getAuthToken();
+        const response = await fetch(`/api/admin/contacts?page=${page}&limit=50`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch contacts');
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+            contactsGrid.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #ef4444;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 32px; margin-bottom: 10px;"></i>
+                    <p>${result.message || 'Failed to load contacts'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        const contactGroups = result.data?.contactGroups || [];
+
+        if (contactGroups.length === 0) {
+            contactsGrid.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <i class="fas fa-address-book" style="font-size: 48px; margin-bottom: 15px; color: #d1d5db;"></i>
+                    <h3 style="margin: 0 0 10px 0; color: #374151;">No Contacts Found</h3>
+                    <p style="margin: 0; color: #6b7280;">Contacts will appear here once users save them through the bot.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Render contact groups
+        contactsGrid.innerHTML = contactGroups.map(group => renderContactGroup(group)).join('');
+
+        console.log(`✅ Loaded ${contactGroups.length} contact groups`);
+
+    } catch (error) {
+        console.error('❌ Error loading contacts:', error);
+        const contactsGrid = document.getElementById('contactsGrid');
+        if (contactsGrid) {
+            contactsGrid.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 32px; margin-bottom: 10px;"></i>
+                    <p>Error loading contacts. Please try again.</p>
+                    <button onclick="loadContacts()" class="btn-primary" style="margin-top: 15px;">
+                        <i class="fas fa-sync"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+        showNotification('Failed to load contacts', 'error');
+    }
+}
+
+function renderContactGroup(group) {
+    const { userId, sessionId, userInfo, contacts } = group;
+    const contactCount = contacts.length;
+
+    return `
+        <div class="contact-group-card">
+            <div class="group-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h3 style="margin: 0 0 5px 0; font-size: 16px; color: #1f2937;">
+                            <i class="fas fa-user" style="margin-right: 8px; color: #667eea;"></i>
+                            ${userInfo?.email || 'Unknown User'}
+                        </h3>
+                        <div style="font-size: 12px; color: #6b7280;">
+                            <span style="margin-right: 15px;">
+                                <i class="fas fa-phone" style="margin-right: 4px;"></i>
+                                ${userInfo?.phone || 'No phone'}
+                            </span>
+                            <span>
+                                <i class="fas fa-plug" style="margin-right: 4px;"></i>
+                                Session: ${sessionId.substring(0, 12)}...
+                            </span>
+                        </div>
+                    </div>
+                    <span class="contact-count">
+                        <i class="fas fa-address-book" style="margin-right: 4px;"></i>
+                        ${contactCount} contact${contactCount !== 1 ? 's' : ''}
+                    </span>
+                </div>
+            </div>
+            <div class="contacts-list">
+                ${contacts.length > 0 ? contacts.map(contact => renderContactItem(contact)).join('') : '<p style="text-align: center; color: #9ca3af; padding: 20px;">No contacts saved</p>'}
+            </div>
+        </div>
+    `;
+}
+
+function renderContactItem(contact) {
+    const contactType = contact.isGroup ? 'Group' : 'Individual';
+    const contactIcon = contact.isGroup ? 'fa-users' : 'fa-user';
+    const hasMessaged = contact.hasMessaged || false;
+    
+    return `
+        <div class="contact-item">
+            <div class="contact-avatar">
+                <i class="fas ${contactIcon}"></i>
+            </div>
+            <div class="contact-info" style="flex: 1;">
+                <h4>${contact.name || contact.number || 'Unknown'}</h4>
+                <p>
+                    <i class="fas fa-phone" style="margin-right: 4px;"></i>
+                    ${contact.number || 'No number'}
+                </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="contact-type">${contactType}</span>
+                ${hasMessaged ? '<span class="messaged-badge">Messaged</span>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Import contacts functionality
+async function importContacts() {
+    showNotification('Import contacts feature coming soon!', 'info');
+    // TODO: Implement CSV import functionality
+}
+
+// Add contact functionality
+async function addContact() {
+    showNotification('Add contact feature coming soon!', 'info');
+    // TODO: Implement add contact modal
+}
+
+// Search contacts
+function searchContacts(query) {
+    contactsSearchQuery = query.toLowerCase();
+    filterAndDisplayContacts();
+}
+
+// Filter contacts
+function filterContacts(filter) {
+    contactsFilter = filter;
+    filterAndDisplayContacts();
+}
+
+function filterAndDisplayContacts() {
+    const allContactCards = document.querySelectorAll('.contact-group-card');
+    
+    allContactCards.forEach(card => {
+        const contacts = card.querySelectorAll('.contact-item');
+        let hasVisibleContacts = false;
+
+        contacts.forEach(contactItem => {
+            const contactName = contactItem.querySelector('h4')?.textContent.toLowerCase() || '';
+            const contactNumber = contactItem.querySelector('p')?.textContent.toLowerCase() || '';
+            const isGroup = contactItem.querySelector('.contact-type')?.textContent === 'Group';
+
+            let matchesSearch = true;
+            let matchesFilter = true;
+
+            // Search filter
+            if (contactsSearchQuery) {
+                matchesSearch = contactName.includes(contactsSearchQuery) || 
+                               contactNumber.includes(contactsSearchQuery);
+            }
+
+            // Type filter
+            if (contactsFilter === 'groups') {
+                matchesFilter = isGroup;
+            } else if (contactsFilter === 'individuals') {
+                matchesFilter = !isGroup;
+            }
+
+            if (matchesSearch && matchesFilter) {
+                contactItem.style.display = 'flex';
+                hasVisibleContacts = true;
+            } else {
+                contactItem.style.display = 'none';
+            }
+        });
+
+        // Hide group card if no visible contacts
+        card.style.display = hasVisibleContacts ? 'block' : 'none';
+    });
+}
+
+// Refresh contacts
+function refreshContacts() {
+    showNotification('Refreshing contacts...', 'info');
+    loadContacts(currentContactsPage);
+}
+
+// Update filter button styles
+function updateFilterButtons(activeButton) {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = 'white';
+        btn.style.color = '#374151';
+    });
+    
+    activeButton.classList.add('active');
+    activeButton.style.background = '#667eea';
+    activeButton.style.color = 'white';
 }
 
 // ==================== MODAL FUNCTIONS ====================

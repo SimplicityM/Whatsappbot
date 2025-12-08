@@ -312,25 +312,72 @@
         </section>
 
         <!-- Contacts Section -->
-        <section id="contacts-section" class="content-section">
-            <div class="section-header">
-                <h2>Contacts Management</h2>
-                <div class="header-actions">
-                    <button class="btn-secondary" onclick="importContacts()">
-                        <i class="fas fa-upload"></i>
-                        Import
-                    </button>
-                    <button class="btn-primary" onclick="addContact()">
-                        <i class="fas fa-plus"></i>
-                        Add Contact
-                    </button>
-                </div>
-            </div>
+<section id="contacts-section" class="content-section">
+    <div class="section-header">
+        <h2>Contacts Management</h2>
+        <div class="header-actions">
+            <button class="btn-secondary" onclick="refreshContacts()">
+                <i class="fas fa-sync"></i>
+                Refresh
+            </button>
+            <button class="btn-secondary" onclick="importContacts()">
+                <i class="fas fa-upload"></i>
+                Import
+            </button>
+            <button class="btn-primary" onclick="addContact()">
+                <i class="fas fa-plus"></i>
+                Add Contact
+            </button>
+        </div>
+    </div>
 
-            <div class="contacts-grid" id="contactsGrid">
-                <!-- Contacts will be populated by JavaScript -->
+    <!-- Filters and Search -->
+    <div class="contacts-filters" style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <input 
+                    type="search" 
+                    id="contactsSearch" 
+                    placeholder="Search contacts by name or number..." 
+                    onkeyup="searchContacts(this.value)"
+                    style="width: 100%; padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                >
             </div>
-        </section>
+            <div style="display: flex; gap: 10px;">
+                <button 
+                    class="filter-btn active" 
+                    onclick="filterContacts('all'); updateFilterButtons(this)"
+                    style="padding: 10px 20px; border: 1px solid #d1d5db; background: #667eea; color: white; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                >
+                    All
+                </button>
+                <button 
+                    class="filter-btn" 
+                    onclick="filterContacts('individuals'); updateFilterButtons(this)"
+                    style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                >
+                    <i class="fas fa-user"></i> Individuals
+                </button>
+                <button 
+                    class="filter-btn" 
+                    onclick="filterContacts('groups'); updateFilterButtons(this)"
+                    style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                >
+                    <i class="fas fa-users"></i> Groups
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contacts Grid -->
+    <div class="contacts-grid" id="contactsGrid">
+        <!-- Contacts will be populated by JavaScript -->
+        <div style="text-align: center; padding: 40px; color: #666;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 32px; margin-bottom: 10px;"></i>
+            <p>Loading contacts...</p>
+        </div>
+    </div>
+</section>
 
         <!-- Messages Section -->
         <section id="messages-section" class="content-section">
