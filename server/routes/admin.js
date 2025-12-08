@@ -3,7 +3,13 @@ const User = require('../../models/User');
 const Session = require('../../models/Session');
 const { authenticateAdmin } = require('../../middleware/auth');
 const Contact = require('../../models/Contact');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
 const router = express.Router();
+
+// Configure multer for file uploads
+const upload = multer({ dest: 'uploads/' });
 
 // ✅ ADD THIS MIDDLEWARE - Check DB connection before processing
 router.use((req, res, next) => {
@@ -92,56 +98,6 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     }
 });
 
-// // Get all users with pagination
-// router.get('/users', authenticateAdmin, async (req, res) => {
-//     try {
-//         const page = parseInt(req.query.page) || 1;
-//         const limit = parseInt(req.query.limit) || 20;
-//         const status = req.query.status;
-//         const subscription = req.query.subscription;
-//         const search = req.query.search;
-
-//         // Build filter
-//         const filter = {};
-//         if (status) filter.status = status;
-//         if (subscription) filter.subscription = subscription;
-//         if (search) {
-//             filter.$or = [
-//                 { fullName: { $regex: search, $options: 'i' } },
-//                 { email: { $regex: search, $options: 'i' } }
-//             ];
-//         }
-
-//         const users = await User.find(filter)
-//             .select('-password')
-//             .sort({ createdAt: -1 })
-//             .limit(limit)
-//             .skip((page - 1) * limit);
-
-//         const totalUsers = await User.countDocuments(filter);
-
-//         res.json({
-//             success: true,
-//             data: {
-//                 users,
-//                 pagination: {
-//                     currentPage: page,
-//                     totalPages: Math.ceil(totalUsers / limit),
-//                     totalUsers,
-//                     hasNextPage: page < Math.ceil(totalUsers / limit),
-//                     hasPrevPage: page > 1
-//                 }
-//             }
-//         });
-
-//     } catch (error) {
-//         console.error('Get users error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: 'Error fetching users.'
-//         });
-//     }
-// });
 
 // Get user details
 router.get('/users/:userId', authenticateAdmin, async (req, res) => {
@@ -1316,6 +1272,300 @@ router.delete('/command-grants/:grantId', authenticateAdmin, async (req, res) =>
         res.status(500).json({
             success: false,
             message: 'Error revoking command grant'
+        });
+    }
+});
+
+// ---------------------------------------------
+// EXPORT ALL CONTACTS (CSV)
+// ---------------------------------------------
+router.get('/contacts/export', authenticateAdmin, async (req, res) => {
+    try {
+        const contacts = await Contact.find({}).lean();
+
+        const csvHeader = 'Name,Number,Type,User ID,Session ID,Created At\n';
+        const csvRows = contacts.map(contact => {
+            return `"${contact.name || ''}","${contact.number || ''}","${contact.isGroup ? 'Group' : 'Individual'}","${contact.userId}","${contact.sessionId}","${contact.createdAt}"`;
+        }).join('\n');
+
+        const csvContent = csvHeader + csvRows;
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename=contacts-export-${new Date().toISOString().split('T')[0]}.csv`
+        );
+
+        res.send(csvContent);
+
+    } catch (error) {
+        console.error('❌ Export error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to export contacts'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// EXPORT SELECTED CONTACTS (CSV)
+// ---------------------------------------------
+router.post('/contacts/export', authenticateAdmin, async (req, res) => {
+    try {
+        const { contactIds } = req.body;
+
+        if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No contact IDs provided'
+            });
+        }
+
+        const contacts = await Contact.find({
+            _id: { $in: contactIds }
+        }).lean();
+
+        const csvHeader = 'Name,Number,Type,User ID,Session ID,Created At\n';
+        const csvRows = contacts.map(contact => {
+            return `"${contact.name || ''}","${contact.number || ''}","${contact.isGroup ? 'Group' : 'Individual'}","${contact.userId}","${contact.sessionId}","${contact.createdAt}"`;
+        }).join('\n');
+
+        const csvContent = csvHeader + csvRows;
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename=selected-contacts-${new Date().toISOString().split('T')[0]}.csv`
+        );
+
+        res.send(csvContent);
+
+    } catch (error) {
+        console.error('❌ Export selected error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to export selected contacts'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// DELETE SINGLE CONTACT
+// ---------------------------------------------
+router.delete('/contacts/:contactId', authenticateAdmin, async (req, res) => {
+    try {
+        const { contactId } = req.params;
+
+        const result = await Contact.findByIdAndDelete(contactId);
+
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: 'Contact not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Contact deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('❌ Delete contact error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete contact'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// BULK DELETE CONTACTS
+// ---------------------------------------------
+router.post('/contacts/bulk-delete', authenticateAdmin, async (req, res) => {
+    try {
+        const { contactIds } = req.body;
+
+        if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No contact IDs provided'
+            });
+        }
+
+        const result = await Contact.deleteMany({
+            _id: { $in: contactIds }
+        });
+
+        res.json({
+            success: true,
+            message: `${result.deletedCount} contacts deleted successfully`,
+            data: { deletedCount: result.deletedCount }
+        });
+
+    } catch (error) {
+        console.error('❌ Bulk delete error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete contacts'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// UPDATE CONTACT
+// ---------------------------------------------
+router.put('/contacts/:contactId', authenticateAdmin, async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const { name, number } = req.body;
+
+        const contact = await Contact.findByIdAndUpdate(
+            contactId,
+            {
+                name,
+                number,
+                updatedAt: new Date()
+            },
+            { new: true }
+        );
+
+        if (!contact) {
+            return res.status(404).json({
+                success: false,
+                message: 'Contact not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Contact updated successfully',
+            data: { contact }
+        });
+
+    } catch (error) {
+        console.error('❌ Update contact error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update contact'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// ADD NEW CONTACT
+// ---------------------------------------------
+router.post('/contacts', authenticateAdmin, async (req, res) => {
+    try {
+        const { name, number, isGroup } = req.body;
+
+        if (!name || !number) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name and number are required'
+            });
+        }
+
+        const contact = new Contact({
+            userId: req.user.id,
+            sessionId: `admin-${req.user.id}`,
+            name,
+            number,
+            isGroup: isGroup || false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        await contact.save();
+
+        res.json({
+            success: true,
+            message: 'Contact added successfully',
+            data: { contact }
+        });
+
+    } catch (error) {
+        console.error('❌ Add contact error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to add contact'
+        });
+    }
+});
+
+
+// ---------------------------------------------
+// IMPORT CONTACTS FROM CSV
+// ---------------------------------------------
+router.post('/contacts/import', authenticateAdmin, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded'
+            });
+        }
+
+        const contacts = [];
+        const filePath = req.file.path;
+
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('data', (row) => {
+                if (row.Name && row.Number) {
+                    contacts.push({
+                        userId: req.user.id,
+                        sessionId: `admin-${req.user.id}`,
+                        name: row.Name,
+                        number: row.Number,
+                        isGroup: row.Type === 'Group',
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    });
+                }
+            })
+            .on('end', async () => {
+                try {
+                    const result = await Contact.insertMany(contacts);
+
+                    fs.unlinkSync(filePath);
+
+                    res.json({
+                        success: true,
+                        message: `Successfully imported ${result.length} contacts`,
+                        data: { imported: result.length }
+                    });
+
+                } catch (dbError) {
+                    console.error('❌ DB insert error:', dbError);
+                    fs.unlinkSync(filePath);
+
+                    res.status(500).json({
+                        success: false,
+                        message: 'Failed to save contacts to database'
+                    });
+                }
+            })
+            .on('error', (parseError) => {
+                console.error('❌ CSV parse error:', parseError);
+                fs.unlinkSync(filePath);
+
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to parse CSV file'
+                });
+            });
+
+    } catch (error) {
+        console.error('❌ Import error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to import contacts'
         });
     }
 });
