@@ -588,7 +588,11 @@ async function createWhatsAppSession(userId, sessionId, workerSocket) {
 
 // Page routes
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html')); // Now serves welcome page
+});
+
+app.get('/main', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'main.html')); // Main content
 });
 
 app.get('/dashboard', (req, res) => {
