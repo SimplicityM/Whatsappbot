@@ -1803,6 +1803,35 @@ function updateFilterButtons(activeButton) {
     activeButton.style.color = 'white';
 }
 
+async function exportContacts() {
+    // Export all contacts to CSV
+    const response = await fetch('/api/admin/contacts/export', {
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+    });
+    const blob = await response.blob();
+    // Download CSV file
+}
+
+async function deleteContact(contactId) {
+    if (!confirm('Delete this contact?')) return;
+    
+    await fetch(`/api/admin/contacts/${contactId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+    });
+    
+    loadContacts(); // Reload
+}
+
+function editContact(contactId) {
+    // Show modal to edit contact details
+    showEditContactModal(contactId);
+}
+
+function bulkDeleteContacts(contactIds) {
+    // Delete multiple contacts at once
+}
+
 // ==================== MODAL FUNCTIONS ====================
 
 function showQRModal() {
