@@ -1261,6 +1261,58 @@ io.on('connection', (socket) => {
     socket.emit('admin-room-joined', { roomName: `admin-${adminId}`, adminId });
   });
 });
+  // ============================
+  // 📇 FRONTEND → WORKER CONTACT SYNC REQUEST
+  // ============================
+  socket.on('sync-contacts', async ({ sessionId, userId }) => {
+    console.log(`📇 [${sessionId}] Frontend requested manual contact sync`);
+
+    const workerSocket = socket.request.app.get('workerSocket');
+
+    if (!workerSocket || !workerSocket.connected) {
+      console.error(`❌ Worker not connected, cannot sync contacts`);
+      socket.emit('sync-error', {
+        sessionId,
+        message: 'Worker service unavailable'
+      });
+      return;
+    }
+
+    try {
+      // Forward to worker
+      workerSocket.emit(
+        'worker:sync_contacts',
+        { sessionId, userId },
+        (err, result) => {
+          if (err) {
+            console.error(`❌ Sync error from worker:`, err);
+            socket.emit('sync-error', {
+              sessionId,
+              message: 'Worker failed to sync contacts'
+            });
+            return;
+          }
+
+          // Send success back to frontend
+          socket.emit('sync-complete', {
+            sessionId,
+            userId,
+            result
+          });
+
+          console.log(`✅ [${sessionId}] Contact sync complete: ${result.total} contacts`);
+        }
+      );
+
+    } catch (error) {
+      console.error(`❌ Sync failed:`, error);
+      socket.emit('sync-error', {
+        sessionId,
+        message: 'Unexpected server sync error'
+      });
+    }
+  });
+
 
 
 // Start server ONLY after MongoDB is connected with retry logic
