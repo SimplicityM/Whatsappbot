@@ -1290,10 +1290,10 @@ io.on('connection', (socket) => {
 
 
 
-// Start server ONLY after MongoDB is connected with retry logic
-let serverStarted = false; // Add flag to prevent multiple starts
+    // Start server ONLY after MongoDB is connected with retry logic
+    let serverStarted = false; // Add flag to prevent multiple starts
 
-const startServer = async () => {
+    const startServer = async () => {
   if (serverStarted) {
     console.log('⚠️ Server already started, skipping...');
     return;
