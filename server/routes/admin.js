@@ -1498,6 +1498,50 @@ router.post('/contacts', authenticateAdmin, async (req, res) => {
     }
 });
 
+// Re-sync contacts for all active sessions
+router.post('/contacts/sync-all', authenticateAdmin, async (req, res) => {
+    try {
+        const Session = require('../models/Session');
+        
+        // Get all active sessions
+        const activeSessions = await Session.find({
+            status: 'connected'
+        });
+
+        if (activeSessions.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No active sessions to sync',
+                data: { totalSynced: 0 }
+            });
+        }
+
+        // Emit sync command to worker for each session
+        const workerSocket = req.app.get('workerSocket');
+        let totalSynced = 0;
+
+        for (const session of activeSessions) {
+            workerSocket.emit('sync-contacts', {
+                sessionId: session.sessionId,
+                userId: session.userId
+            });
+            totalSynced++;
+        }
+
+        res.json({
+            success: true,
+            message: `Sync initiated for ${totalSynced} sessions`,
+            data: { totalSynced }
+        });
+
+    } catch (error) {
+        console.error('❌ Sync all error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to sync contacts'
+        });
+    }
+});
 
 // ---------------------------------------------
 // IMPORT CONTACTS FROM CSV

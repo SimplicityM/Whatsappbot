@@ -1832,6 +1832,34 @@ function bulkDeleteContacts(contactIds) {
     // Delete multiple contacts at once
 }
 
+// Re-sync contacts for all active sessions
+async function syncContactsForAllSessions() {
+    try {
+        showNotification('Re-syncing contacts for all sessions...', 'info');
+        
+        const token = getAuthToken();
+        const response = await fetch('/api/admin/contacts/sync-all', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(`Successfully synced ${result.data.totalSynced} contacts!`, 'success');
+            loadContacts(); // Reload contacts
+        } else {
+            showNotification(result.message || 'Failed to sync contacts', 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Sync error:', error);
+        showNotification('Failed to sync contacts', 'error');
+    }
+}
+
 // ==================== MODAL FUNCTIONS ====================
 
 function showQRModal() {

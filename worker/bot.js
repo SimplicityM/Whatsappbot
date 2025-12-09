@@ -209,6 +209,78 @@ async function getCachedMembers(sessionId, groupId, chat) {
   return jids;
 }
 
+/**
+ * Automatically sync all WhatsApp contacts when bot connects
+ */
+async function syncAllContacts(client, sessionId, userId) {
+    try {
+        console.log(`📇 [${sessionId}] Starting contact sync...`);
+        
+        // Get all chats (individuals and groups)
+        const chats = await client.getChats();
+        
+        let syncedCount = 0;
+        let groupsCount = 0;
+        let individualsCount = 0;
+
+        for (const chat of chats) {
+            try {
+                // Determine if it's a group or individual
+                const isGroup = chat.isGroup;
+                
+                // Get contact info
+                const contactInfo = {
+                    userId: userId,
+                    sessionId: sessionId,
+                    number: chat.id._serialized,
+                    name: chat.name || 'Unknown',
+                    isGroup: isGroup,
+                    hasMessaged: false, // Not messaged yet
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+
+                // Save or update contact in database
+                await Contact.findOneAndUpdate(
+                    { 
+                        userId: userId,
+                        sessionId: sessionId,
+                        number: chat.id._serialized
+                    },
+                    contactInfo,
+                    { upsert: true, new: true }
+                );
+
+                syncedCount++;
+                if (isGroup) {
+                    groupsCount++;
+                } else {
+                    individualsCount++;
+                }
+
+            } catch (chatError) {
+                console.error(`❌ [${sessionId}] Error syncing contact ${chat.id._serialized}:`, chatError.message);
+            }
+        }
+
+        console.log(`✅ [${sessionId}] Contact sync complete: ${syncedCount} total (${individualsCount} individuals, ${groupsCount} groups)`);
+        
+        return {
+            total: syncedCount,
+            individuals: individualsCount,
+            groups: groupsCount
+        };
+
+    } catch (error) {
+        console.error(`❌ [${sessionId}] Contact sync failed:`, error);
+        return {
+            total: 0,
+            individuals: 0,
+            groups: 0
+        };
+    }
+}
+
 // Simple per-user token-bucket rate limiter
 const rateBuckets = new Map();
 function checkRateLimit(userId) {
@@ -485,6 +557,40 @@ client.on('code', (code) => {
 
 
 client.on('ready', async () => {
+ console.log(`✅ [${sessionId}] WhatsApp client is ready!`);
+    
+    try {
+        // Update session status
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: 'connected',
+                connectedAt: new Date(),
+                updatedAt: new Date()
+            }
+        );
+
+        // ✅ AUTO-SYNC ALL CONTACTS
+        console.log(`📇 [${sessionId}] Auto-syncing contacts...`);
+        const syncResult = await syncAllContacts(client, sessionId, userId);
+        
+        console.log(`✅ [${sessionId}] Synced ${syncResult.total} contacts (${syncResult.individuals} individuals, ${syncResult.groups} groups)`);
+
+        // Emit ready event to frontend
+        if (io) {
+            io.to(`user-${userId}`).emit('sessionReady', {
+                sessionId,
+                userId,
+                message: 'Bot is ready!',
+                contactsSynced: syncResult.total
+            });
+        }
+
+    } catch (error) {
+        console.error(`❌ [${sessionId}] Error in ready handler:`, error);
+    }
+    
+
     try {
         logger.info(`[${sessionName}] READY fired`);
 
@@ -510,7 +616,7 @@ client.on('ready', async () => {
         const BlacklistedNumber = require('./models/BlacklistedNumber');
         const User = require('./models/User');
         const Session = require('./models/Session');
-try {
+    try {
              // Check if number is blacklisted
              const blacklisted = await BlacklistedNumber.findOne({ 
                  whatsappNumber: whatsappNumber 
