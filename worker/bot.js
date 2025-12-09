@@ -5771,10 +5771,12 @@ async function restoreAllSessions(io) {
         logger.info("♻ Starting intelligent WhatsApp session restoration...");
 
         // Get total session count first
+        // const totalCount = await Session.countDocuments({
+        //     status: { $nin: ["disconnected", "failed", "auth_failed", "error", "connected", "waiting_qr", "connecting", "syncing", "ready"] }
+        // });
         const totalCount = await Session.countDocuments({
-            status: { $nin: ["disconnected", "failed", "auth_failed", "error", "connected", "waiting_qr", "connecting", "syncing", "ready"] }
+            status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
         });
-
         if (totalCount === 0) {
             logger.info("📭 No sessions found to restore.");
             return;
