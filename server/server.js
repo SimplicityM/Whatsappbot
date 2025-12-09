@@ -1261,39 +1261,12 @@ io.on('connection', (socket) => {
     socket.emit('admin-room-joined', { roomName: `admin-${adminId}`, adminId });
   });
 });
- socket.on('sync-contacts', async (data) => {
-    const { sessionId, userId } = data;
-    
-    console.log(`📇 [${sessionId}] Manual contact sync requested`);
-    
-    const clientData = clients.get(sessionId);
-    if (!clientData || !clientData.client) {
-        console.error(`❌ [${sessionId}] No active client found for sync`);
-        return;
-    }
-
-    try {
-        const syncResult = await syncAllContacts(clientData.client, sessionId, userId);
-        
-        socket.emit('sync-complete', {
-            sessionId,
-            userId,
-            result: syncResult
-        });
-        
-        console.log(`✅ [${sessionId}] Manual sync complete: ${syncResult.total} contacts`);
-        
-    } catch (error) {
-        console.error(`❌ [${sessionId}] Manual sync failed:`, error);
-    }
-  });
 
 
+// Start server ONLY after MongoDB is connected with retry logic
+let serverStarted = false; // Add flag to prevent multiple starts
 
-    // Start server ONLY after MongoDB is connected with retry logic
-    let serverStarted = false; // Add flag to prevent multiple starts
-
-    const startServer = async () => {
+const startServer = async () => {
   if (serverStarted) {
     console.log('⚠️ Server already started, skipping...');
     return;
