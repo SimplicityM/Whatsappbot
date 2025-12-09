@@ -1260,60 +1260,35 @@ io.on('connection', (socket) => {
     socket.join(`admin-${adminId}`);
     socket.emit('admin-room-joined', { roomName: `admin-${adminId}`, adminId });
   });
-});
-  // ============================
-  // 📇 FRONTEND → WORKER CONTACT SYNC REQUEST
-  // ============================
+
+  // 👇 ADD THE SYNC-CONTACTS HANDLER HERE (INSIDE the io.on('connection') block)
   socket.on('sync-contacts', async ({ sessionId, userId }) => {
-    console.log(`📇 [${sessionId}] Frontend requested manual contact sync`);
-
+    console.log(`📇 [${sessionId}] Manual contact sync requested`);
+    
     const workerSocket = socket.request.app.get('workerSocket');
-
+    
     if (!workerSocket || !workerSocket.connected) {
-      console.error(`❌ Worker not connected, cannot sync contacts`);
+      console.error(`❌ Worker not connected`);
       socket.emit('sync-error', {
         sessionId,
-        message: 'Worker service unavailable'
+        userId,
+        error: 'Worker service not available'
       });
       return;
     }
 
-    try {
-      // Forward to worker
-      workerSocket.emit(
-        'worker:sync_contacts',
-        { sessionId, userId },
-        (err, result) => {
-          if (err) {
-            console.error(`❌ Sync error from worker:`, err);
-            socket.emit('sync-error', {
-              sessionId,
-              message: 'Worker failed to sync contacts'
-            });
-            return;
-          }
-
-          // Send success back to frontend
-          socket.emit('sync-complete', {
-            sessionId,
-            userId,
-            result
-          });
-
-          console.log(`✅ [${sessionId}] Contact sync complete: ${result.total} contacts`);
-        }
-      );
-
-    } catch (error) {
-      console.error(`❌ Sync failed:`, error);
-      socket.emit('sync-error', {
-        sessionId,
-        message: 'Unexpected server sync error'
-      });
-    }
+    // Forward to worker
+    workerSocket.emit('worker:sync_contacts', { sessionId, userId }, (err, result) => {
+      if (err) {
+        console.error(`❌ [${sessionId}] Sync failed:`, err);
+        socket.emit('sync-error', { sessionId, userId, error: err });
+      } else {
+        console.log(`✅ [${sessionId}] Sync complete:`, result);
+        socket.emit('sync-complete', { sessionId, userId, result });
+      }
+    });
   });
-
-
+});
 
 // Start server ONLY after MongoDB is connected with retry logic
 let serverStarted = false; // Add flag to prevent multiple starts
