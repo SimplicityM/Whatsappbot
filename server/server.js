@@ -1287,7 +1287,7 @@ io.on('connection', (socket) => {
         console.error(`❌ [${sessionId}] Manual sync failed:`, error);
     }
   });
-});
+
 
 
 // Start server ONLY after MongoDB is connected with retry logic
