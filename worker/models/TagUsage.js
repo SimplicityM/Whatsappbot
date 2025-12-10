@@ -20,4 +20,4 @@ TagUsageSchema.index({ phone: 1, date: 1 });
 // ✅ Add new index for rotation tracking
 TagUsageSchema.index({ sessionId: 1, groupId: 1 });
 
-module.exports = mongoose.model("TagUsage", TagUsageSchema);
+module.exports = mongoose.Model("TagUsage", TagUsageSchema);
