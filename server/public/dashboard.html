@@ -37,13 +37,7 @@
                         <span class="badge" id="mySessionCount">0</span>
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a href="#sessions" class="nav-link" data-section="sessions">
-                        <i class="fas fa-plug"></i>
-                        <span>My Sessions</span>
-                        <span class="badge" id="mySessionCount">0</span>
-                    </a>
-                </li>
+            
                 <li class="nav-item">
                     <a href="#subscription" class="nav-link" data-section="subscription">
                         <i class="fas fa-crown"></i>
@@ -303,25 +297,26 @@
                             <div class="plan-features" id="currentPlanFeatures">
                                 <!-- Features will be populated -->
                             </div>
-                            <!-- ✅ ADD THESE SUBSCRIPTION DETAILS -->
-                                <div class="plan-details">
-                                    <div class="detail-item">
-                                        <span class="detail-label">Plan:</span>
-                                        <span class="detail-value" id="currentPlan">Free</span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Status:</span>
-                                        <span class="detail-value" id="paymentStatus">Trial</span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Expires:</span>
-                                        <span class="detail-value" id="expiryDate">-</span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Max Sessions:</span>
-                                        <span class="detail-value" id="maxSessions">1</span>
-                                    </div>
-                                </div>
+                        </div>
+                    </div>
+
+                    <!-- ✅ ADD SUBSCRIPTION DETAILS HERE -->
+                    <div class="plan-details" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <div class="detail-row" style="display: flex; justify-content: space-between; padding: 10px 0;">
+                            <span class="detail-label" style="color: #666; font-weight: 500;">Current Plan:</span>
+                            <span class="detail-value" id="currentPlan" style="color: #333; font-weight: 600;">Free</span>
+                        </div>
+                        <div class="detail-row" style="display: flex; justify-content: space-between; padding: 10px 0;">
+                            <span class="detail-label" style="color: #666; font-weight: 500;">Payment Status:</span>
+                            <span class="detail-value" id="paymentStatus" style="color: #4CAF50; font-weight: 600;">Trial</span>
+                        </div>
+                        <div class="detail-row" style="display: flex; justify-content: space-between; padding: 10px 0;">
+                            <span class="detail-label" style="color: #666; font-weight: 500;">Expires In:</span>
+                            <span class="detail-value" id="expiryDate" style="color: #333; font-weight: 600;">-</span>
+                        </div>
+                        <div class="detail-row" style="display: flex; justify-content: space-between; padding: 10px 0;">
+                            <span class="detail-label" style="color: #666; font-weight: 500;">Max Sessions:</span>
+                            <span class="detail-value" id="maxSessions" style="color: #333; font-weight: 600;">1</span>
                         </div>
                     </div>
 
