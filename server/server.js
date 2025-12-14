@@ -129,18 +129,18 @@ workerSocket.on('connect_error', (err) => {
   console.error('❌ Server: worker connect_error', err.message);
 });
 
-workerSocket.on('disconnect', (reason) => {
-  console.warn('⚠ Server: disconnected from worker:', reason);
-});
+// workerSocket.on('disconnect', (reason) => {
+//   console.warn('⚠ Server: disconnected from worker:', reason);
+// });
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
 
 
-// Start after DB connection
-workerSocket.on('connect', () => {
-    console.log('🔌 Server: connected to worker at', WORKER_URL);
-    startBroadcastScheduler(workerSocket);
-});
+// // Start after DB connection
+// workerSocket.on('connect', () => {
+//     console.log('🔌 Server: connected to worker at', WORKER_URL);
+//     startBroadcastScheduler(workerSocket);
+// });
 
 // Forward worker events to frontend sockets
 const workerEventNames = ['qrCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
@@ -1265,7 +1265,11 @@ io.on('connection', (socket) => {
   socket.on('sync-contacts', async ({ sessionId, userId }) => {
     console.log(`📇 [${sessionId}] Manual contact sync requested`);
     
-    const workerSocket = socket.request.app.get('workerSocket');
+    // const workerSocket = socket.request.app.get('workerSocket');
+
+    const workerSocket = socket.handshake.app?.get('workerSocket') || 
+                     socket.request?.app?.get('workerSocket') ||
+                     io.of('/').server.app.get('workerSocket');
     
     if (!workerSocket || !workerSocket.connected) {
       console.error(`❌ Worker not connected`);

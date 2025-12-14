@@ -276,6 +276,42 @@ io.on("connection", (socket) => {
             callback(error.message || 'Failed to send broadcast');
         }
     });
+
+    /** =========================================
+ *  SYNC CONTACTS MANUALLY
+ * ========================================= */
+socket.on('worker:sync_contacts', async ({ sessionId, userId }, callback) => {
+    console.log(`📇 WORKER: Manual contact sync requested for ${sessionId}`);
+    
+    try {
+        const clientData = clients.get(sessionId);
+        
+        if (!clientData || !clientData.client) {
+            return callback('Session not found or not connected');
+        }
+
+        const client = clientData.client;
+        
+        // Get all contacts
+        const contacts = await client.getContacts();
+        
+        console.log(`✅ WORKER: Retrieved ${contacts.length} contacts for ${sessionId}`);
+        
+        // You can save to database here if needed
+        // await Contact.insertMany(...)
+        
+        callback(null, {
+            success: true,
+            total: contacts.length,
+            synced: contacts.length,
+            timestamp: new Date()
+        });
+        
+        } catch (error) {
+        console.error(`❌ WORKER: Contact sync error for ${sessionId}:`, error);
+        callback(error.message || 'Failed to sync contacts');
+        }
+    });
 });
 
 

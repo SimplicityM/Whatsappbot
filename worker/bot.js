@@ -1358,12 +1358,17 @@ try {
 
         // ------------------ RECALL ENGINE (members + natural triggers) ------------------
         // Paste this block BEFORE: if (!message.body.startsWith(COMMAND_PREFIX)) return;
-        try {
-        const rawText = (message.body || '').trim();
-        const textLower = rawText.toLowerCase();
+       try {
+    const rawText = (message.body || '').trim();
+    const textLower = rawText.toLowerCase();
 
+    // ✅ FIX: Don't trigger recall engine for commands
+    if (rawText.startsWith(COMMAND_PREFIX)) {
+        // Skip recall engine for command messages
         // Only act on non-empty text in chats (not status, not protocol messages)
-        if (!message.fromMe && textLower && message.from !== 'status@broadcast') {
+        } else if (!message.fromMe && textLower && message.from !== 'status@broadcast') {
+
+               
             // --- Helper: parse user-supplied tokens ---
             const tokens = textLower.split(/\s+/).filter(Boolean);
 
@@ -1592,8 +1597,8 @@ try {
         }
 
 
-    // If no command prefix, stop here
-    if (!message.body.startsWith(COMMAND_PREFIX)) return;
+        // If no command prefix, stop here
+        if (!message.body.startsWith(COMMAND_PREFIX)) return;
 
     // --------------------------------------------------
     // 🟢 COMMAND PARSER
