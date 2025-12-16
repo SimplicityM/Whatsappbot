@@ -6008,6 +6008,20 @@ function createClient(sessionId) {
   return client;
 }
 
+// function createSession(sessionId) {
+//   if (clients.has(sessionId)) {
+//     logger.info(`Session ${sessionId} already exists`);
+//     return clients.get(sessionId);
+//   }
+//   const client = createClient(sessionId);
+//   clients.set(sessionId, client);
+//   client.initialize().catch(err => {
+//     logger.error(`Failed to initialize client ${sessionId}`, err);
+//     clients.delete(sessionId);
+//   });
+//   return client;
+// }
+
 function createSession(sessionId) {
   if (clients.has(sessionId)) {
     logger.info(`Session ${sessionId} already exists`);
@@ -6015,10 +6029,30 @@ function createSession(sessionId) {
   }
   const client = createClient(sessionId);
   clients.set(sessionId, client);
-  client.initialize().catch(err => {
-    logger.error(`Failed to initialize client ${sessionId}`, err);
+  
+  client.initialize().catch(async (err) => {
+    logger.error(`Failed to initialize client ${sessionId}:`, err.message);
     clients.delete(sessionId);
+    
+    // If it's a file-related error, clean up the stale session
+    if (err.code === 'ENOENT' || err.message?.includes('ENOENT')) {
+      logger.warn(`Cleaning up stale session ${sessionId} due to missing auth data`);
+      try {
+        await Session.findOneAndUpdate(
+          { sessionId },
+          { 
+            status: 'disconnected',
+            errorMessage: 'Session data corrupted. Please reconnect.',
+            disconnectedAt: new Date()
+          }
+        );
+        await SessionAuth.deleteOne({ sessionId });
+      } catch (cleanupErr) {
+        logger.error(`Failed to cleanup ${sessionId}:`, cleanupErr);
+      }
+    }
   });
+  
   return client;
 }
 
