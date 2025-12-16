@@ -6553,27 +6553,25 @@ async function handleCommand(message, sessionId, userId, userSubscription) {
 }
 
 // graceful shutdown
-process.gracefulShutdown = async () => {
-    logger.info('Graceful shutdown: destroying clients');
-    
-    for (const [sessionId, client] of clients.entries()) {
-        try {
-            // ✅ Check if client has an active Puppeteer instance before destroying
-            if (client && client.pupPage && client.pupBrowser) {
-                await client.destroy();
-                logger.info(`✅ Destroyed client: ${sessionId}`);
-            } else {
-                logger.info(`⏭️ Skipping destroy for uninitialized client: ${sessionId}`);
-                clients.delete(sessionId); // Just remove from map
-            }
-        } catch (err) {
-            logger.error(`destroy ${sessionId} failed`, err);
-        }
+async function gracefulShutdown() {
+  logger.info('Graceful shutdown: destroying clients');
+  for (const [sid, client] of clients.entries()) {
+    try {
+      // Check if client has an active Puppeteer instance before destroying
+      if (client && client.pupPage && client.pupBrowser) {
+        await client.destroy();
+        logger.info(`✅ Destroyed client: ${sid}`);
+      } else {
+        logger.info(`⏭️ Skipping destroy for uninitialized client: ${sid}`);
+        clients.delete(sid); // Just remove from map
+      }
+    } catch (e) {
+      logger.error(`destroy ${sid} failed`, e);
     }
-    
-    clients.clear();
-    process.exit(0);
-};
+  }
+  clients.clear();
+  process.exit(0);
+}
 process.once('SIGINT', gracefulShutdown);
 process.once('SIGTERM', gracefulShutdown);
 
