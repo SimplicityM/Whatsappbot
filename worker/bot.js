@@ -6102,12 +6102,16 @@ async function restoreAllSessions(io) {
         logger.info("♻ Starting intelligent WhatsApp session restoration...");
 
         // Get total session count first
-        // const totalCount = await Session.countDocuments({
-        //     status: { $nin: ["disconnected", "failed", "auth_failed", "error", "connected", "waiting_qr", "connecting", "syncing", "ready"] }
+               // const totalCount = await Session.countDocuments({
+        //     status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
         // });
-        const totalCount = await Session.countDocuments({
-            status: { $nin: ["disconnected", "failed", "auth_failed", "error"] }
-        });
+            const sessionsWithAuth = await SessionAuth.distinct('sessionId');
+
+            const totalCount = await Session.countDocuments({
+                status: { $nin: ["disconnected", "failed", "auth_failed", "error"] },
+                sessionId: { $in: sessionsWithAuth } // Only sessions with auth data
+            });
+
         if (totalCount === 0) {
             logger.info("📭 No sessions found to restore.");
             return;
@@ -6279,20 +6283,46 @@ async function restoreSingleSession(session, io) {
         // Check if auth data exists in MongoDB
         const authData = await SessionAuth.findOne({ sessionId });
 
+        // if (!authData) {
+        //     logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
+            
+        //     await Session.findOneAndUpdate(
+        //         { sessionId },
+        //         { 
+        //             status: 'disconnected',
+        //             errorMessage: 'Session data lost. Please reconnect.',
+        //             disconnectedAt: new Date()
+        //         }
+        //     );
+            
+        //     return 'skipped';
+        // }
+
         if (!authData) {
-            logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
-            
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { 
-                    status: 'disconnected',
-                    errorMessage: 'Session data lost. Please reconnect.',
-                    disconnectedAt: new Date()
+                logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
+                
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'disconnected',
+                        errorMessage: 'Session data lost. Please reconnect.',
+                        disconnectedAt: new Date()
+                    }
+                );
+                
+                // Also clean up any orphaned browser data
+                const authDir = path.join(BASE_AUTH_PATH, `RemoteAuth-${sessionId}`);
+                try {
+                    if (fs.existsSync(authDir)) {
+                        fs.rmSync(authDir, { recursive: true, force: true });
+                        logger.info(`🗑️ Cleaned up orphaned auth directory for ${sessionId}`);
+                    }
+                } catch (cleanupErr) {
+                    logger.warn(`Failed to cleanup auth dir for ${sessionId}:`, cleanupErr);
                 }
-            );
-            
-            return 'skipped';
-        }
+                
+                return 'skipped';
+            }
 
         logger.info(`♻️ Restoring session: ${sessionId} (User: ${userId})`);
 

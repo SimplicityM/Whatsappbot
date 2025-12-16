@@ -27,6 +27,26 @@ const {
     clients
 } = require("./bot.js");
 
+// Add near the top of worker.js, after imports
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't crash the process for file errors during session restore
+  if (reason?.code === 'ENOENT' && reason?.path?.includes('RemoteAuth')) {
+    console.error('⚠️ Session restore file error - continuing operation');
+  }
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('🚨 Uncaught Exception:', error);
+  // Don't crash for RemoteAuth zip file errors
+  if (error.code === 'ENOENT' && error.path?.includes('RemoteAuth')) {
+    console.error('⚠️ Session file error - continuing operation');
+    return;
+  }
+  // For other critical errors, exit gracefully
+  process.exit(1);
+});
+
 // Configuration
 const PORT = process.env.PORT || 5001;
 const MAX_SESSIONS = config.client.MAX_SESSIONS;
