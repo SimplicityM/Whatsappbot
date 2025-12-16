@@ -26,6 +26,9 @@ const {
     resumeUserSession,
     clients
 } = require("./bot.js");
+   const fs = require('fs');
+            const path = require('path');
+            const SessionAuth = require('./models/SessionAuth');
 
 // Add near the top of worker.js, after imports
 process.on('unhandledRejection', (reason, promise) => {
@@ -123,6 +126,58 @@ server.listen(PORT, '0.0.0.0', () => {
         } else {
             console.log(`⚠️ Auth path does not exist - it will be created on first session`);
         }
+
+                    console.log('🧹 Cleaning up incomplete sessions...');
+         
+
+            async function cleanupIncompleteSessions() {
+                try {
+                    const authPath = path.resolve('/app/.wwebjs_auth');
+                    
+                    // Get all browser profile folders
+                    const browserProfiles = fs.existsSync(authPath) 
+                        ? fs.readdirSync(authPath)
+                            .filter(f => f.startsWith('RemoteAuth-'))
+                            .map(f => f.replace('RemoteAuth-', ''))
+                        : [];
+
+                    console.log(`📁 Found ${browserProfiles.length} browser profiles on disk`);
+
+                    // Find sessions in DB that don't have browser profiles
+                    const dbSessions = await Session.find({
+                        status: { $nin: ['disconnected', 'failed', 'auth_failed'] }
+                    });
+
+                    let cleanedCount = 0;
+                    
+                    for (const session of dbSessions) {
+                        if (!browserProfiles.includes(session.sessionId)) {
+                            console.log(`⚠️ Orphaned session (no browser profile): ${session.sessionId}`);
+                            
+                            await Session.findOneAndUpdate(
+                                { sessionId: session.sessionId },
+                                {
+                                    status: 'disconnected',
+                                    errorMessage: 'Session incomplete. Please reconnect.',
+                                    disconnectedAt: new Date()
+                                }
+                            );
+                            
+                            // Clean up orphaned MongoDB auth data
+                            await SessionAuth.deleteOne({ sessionId: session.sessionId });
+                            
+                            cleanedCount++;
+                        }
+                    }
+                    
+                    console.log(`✅ Cleaned up ${cleanedCount} incomplete sessions`);
+                    
+                } catch (err) {
+                    console.error('❌ Cleanup error:', err);
+                }
+            }
+
+            await cleanupIncompleteSessions();
 
         // Restore all sessions and capture stats
         console.log("♻ Restoring existing WhatsApp sessions...");

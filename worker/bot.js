@@ -6280,49 +6280,46 @@ async function restoreSingleSession(session, io) {
             return 'skipped';
         }
 
+        // ✅ ADD THIS: Check if browser profile folder exists
+        const browserProfilePath = path.join(BASE_AUTH_PATH, `RemoteAuth-${sessionId}`);
+        const hasBrowserProfile = fs.existsSync(browserProfilePath);
+
         // Check if auth data exists in MongoDB
         const authData = await SessionAuth.findOne({ sessionId });
 
-        // if (!authData) {
-        //     logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
+        if (!authData && !hasBrowserProfile) {
+            logger.info(`⚠️ No auth data or browser profile for ${sessionId}. Marking as disconnected.`);
             
-        //     await Session.findOneAndUpdate(
-        //         { sessionId },
-        //         { 
-        //             status: 'disconnected',
-        //             errorMessage: 'Session data lost. Please reconnect.',
-        //             disconnectedAt: new Date()
-        //         }
-        //     );
-            
-        //     return 'skipped';
-        // }
-
-        if (!authData) {
-                logger.info(`⚠️ No auth data for ${sessionId}. Marking as disconnected.`);
-                
-                await Session.findOneAndUpdate(
-                    { sessionId },
-                    { 
-                        status: 'disconnected',
-                        errorMessage: 'Session data lost. Please reconnect.',
-                        disconnectedAt: new Date()
-                    }
-                );
-                
-                // Also clean up any orphaned browser data
-                const authDir = path.join(BASE_AUTH_PATH, `RemoteAuth-${sessionId}`);
-                try {
-                    if (fs.existsSync(authDir)) {
-                        fs.rmSync(authDir, { recursive: true, force: true });
-                        logger.info(`🗑️ Cleaned up orphaned auth directory for ${sessionId}`);
-                    }
-                } catch (cleanupErr) {
-                    logger.warn(`Failed to cleanup auth dir for ${sessionId}:`, cleanupErr);
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'disconnected',
+                    errorMessage: 'Session was never authenticated. Please connect.',
+                    disconnectedAt: new Date()
                 }
-                
-                return 'skipped';
-            }
+            );
+            
+            return 'skipped';
+        }
+
+        // ✅ NEW: If MongoDB has data but no browser profile, clean it up
+        if (authData && !hasBrowserProfile) {
+            logger.warn(`⚠️ Session ${sessionId} has MongoDB data but no browser profile. Cleaning up.`);
+            
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { 
+                    status: 'disconnected',
+                    errorMessage: 'Session data incomplete. Please reconnect.',
+                    disconnectedAt: new Date()
+                }
+            );
+            
+            // Remove the incomplete auth data from MongoDB
+            await SessionAuth.deleteOne({ sessionId });
+            
+            return 'skipped';
+        }
 
         logger.info(`♻️ Restoring session: ${sessionId} (User: ${userId})`);
 
