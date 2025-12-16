@@ -12,7 +12,7 @@ const User = require("./models/User");
 const Session = require("./models/Session");
 const Usage = require("./models/Usage");
 const SavedGroupList = require("./models/SavedGroupList");
-const { syncAllContacts } = require("./helpers/contactSync");
+// const { syncAllContacts } = require("./helpers/contactSync");
 
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
