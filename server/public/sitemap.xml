@@ -6,7 +6,7 @@
 
     <!-- Homepage -->
     <url>
-        <loc>https://yourdomain.com/</loc>
+        <loc>https://tagthemall.com.ng/</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
@@ -14,7 +14,7 @@
 
     <!-- About Page -->
     <url>
-        <loc>https://yourdomain.com/about.html</loc>
+        <loc>https://tagthemall.com.ng/about.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
@@ -22,7 +22,7 @@
 
     <!-- Pricing Page -->
     <url>
-        <loc>https://yourdomain.com/pricing.html</loc>
+        <loc>https://tagthemall.com.ng/pricing.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.9</priority>
@@ -30,7 +30,7 @@
 
     <!-- Bot Commands -->
     <url>
-        <loc>https://yourdomain.com/bot-commands.html</loc>
+        <loc>https://tagthemall.com.ng/bot-commands.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.7</priority>
@@ -38,7 +38,7 @@
 
     <!-- Contact Page -->
     <url>
-        <loc>https://yourdomain.com/contact.html</loc>
+        <loc>https://tagthemall.com.ng/contact.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.6</priority>
@@ -46,7 +46,7 @@
 
     <!-- Blog Page -->
     <url>
-        <loc>https://yourdomain.com/blog.html</loc>
+        <loc>https://tagthemall.com.ng/blog.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.8</priority>
@@ -54,7 +54,7 @@
 
     <!-- Troubleshooting -->
     <url>
-        <loc>https://yourdomain.com/troubleshooting.html</loc>
+        <loc>https://tagthemall.com.ng/troubleshooting.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.7</priority>
@@ -62,7 +62,7 @@
 
     <!-- Privacy Policy -->
     <url>
-        <loc>https://yourdomain.com/privacy.html</loc>
+        <loc>https://tagthemall.com.ng/privacy.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>yearly</changefreq>
         <priority>0.3</priority>
@@ -70,7 +70,7 @@
 
     <!-- Terms of Service -->
     <url>
-        <loc>https://yourdomain.com/terms%20of%20service.html</loc>
+        <loc>https://tagthemall.com.ng/terms%20of%20service.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>yearly</changefreq>
         <priority>0.3</priority>
@@ -78,7 +78,7 @@
 
     <!-- Careers -->
     <url>
-        <loc>https://yourdomain.com/careers.html</loc>
+        <loc>https://tagthemall.com.ng/careers.html</loc>
         <lastmod>2025-01-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.5</priority>

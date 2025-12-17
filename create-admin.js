@@ -15,7 +15,7 @@ async function makeUserAdmin() {
         
         if (!user) {
             console.log('❌ User not found with email:', email);
-            console.log('💡 You need to sign up first at: http://localhost:3000/signup.html');
+            console.log('💡 You need to sign up first at: http://tagthemall.com.ng/signup.html');
             return;
         }
 
@@ -33,9 +33,9 @@ async function makeUserAdmin() {
         console.log('\n✅ User updated to admin successfully!');
         console.log('👑 Role:', user.role);
         console.log('🛡️ isAdmin:', user.isAdmin);
-        console.log('\n🚀 You can now login at: http://localhost:3000/admin-login.html');
+        console.log('\n🚀 You can now login at: http://tagthemall.com.ng/admin-login.html');
         console.log('📧 Email: tagthemall@botforall.com');
-        console.log('🔑 Password: abuusayd101010$');
+        console.log('🔑 Password: Abuusayd101010$');
 
     } catch (error) {
         console.error('❌ Error:', error);
