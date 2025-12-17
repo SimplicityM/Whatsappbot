@@ -4809,84 +4809,98 @@ case 'tag': {
             continue;
         }
 
-        try {
-            // ✅ MANUAL REPLY LOGIC
-            if (shouldReplyInGroup && quotedMessage) {
-                // User replied to a message in self-chat, so reply to the same message in the group
-                try {
-                    // Get the quoted message's ID
-                    const quotedMsgId = quotedMessage.id._serialized;
-                    
-                    // Fetch recent messages from the group to find the matching message
-                    const groupChat = await client.getChatById(groupId);
-                    const recentMessages = await groupChat.fetchMessages({ limit: 100 });
-                    
-                    // Find the message in the group with matching ID or content
-                    let targetMessageInGroup = recentMessages.find(m => {
-                        // Try to match by message ID (if it's a forwarded message from group)
-                        if (m.id._serialized === quotedMsgId) return true;
-                        
-                        // Try to match by body content (in case message was sent by bot)
-                        if (quotedMessage.body && m.body === quotedMessage.body) return true;
-                        
-                        return false;
-                    });
+          // ✅ MANUAL REPLY LOGIC
+        
 
-                    if (targetMessageInGroup) {
-                        // Reply to the found message in the group
-                        if (hasMedia && media) {
-                            await targetMessageInGroup.reply(media, null, {
-                                caption: messageText,
-                                mentions: mentions
-                            });
-                            logger.info(`[${sessionName}] Replied with media to message in ${resolved.group.name}`);
-                        } else {
-                            await targetMessageInGroup.reply(messageText, null, {
-                                mentions: mentions
-                            });
-                            logger.info(`[${sessionName}] Replied with text to message in ${resolved.group.name}`);
-                        }
-                    } else {
-                        // Message not found in group, send as new message
-                        logger.warn(`[${sessionName}] Could not find quoted message in group, sending as new message`);
-                        if (hasMedia && media) {
-                            await client.sendMessage(groupId, media, {
-                                caption: messageText,
-                                mentions: mentions
-                            });
-                        } else {
-                            await client.sendMessage(groupId, messageText, { mentions });
-                        }
-                    }
-                } catch (replyErr) {
-                    logger.error(`[${sessionName}] Failed to reply to message:`, replyErr);
-                    // Fallback to regular send
+        // ✅ SPLIT INTO 50-MEMBER CHUNKS (DO NOT CHANGE ROTATION LOGIC)
+const CHUNK_SIZE = 50;
+const mentionChunks = [];
+
+for (let i = 0; i < mentions.length; i += CHUNK_SIZE) {
+    mentionChunks.push(mentions.slice(i, i + CHUNK_SIZE));
+}
+
+try {
+    for (let i = 0; i < mentionChunks.length; i++) {
+        const chunkMentions = mentionChunks[i];
+        const isFirstChunk = i === 0;
+
+        // First chunk → visible message
+        // Other chunks → silent mention
+        const sendText = isFirstChunk ? messageText : '‎';
+
+        if (shouldReplyInGroup && quotedMessage && isFirstChunk) {
+            // ✅ REPLY ONLY ON FIRST CHUNK
+            try {
+                const quotedMsgId = quotedMessage.id._serialized;
+                const groupChat = await client.getChatById(groupId);
+                const recentMessages = await groupChat.fetchMessages({ limit: 100 });
+
+                const targetMessageInGroup = recentMessages.find(m =>
+                    m.id._serialized === quotedMsgId ||
+                    (quotedMessage.body && m.body === quotedMessage.body)
+                );
+
+                if (targetMessageInGroup) {
                     if (hasMedia && media) {
-                        await client.sendMessage(groupId, media, {
-                            caption: messageText,
-                            mentions: mentions
+                        await targetMessageInGroup.reply(media, null, {
+                            caption: sendText,
+                            mentions: chunkMentions
                         });
                     } else {
-                        await client.sendMessage(groupId, messageText, { mentions });
+                        await targetMessageInGroup.reply(sendText, null, {
+                            mentions: chunkMentions
+                        });
+                    }
+                } else {
+                    // Fallback to normal send
+                    if (hasMedia && media) {
+                        await client.sendMessage(groupId, media, {
+                            caption: sendText,
+                            mentions: chunkMentions
+                        });
+                    } else {
+                        await client.sendMessage(groupId, sendText, {
+                            mentions: chunkMentions
+                        });
                     }
                 }
-            } else {
-                // ✅ SEND NEW MESSAGE (no reply)
+            } catch {
+                // Fallback
                 if (hasMedia && media) {
                     await client.sendMessage(groupId, media, {
-                        caption: messageText,
-                        mentions: mentions
+                        caption: sendText,
+                        mentions: chunkMentions
                     });
-                    logger.info(`[${sessionName}] Sent media with caption to ${resolved.group.name}`);
                 } else {
-                    await client.sendMessage(groupId, messageText, { mentions });
-                    logger.info(`[${sessionName}] Sent text message to ${resolved.group.name}`);
+                    await client.sendMessage(groupId, sendText, {
+                        mentions: chunkMentions
+                    });
                 }
             }
+        } else {
+            // ✅ NORMAL SEND (FIRST OR SILENT)
+            if (hasMedia && media && isFirstChunk) {
+                await client.sendMessage(groupId, media, {
+                    caption: sendText,
+                    mentions: chunkMentions
+                });
+            } else {
+                await client.sendMessage(groupId, sendText, {
+                    mentions: chunkMentions
+                });
+            }
+        }
 
-            successfulGroups.push(
-                `${resolved.group.name} (${mentions.length}/${filteredJIDs.length} members tagged, position: ${startPos+1}-${startPos+mentions.length})`
-            );
+        // Small delay between chunks (WhatsApp-safe)
+        if (!isFirstChunk) {
+            await new Promise(r => setTimeout(r, 400));
+        }
+    }
+
+    successfulGroups.push(
+        `${resolved.group.name} (${mentions.length}/${filteredJIDs.length} members tagged, position: ${startPos + 1}-${startPos + mentions.length})`
+    );
 
         } catch (err) {
             logger.error(`[${sessionName}] tag send failed`, err);
