@@ -4707,6 +4707,19 @@ case 'tag': {
         break;
     }
 
+    // 🚨 GUARD: !tag without index requires active group
+        if (groupIndexes.length === 1 && groupIndexes[0] === null) {
+            const active = await getActiveGroup(sessionId);
+            if (!active) {
+                await safeSend(
+                    message.from,
+                    '❗ No active group set.\n\nUse:\n• !list\n• !use <groupNumber>\n\nThen run !tag again.'
+                );
+                break;
+            }
+        }
+
+
     // Contact cache per invocation
     const contactCache = new Map();
 
