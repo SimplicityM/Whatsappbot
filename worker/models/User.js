@@ -177,7 +177,7 @@ userSchema.methods.isExemptFromPayment = function() {
 // 👑 NEW: Check if user is the bot owner
 userSchema.methods.isBotOwner = function() {
     // Check if this user's WhatsApp number matches the owner number from config
-    const CONFIG = require('../config.json'); // Adjust path as needed
+    const CONFIG = require('../config'); // Adjust path as needed
     const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
     const userNumber = this.whatsappNumber ? this.whatsappNumber.replace(/[^0-9]/g, '') : null;
     
