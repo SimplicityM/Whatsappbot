@@ -1522,7 +1522,7 @@ if (userId) {
                         message.from, 
                         `❌ Your subscription has expired.\n\n` +
                         `Please renew to continue using premium commands.\n\n` +
-                        `Visit: ${process.env.DOMAIN || 'https://yourwebsite.com'}/pricing`
+                        `Visit: ${process.env.DOMAIN || 'https://tagthemall.com.ng'}/pricing`
                     );
                     return;
                 }

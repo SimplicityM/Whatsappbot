@@ -4625,7 +4625,9 @@ case 'mygroups': {
 // }
 
 case 'tag': {
-    if (!isSelfChat) return;
+    // if (!isSelfChat) return;
+    if (!isSelfChat && sender !== mySelf) return;
+
 
     // Rate limit check (per user)
     const rl = checkRateLimit(message.from);
