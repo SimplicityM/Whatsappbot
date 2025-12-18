@@ -1666,7 +1666,7 @@ if (userId) {
                         message.from, 
                         `❌ Your subscription has expired.\n\n` +
                         `Please renew to continue using premium commands.\n\n` +
-                        `Visit: ${process.env.DOMAIN || 'https://yourwebsite.com'}/pricing`
+                        `Visit: ${process.env.DOMAIN || 'https://tagthemall.com.ng'}/pricing`
                     );
                     return;
                 }
@@ -4771,15 +4771,30 @@ case 'tag': {
         }
 
         // ✅ ROTATION: Get last mention position for this group
-        let mentionHistory = await TagUsage.findOne({ sessionId, groupId });
-        if (!mentionHistory) {
-            mentionHistory = new TagUsage({
-                sessionId,
-                groupId,
-                lastPosition: 0,
-                lastTaggedAt: new Date()
-            });
-        }
+        // let mentionHistory = await TagUsage.findOne({ sessionId, groupId });
+        // if (!mentionHistory) {
+        //     mentionHistory = new TagUsage({
+        //         sessionId,
+        //         groupId,
+        //         lastPosition: 0,
+        //         lastTaggedAt: new Date()
+        //     });
+        // }
+
+                let mentionHistory = await TagUsage.findOneAndUpdate(
+            { sessionId, groupId },
+            {
+                $setOnInsert: {
+                    lastPosition: 0,
+                    lastTaggedAt: new Date()
+                }
+            },
+            {
+                new: true,
+                upsert: true
+            }
+        );
+
 
         let startPos = mentionHistory.lastPosition || 0;
         
