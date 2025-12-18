@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ✅ ADD THIS (Optional - only if you want to preload)
     // Preload command grants for faster switching
-    oadCommandGrants();
+    loadCommandGrants();
 });
 
 // Initialize admin functionality
@@ -773,14 +773,74 @@ function loadSessions() {
 
 // ==================== FETCH REAL SESSIONS FROM API ====================
 
+// async function fetchAllSessions() {
+//     try {
+//         console.log('📡 Fetching all sessions from API...');
+        
+//         const response = await fetch(`${CONFIG.API_BASE}/api/admin/sessions`, {
+//             method: 'GET',
+//             headers: {
+//                 'Authorization': `Bearer ${getAuthToken()}`,
+//                 'Content-Type': 'application/json'
+//             }
+//         });
+        
+//         if (!response.ok) {
+//             throw new Error(`HTTP ${response.status}: Failed to fetch sessions`);
+//         }
+        
+//         const result = await response.json();
+        
+//         if (result.success) {
+//             // Transform API data to match UI format
+//             sessions = result.data.sessions.map(session => ({
+//                 id: session._id,
+//                 sessionId: session.sessionId,
+//                 user: session.userId?.fullName || session.userId?.email || 'Unknown User',
+//                 userId: session.userId?._id,
+//                 email: session.userId?.email,
+//                 phone: session.phone || 'Not connected',
+//                 status: session.status || 'inactive',
+//                 uptime: calculateUptime(session.createdAt),
+//                 messages: session.messageCount || 0,
+//                 createdAt: session.createdAt,
+//                 subscription: session.userId?.subscription || 'free'
+//             }));
+            
+//             console.log('✅ Loaded', sessions.length, 'sessions from API');
+            
+//             // Render the sessions
+//             loadSessions();
+            
+//             // Update stats
+//             updateStats();
+//         } else {
+//             throw new Error(result.message || 'Failed to load sessions');
+//         }
+        
+//     } catch (error) {
+//         console.error('❌ Error fetching sessions:', error);
+//         showNotification(`Error loading sessions: ${error.message}`, 'error');
+        
+//         // Fall back to empty array
+//         sessions = [];
+//         loadSessions();
+//     }
+// }
+
 async function fetchAllSessions() {
     try {
         console.log('📡 Fetching all sessions from API...');
+
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Admin authentication token missing. Please log in again.');
+        }
         
         const response = await fetch(`${CONFIG.API_BASE}/api/admin/sessions`, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${getAuthToken()}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -809,10 +869,7 @@ async function fetchAllSessions() {
             
             console.log('✅ Loaded', sessions.length, 'sessions from API');
             
-            // Render the sessions
             loadSessions();
-            
-            // Update stats
             updateStats();
         } else {
             throw new Error(result.message || 'Failed to load sessions');
@@ -822,11 +879,11 @@ async function fetchAllSessions() {
         console.error('❌ Error fetching sessions:', error);
         showNotification(`Error loading sessions: ${error.message}`, 'error');
         
-        // Fall back to empty array
         sessions = [];
         loadSessions();
     }
 }
+
 
 // Helper function to calculate uptime
 function calculateUptime(createdAt) {
