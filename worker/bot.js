@@ -368,6 +368,52 @@ const logger = {
 
 
 
+// function createClientOptions(sessionId) {
+//   const store = new MongoStore(sessionId);
+  
+//   return {
+//     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
+//       clientId: sessionId,
+//       store: store,
+//       backupSyncIntervalMs: 300000, // Backup every 5 minutes
+//       dataPath: BASE_AUTH_PATH // Add this line - tells RemoteAuth where to store browser data
+//     }),
+
+//     puppeteer: {
+//       headless: true,
+//       handleSIGINT: false,
+//       handleSIGTERM: false,
+//       handleSIGHUP: false,
+//       defaultViewport: null,
+//       args: [
+//         '--no-sandbox',
+//         '--disable-setuid-sandbox',
+//         '--disable-dev-shm-usage',
+//         '--disable-gpu',
+//         '--disable-software-rasterizer',
+//         '--disable-extensions',
+//         '--disable-background-timer-throttling',
+//         '--disable-backgrounding-occluded-windows',
+//         '--disable-renderer-backgrounding',
+//         '--disable-infobars',
+//         '--no-first-run',
+//         '--no-zygote',
+//         '--enable-features=NetworkService',
+//         '--ignore-certificate-errors'
+//       ]
+//     },
+
+//     restartOnAuthFail: true,
+//     takeoverOnConflict: true,
+//     takeoverTimeoutMs: 0,
+//     qrMaxRetries: 3,
+//     webVersionCache: {
+//       type: "local",
+//       path: path.join(BASE_AUTH_PATH, 'wwebVersion.json') // Add this line - cache WhatsApp Web version
+//     }
+//   };
+// }
+
 function createClientOptions(sessionId) {
   const store = new MongoStore(sessionId);
   
@@ -375,8 +421,11 @@ function createClientOptions(sessionId) {
     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
       clientId: sessionId,
       store: store,
-      backupSyncIntervalMs: 300000, // Backup every 5 minutes
-      dataPath: BASE_AUTH_PATH // Add this line - tells RemoteAuth where to store browser data
+
+      // 🔥 FIX: disable ZIP backup entirely
+      backupSyncIntervalMs: 0,
+
+      dataPath: BASE_AUTH_PATH
     }),
 
     puppeteer: {
@@ -409,10 +458,11 @@ function createClientOptions(sessionId) {
     qrMaxRetries: 3,
     webVersionCache: {
       type: "local",
-      path: path.join(BASE_AUTH_PATH, 'wwebVersion.json') // Add this line - cache WhatsApp Web version
+      path: path.join(BASE_AUTH_PATH, 'wwebVersion.json')
     }
   };
 }
+
 
 // ===============================================================
 // 🔄 AUTO MEMBER SYNC (Every 30 minutes + real-time join/leave)
@@ -6085,19 +6135,7 @@ function createClient(sessionId) {
   return client;
 }
 
-// function createSession(sessionId) {
-//   if (clients.has(sessionId)) {
-//     logger.info(`Session ${sessionId} already exists`);
-//     return clients.get(sessionId);
-//   }
-//   const client = createClient(sessionId);
-//   clients.set(sessionId, client);
-//   client.initialize().catch(err => {
-//     logger.error(`Failed to initialize client ${sessionId}`, err);
-//     clients.delete(sessionId);
-//   });
-//   return client;
-// }
+
 
 function createSession(sessionId) {
   if (clients.has(sessionId)) {
