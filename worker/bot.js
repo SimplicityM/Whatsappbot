@@ -954,7 +954,17 @@ client.on('group_participants_changed', async (notification) => {
                 // ---- Welcome message ----
                 try {
                     const num = pid.split('@')[0];
-                    const contact = await client.getContactById(pid).catch(() => null);
+                    // const contact = await client.getContactById(pid).catch(() => null);
+                    let contact = null;
+
+                            try {
+                                // Some WhatsApp Web versions break getContactById internally
+                                contact = await client.getContactById(pid);
+                            } catch (err) {
+                                // Silently ignore internal WhatsApp errors
+                                contact = null;
+                            }
+
 
                     const mentionOpts = contact ? { mentions: [contact] } : {};
                     const welcome = contact
