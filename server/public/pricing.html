@@ -552,6 +552,50 @@
 
         // Load usage on page load
         document.addEventListener('DOMContentLoaded', loadCurrentUsage);
+
+         pricingToggle.addEventListener('change', function() {
+        const isYearly = this.checked;
+        const pricingCards = document.querySelectorAll('.pricing-card');
+        
+        pricingCards.forEach(card => {
+            const planType = card.getAttribute('data-plan');
+            const amountElement = card.querySelector('.amount');
+            const periodElement = card.querySelector('.period');
+            const durationElement = card.querySelector('.plan-duration');
+            
+            if (amountElement && periodElement && durationElement && planType) {
+                if (isYearly) {
+                    // Switch to yearly: multiply by 12 and apply 20% discount
+                    const monthlyPrice = monthlyPrices[planType];
+                    const yearlyPriceBeforeDiscount = monthlyPrice * 12;
+                    const yearlyPrice = Math.round(yearlyPriceBeforeDiscount * 0.8); // 20% off
+                    amountElement.textContent = yearlyPrice;
+                    periodElement.textContent = '/year';
+                    
+                    // Update duration text
+                    if (planType === 'free') {
+                        durationElement.textContent = '7 Days'; // Free stays 7 days
+                    } else {
+                        durationElement.textContent = '12 Months';
+                    }
+                } else {
+                    // Switch back to monthly: use original prices
+                    amountElement.textContent = monthlyPrices[planType];
+                    periodElement.textContent = '/month';
+                    
+                    // Update duration text
+                    if (planType === 'free') {
+                        durationElement.textContent = '7 Days';
+                    } else {
+                        durationElement.textContent = '1 Month';
+                    }
+                }
+            }
+        });
+        
+        console.log('Pricing toggle changed:', isYearly ? 'Yearly' : 'Monthly');
+    });
+
     </script>
 </body>
 </html>

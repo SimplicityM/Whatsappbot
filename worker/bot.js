@@ -571,10 +571,24 @@ client.on('ready', async () => {
         );
 
         // ✅ AUTO-SYNC ALL CONTACTS
-        console.log(`📇 [${sessionId}] Auto-syncing contacts...`);
-        const syncResult = await syncAllContacts(client, sessionId, userId);
+        // console.log(`📇 [${sessionId}] Auto-syncing contacts...`);
+        // const syncResult = await syncAllContacts(client, sessionId, userId);
         
-        console.log(`✅ [${sessionId}] Synced ${syncResult.total} contacts (${syncResult.individuals} individuals, ${syncResult.groups} groups)`);
+        // console.log(`✅ [${sessionId}] Synced ${syncResult.total} contacts (${syncResult.individuals} individuals, ${syncResult.groups} groups)`);
+
+        // ✅ AUTO-SYNC ALL CONTACTS
+        console.log(`📇 [${sessionId}] Auto-syncing contacts...`);
+
+        // 🔧 extract userId from sessionId (same logic you use elsewhere)
+        const userMatch = sessionId.match(/^session-([^-]+)-/);
+        const userId = userMatch ? userMatch[1] : null;
+
+        const syncResult = await syncAllContacts(client, sessionId, userId);
+
+        console.log(
+        `✅ [${sessionId}] Synced ${syncResult.total} contacts (${syncResult.individuals} individuals, ${syncResult.groups} groups)`
+        );
+
 
         // Emit ready event to frontend
         if (io) {
@@ -955,23 +969,31 @@ client.on('group_participants_changed', async (notification) => {
                 try {
                     const num = pid.split('@')[0];
                     // const contact = await client.getContactById(pid).catch(() => null);
-                    let contact = null;
+                    // let contact = null;
 
-                            try {
-                                // Some WhatsApp Web versions break getContactById internally
-                                contact = await client.getContactById(pid);
-                            } catch (err) {
-                                // Silently ignore internal WhatsApp errors
-                                contact = null;
-                            }
+                    //         try {
+                    //             // Some WhatsApp Web versions break getContactById internally
+                    //             contact = await client.getContactById(pid);
+                    //         } catch (err) {
+                    //             // Silently ignore internal WhatsApp errors
+                    //             contact = null;
+                    //         }
 
 
-                    const mentionOpts = contact ? { mentions: [contact] } : {};
-                    const welcome = contact
-                        ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`
-                        : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`;
+                    // const mentionOpts = contact ? { mentions: [contact] } : {};
+                    // const welcome = contact
+                    //     ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`
+                    //     : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`;
+
+                    // await safeSend(chatId, welcome, mentionOpts);
+
+                    const mentionOpts = { mentions: [pid] };
+                    const welcome = `Welcome @${num}! Thank you for having me here.
+                    I introduce to you all TagThemAll Bot.
+                    Click here to learn more: https://tagthemall.com.ng/about.html`;
 
                     await safeSend(chatId, welcome, mentionOpts);
+
 
                 } catch (e) {
                     // ignore welcome failure
@@ -1681,7 +1703,8 @@ if (userId) {
 
             if (!hasPermission) {
                 // Get subscription plans from server (single source of truth)
-                const { subscriptionPlans } = require('../server/server');
+                // const { subscriptionPlans } = require('../server/server');
+                const subscriptionPlans = require('../config/subscriptionPlans');
                 
                 // Find which plan includes this command
                 const requiredPlan = Object.keys(subscriptionPlans).find(plan => {
@@ -6521,7 +6544,8 @@ async function canUseCommand(userId, commandName, userSubscription) {
     try {
         const User = require('./models/User');
         const CommandGrant = require('../models/CommandGrant');
-        const { subscriptionPlans } = require('../server/server');
+        // const { subscriptionPlans } = require('../server/server');
+        const subscriptionPlans = require('../config/subscriptionPlans');
         
         const user = await User.findById(userId);
         if (!user) return false;
