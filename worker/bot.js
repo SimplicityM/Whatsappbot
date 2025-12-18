@@ -968,8 +968,8 @@ client.on('group_participants_changed', async (notification) => {
 
                     const mentionOpts = contact ? { mentions: [contact] } : {};
                     const welcome = contact
-                        ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`
-                        : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://example.com`;
+                        ? `Welcome @${num}! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`
+                        : `Welcome! Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`;
 
                     await safeSend(chatId, welcome, mentionOpts);
 
