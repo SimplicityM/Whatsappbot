@@ -1092,24 +1092,64 @@ app.get('/api/admin/users-exemption-status', authenticateAdmin, async (req, res)
 });
 
 // Admin route to get owner information
+// app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
+//     try {
+//         const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+        
+//         res.json({
+//             success: true,
+//             data: {
+//                 ownerNumber: ownerNumber,
+//                 configOwner: CONFIG.owner,
+//                 isOwnerConfigured: !!ownerNumber
+//             }
+//         });
+
+//     } catch (error) {
+//         console.error('❌ Error fetching owner info:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Error fetching owner information'
+//         });
+//     }
+// });
+
 app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
     try {
-        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-        
+        const ownerPhone = process.env.BOT_OWNER_NUMBER;
+
+        if (!ownerPhone) {
+            return res.status(500).json({
+                success: false,
+                message: 'BOT_OWNER_NUMBER not configured'
+            });
+        }
+
+        const owner = await User.findOne({
+            phone: ownerPhone.replace('+', '')
+        });
+
+        if (!owner) {
+            return res.status(404).json({
+                success: false,
+                message: 'Owner not found'
+            });
+        }
+
         res.json({
             success: true,
             data: {
-                ownerNumber: ownerNumber,
-                configOwner: CONFIG.owner,
-                isOwnerConfigured: !!ownerNumber
+                email: owner.email,
+                phone: owner.phone,
+                fullName: owner.fullName
             }
         });
 
-    } catch (error) {
-        console.error('❌ Error fetching owner info:', error);
+    } catch (err) {
+        console.error('❌ Error fetching owner info:', err);
         res.status(500).json({
             success: false,
-            message: 'Error fetching owner information'
+            message: 'Internal server error'
         });
     }
 });
