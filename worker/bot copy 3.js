@@ -1350,28 +1350,19 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
     // --------------------------------------------------
     // 🟢 SELF-CHAT COMMAND FILTER + ✔️ REACTION
     // --------------------------------------------------
-    // if (message.body.startsWith(COMMAND_PREFIX)) {
+    if (message.body.startsWith(COMMAND_PREFIX)) {
 
-    //   // Only owner can run commands
-    //   if (sender !== mySelf) return;
+      // Only owner can run commands
+      if (sender !== mySelf) return;
 
-    //   // Only self-chat allowed
-    //   if (!isSelfChat) return;
+      // Only self-chat allowed
+      if (!isSelfChat) return;
 
-    //   // Reaction to confirm command
-    //   try {
-    //     await message.react('✔️');
-    //   } catch {}
-    // }
-        if (message.body.startsWith(COMMAND_PREFIX)) {
-    if (sender !== mySelf || !isSelfChat) {
-        return;
+      // Reaction to confirm command
+      try {
+        await message.react('✔️');
+      } catch {}
     }
-
-    // React but DO NOT exit command flow
-    message.react('🚗').catch(() => {});
-    }
-
 
   // --------------------------------------------------
   // 🟢 MEDIA AUTO-REPLY (NEW)
@@ -4759,8 +4750,8 @@ case 'mygroups': {
 
 case 'tag': {
     // if (!isSelfChat) return;
-    // if (!isSelfChat && sender !== mySelf) return;
-    if (!isSelfChat && sender !== mySelf) break;
+    if (!isSelfChat && sender !== mySelf) return;
+
 
     // Rate limit check (per user)
     const rl = checkRateLimit(message.from);
