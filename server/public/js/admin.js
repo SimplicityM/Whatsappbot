@@ -7,6 +7,8 @@ let users = [];
 let currentSessionId = null;
 let isCreatingSession = false;
 let socket; // Declare socket variable
+let currentAdmin = null;
+
 
 
 // Get current admin ID
@@ -99,6 +101,7 @@ function setupSocketConnection() {
     }
     
     console.log('👤 Admin ID:', adminId);
+    currentAdmin = { id: adminId };
     
     // Join the admin room with the actual user ID
     socket.emit('join-admin-room', adminId);
@@ -358,10 +361,16 @@ const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/admin/se
 }
 
 // 🔑 NEW: Add auth token helper function
+// function getAuthToken() {
+//     // Get the auth token from localStorage or wherever you store it
+//     return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+// }
+
 function getAuthToken() {
-    // Get the auth token from localStorage or wherever you store it
-    return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const adminSession = JSON.parse(localStorage.getItem('adminSession') || '{}');
+    return adminSession.token || null;
 }
+
 
 // Display QR code in the modal
 function displayQRCode(qrData, sessionId) {
