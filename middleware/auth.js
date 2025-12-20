@@ -109,7 +109,11 @@ const authenticateAdmin = async (req, res, next) => {
         }
 
         // Check if user is the SYSTEM ADMIN (central admin)
-        const isSystemAdmin = user.email === process.env.ADMIN_EMAIL || user.role === 'system_admin';
+       const isSystemAdmin =
+         user.email === process.env.ADMIN_EMAIL ||
+        user.role === 'system_admin' ||
+         user.isAdmin === true;
+
 
         if (!isSystemAdmin) {
             return res.status(403).json({

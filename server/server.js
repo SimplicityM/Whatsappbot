@@ -1092,28 +1092,6 @@ app.get('/api/admin/users-exemption-status', authenticateAdmin, async (req, res)
 });
 
 // Admin route to get owner information
-// app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
-//     try {
-//         const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
-        
-//         res.json({
-//             success: true,
-//             data: {
-//                 ownerNumber: ownerNumber,
-//                 configOwner: CONFIG.owner,
-//                 isOwnerConfigured: !!ownerNumber
-//             }
-//         });
-
-//     } catch (error) {
-//         console.error('❌ Error fetching owner info:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: 'Error fetching owner information'
-//         });
-//     }
-// });
-
 app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
     try {
         const ownerPhone = process.env.BOT_OWNER_NUMBER;
@@ -1126,8 +1104,9 @@ app.get('/api/admin/owner-info', authenticateAdmin, async (req, res) => {
         }
 
         const owner = await User.findOne({
-            phone: ownerPhone.replace('+', '')
+        whatsappNumber: ownerPhone.replace(/[^0-9]/g, '')
         });
+
 
         if (!owner) {
             return res.status(404).json({
