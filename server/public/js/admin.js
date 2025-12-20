@@ -2467,6 +2467,8 @@ function saveSettings() {
 
 // Load command grants
 async function loadCommandGrants() {
+    if (!currentAdmin) return;
+
     try {
         const response = await fetch(`${CONFIG.API_BASE}/api/admin/command-grants`, {
             headers: {
