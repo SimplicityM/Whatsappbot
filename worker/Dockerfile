@@ -56,4 +56,4 @@ ENV MAX_SESSIONS=1
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-CMD ["node", "worker.js"]
+CMD ["node", "worker/worker.js"]
