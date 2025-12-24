@@ -1,5 +1,5 @@
-# Puppeteer-compatible Node image
-FROM node:22-bullseye-slim
+# Stable LTS for WhatsApp + Puppeteer
+FROM node:18-bullseye-slim
 
 # Install Chromium and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -41,27 +41,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Working directory
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install --omit=dev
 
-# Copy entire source
 COPY . .
 
-# 🔥 CHANGED: Only create media folder (sessions now stored in MongoDB, auth not needed)
 RUN mkdir -p ./media
 
-# Environment variables
 ENV NODE_ENV=production
 ENV COMMAND_PREFIX=!
-ENV MAX_SESSIONS=1000
+ENV MAX_SESSIONS=1
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Render auto-assigns PORT so we DO NOT EXPOSE OR FORCE ANY PORT
-CMD ["node", "worker/worker.js"]
+CMD ["node", "worker.js"]

@@ -1,0 +1,15 @@
+app = "worker-template"
+
+kill_signal = "SIGINT"
+kill_timeout = 30
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[mounts]]
+  source = "whatsapp_data"
+  destination = "/app/.wwebjs_auth"
+
+[[services]]
+  internal_port = 5001
+  protocol = "tcp"
