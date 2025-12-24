@@ -10,7 +10,7 @@ kill_timeout = 30
   source = "whatsapp_data"
   destination = "/app/.wwebjs_auth"
 
-[[services]]
+[[http_services]]
   internal_port = 5001
   protocol = "tcp"
 
