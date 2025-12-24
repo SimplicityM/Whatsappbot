@@ -1,81 +1,21 @@
-# flyctl launch added from .gitignore
-# Environment variables
-**\.env
-**\.env.local
-**\.env.development
-**\.env.production
+# Node dependencies
+node_modules
 
-# Dependencies
-**\node_modules
-**\npm-debug.log*
-**\yarn-debug.log*
-**\yarn-error.log*
-
-# Runtime data
-**\pids
-**\*.pid
-**\*.seed
-**\*.pid.lock
+# Environment files
+.env
+.env.*
 
 # Logs
-**\logs
-**\*.log
-**\bot.log
+*.log
 
-# Coverage and test data
-**\lib-cov
-**\coverage
-**\.nyc_output
-**\.grunt
-**\bower_components
-**\.lock-wscript
-**\build\Release
-**\.npm
-**\.eslintcache
-**\.node_repl_history
-**\*.tgz
-**\.yarn-integrity
+# Editor / IDE
+.vscode
+.idea
 
-# dotenv environment variables file
-**\.env
+# OS files
+.DS_Store
+Thumbs.db
 
-# IDE files
-**\.vscode
-**\.idea
-**\*.swp
-**\*.swo
-**\*~
-
-# OS generated files
-**\.DS_Store
-**\.DS_Store?
-**\._*
-**\.Spotlight-V100
-**\.Trashes
-**\ehthumbs.db
-**\Thumbs.db
-
-# WhatsApp Web.js session data
-**\.wwebjs_auth
-**\.wwebjs_cache
-**\sessions
-**\auth
-**\media
-
-# Temporary files
-**\tmp
-**\temp
-
-# =====================================================
-# PROJECT-SPECIFIC FILES TO IGNORE
-# =====================================================
-
-# Configuration files with sensitive data
-**\config.json
-
-# Build outputs
-**\dist
-**\build
-
-**\uploads
-fly.toml
+# Git
+.git
+.gitignore
