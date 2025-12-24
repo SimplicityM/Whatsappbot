@@ -1,3 +1,5 @@
+console.log('🟢 Worker process starting...');
+
 /**
  * =====================================================
  *               WORKER.JS (BOT ENGINE)
