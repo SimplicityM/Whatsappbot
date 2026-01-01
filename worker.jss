@@ -17,8 +17,8 @@ const http = require("http");
 const socketIo = require("socket.io");
 const mongoose = require("mongoose");
 
-const Session = require("./models/Session");
-const User = require("./models/User");
+const Session = require("./models/Session.js");
+const User = require("./models/User.js");
 const config = require('./config');
 const {
     createBotSession,
@@ -51,7 +51,7 @@ process.on('uncaughtException', (error) => {
 });
 
 // Configuration
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5001;
 const MAX_SESSIONS = config.client.MAX_SESSIONS;
 
 /* =====================================================
@@ -88,7 +88,116 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 
+//     const mongoURI = process.env.MONGODB_URI;
 
+//     if (!mongoURI) {
+//         console.error("❌ MONGODB_URI missing");
+//         process.exit(1);
+//     }
+
+//     try {
+//         await mongoose.connect(mongoURI);
+//         console.log("📦 Worker connected to MongoDB");
+
+//         // Add this logging to verify mounted disk
+//         const fs = require('fs');
+//         const path = require('path');
+//         const authPath = path.resolve('/app/.wwebjs_auth');
+        
+//         console.log(`📁 Auth path: ${authPath}`);
+//         console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
+        
+//         if (fs.existsSync(authPath)) {
+//             const stats = fs.statSync(authPath);
+//             console.log(`📁 Auth path is directory: ${stats.isDirectory()}`);
+//             console.log(`📁 Auth path permissions: ${stats.mode.toString(8)}`);
+            
+//             // List contents to verify it's writable
+//             try {
+//                 const files = fs.readdirSync(authPath);
+//                 console.log(`📁 Auth path contents (${files.length} items):`, files.slice(0, 5));
+//             } catch (err) {
+//                 console.error(`❌ Cannot read auth path:`, err.message);
+//             }
+//         } else {
+//             console.log(`⚠️ Auth path does not exist - it will be created on first session`);
+//         }
+
+//                     console.log('🧹 Cleaning up incomplete sessions...');
+         
+
+//             async function cleanupIncompleteSessions() {
+//                 try {
+//                     const authPath = path.resolve('/app/.wwebjs_auth');
+                    
+//                     // Get all browser profile folders
+//                     const browserProfiles = fs.existsSync(authPath) 
+//                         ? fs.readdirSync(authPath)
+//                             .filter(f => f.startsWith('RemoteAuth-'))
+//                             .map(f => f.replace('RemoteAuth-', ''))
+//                         : [];
+
+//                     console.log(`📁 Found ${browserProfiles.length} browser profiles on disk`);
+
+//                     // Find sessions in DB that don't have browser profiles
+//                     const dbSessions = await Session.find({
+//                         status: { $nin: ['disconnected', 'failed', 'auth_failed'] }
+//                     });
+
+//                     let cleanedCount = 0;
+                    
+//                     for (const session of dbSessions) {
+//                         if (!browserProfiles.includes(session.sessionId)) {
+//                             console.log(`⚠️ Orphaned session (no browser profile): ${session.sessionId}`);
+                            
+//                             await Session.findOneAndUpdate(
+//                                 { sessionId: session.sessionId },
+//                                 {
+//                                     status: 'disconnected',
+//                                     errorMessage: 'Session incomplete. Please reconnect.',
+//                                     disconnectedAt: new Date()
+//                                 }
+//                             );
+                            
+//                             // Clean up orphaned MongoDB auth data
+//                             await SessionAuth.deleteOne({ sessionId: session.sessionId });
+                            
+//                             cleanedCount++;
+//                         }
+//                     }
+                    
+//                     console.log(`✅ Cleaned up ${cleanedCount} incomplete sessions`);
+                    
+//                 } catch (err) {
+//                     console.error('❌ Cleanup error:', err);
+//                 }
+//             }
+
+//             await cleanupIncompleteSessions();
+
+//         // Restore all sessions and capture stats
+//         console.log("♻ Restoring existing WhatsApp sessions...");
+//         const startTime = Date.now();
+        
+//         let restorationStats = null;
+        
+//         try {
+//             restorationStats = await restoreAllSessions(io);
+//             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+//             console.log(`✅ Session restoration completed in ${duration}s`);
+            
+//             if (restorationStats) {
+//                 console.log(`📊 Final Stats: ${JSON.stringify(restorationStats.progress)}`);
+//             }
+//         } catch (error) {
+//             console.error("❌ Session restoration failed:", error);
+//         }
+
+//     } catch (error) {
+//         console.error("❌ Worker DB connection failed:", error);
+//         process.exit(1);
+//     }
+// })();
 
 (async () => {
     const mongoURI = process.env.MONGODB_URI;
@@ -104,7 +213,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
         const fs = require('fs');
         const path = require('path');
-        const authPath = path.resolve('/data/.wwebjs_auth');
+        const authPath = path.resolve('/app/.wwebjs_auth');
         
         console.log(`📁 Auth path: ${authPath}`);
         console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
@@ -135,7 +244,7 @@ server.listen(PORT, '0.0.0.0', () => {
          */
         async function cleanupIncompleteSessions() {
             try {
-                const authPath = path.resolve('/data/.wwebjs_auth');
+                const authPath = path.resolve('/app/.wwebjs_auth');
 
                 const browserProfiles = fs.existsSync(authPath)
                     ? fs.readdirSync(authPath).filter(f => f.startsWith('RemoteAuth-'))
