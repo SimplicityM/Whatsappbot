@@ -106,7 +106,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
         const fs = require('fs');
         const path = require('path');
-        const authPath = path.resolve('/data/.wwebjs_auth');
+        const authPath = path.resolve('/app/.wwebjs_auth');
         
         console.log(`📁 Auth path: ${authPath}`);
         console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
@@ -137,7 +137,7 @@ server.listen(PORT, '0.0.0.0', () => {
          */
         async function cleanupIncompleteSessions() {
             try {
-                const authPath = path.resolve('/data/.wwebjs_auth');
+                const authPath = path.resolve('/');
 
                 const browserProfiles = fs.existsSync(authPath)
                     ? fs.readdirSync(authPath).filter(f => f.startsWith('RemoteAuth-'))
