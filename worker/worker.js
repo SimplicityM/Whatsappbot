@@ -60,8 +60,10 @@ const MAX_SESSIONS = config.client.MAX_SESSIONS;
 const server = http.createServer((req, res) => {
     // Skip Socket.IO requests - let Socket.IO handle them
     if (req.url.startsWith('/socket.io/')) {
-        return;
-    }
+        res.writeHead(200);
+        return res.end("OK");
+        }
+
     
     console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
     
