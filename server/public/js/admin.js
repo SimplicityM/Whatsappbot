@@ -28,7 +28,7 @@ function getCurrentAdminId() {
 
 // Admin Dashboard Configuration
 const CONFIG = {
-    API_BASE: window.location.origin,
+    API_BASE: "",
     SOCKET_URL: window.location.origin
 };
 
@@ -315,7 +315,7 @@ async function createNewSession() {
         }
 
         // 🔑 NEW: Call the ADMIN session creation endpoint
-const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/admin/sessions/create', {
+const response = await fetch('/api/admin/sessions/create', {
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
@@ -361,10 +361,6 @@ const response = await fetch('https://whatsappbot-u5yq.onrender.com/api/admin/se
 }
 
 // 🔑 NEW: Add auth token helper function
-// function getAuthToken() {
-//     // Get the auth token from localStorage or wherever you store it
-//     return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-// }
 
 function getAuthToken() {
     const adminSession = JSON.parse(localStorage.getItem('adminSession') || '{}');

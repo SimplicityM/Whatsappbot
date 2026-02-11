@@ -34,11 +34,7 @@ app.use((req, res, next) => {
 
 // Standard CORS middleware
 app.use(cors({
-  origin: [
-    "https://tagthemall.com.ng", 
-    "http://localhost:3000",
-    "https://whatsappbot-u5yq.onrender.com"  // Add this
-  ],
+  origin: process.env.CLIENT_URL,
   credentials: true
 }));
 
@@ -137,12 +133,6 @@ workerSocket.on('connect_error', (err) => {
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
 
-
-// // Start after DB connection
-// workerSocket.on('connect', () => {
-//     console.log('🔌 Server: connected to worker at', WORKER_URL);
-//     startBroadcastScheduler(workerSocket);
-// });
 
 // Forward worker events to frontend sockets
 const workerEventNames = ['qrCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
