@@ -381,30 +381,50 @@ function createClientOptions(sessionId) {
       dataPath: BASE_AUTH_PATH
     }),
 
+    // puppeteer: {
+    //   headless: true,
+    //   handleSIGINT: false,
+    //   handleSIGTERM: false,
+    //   handleSIGHUP: false,
+    //   defaultViewport: null,
+    //   args: [
+    //     '--no-sandbox',
+    //     '--disable-setuid-sandbox',
+    //     '--disable-dev-shm-usage',
+    //     '--disable-gpu',
+    //     '--disable-software-rasterizer',
+    //     '--disable-extensions',
+    //     '--disable-background-timer-throttling',
+    //     '--disable-backgrounding-occluded-windows',
+    //     '--disable-renderer-backgrounding',
+    //     '--disable-infobars',
+    //     '--no-first-run',
+    //     '--no-zygote',
+    //     '--enable-features=NetworkService',
+    //     '--ignore-certificate-errors',
+    //     '--single-process'
+    //   ]
+    // },
+
     puppeteer: {
-      headless: true,
-      handleSIGINT: false,
-      handleSIGTERM: false,
-      handleSIGHUP: false,
-      defaultViewport: null,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-infobars',
-        '--no-first-run',
-        '--no-zygote',
-        '--enable-features=NetworkService',
-        '--ignore-certificate-errors',
-        '--single-process'
-      ]
-    },
+            headless: true,
+            handleSIGINT: false,
+            handleSIGTERM: false,
+            handleSIGHUP: false,
+            defaultViewport: null,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-extensions',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding'
+            ]
+            },
 
     restartOnAuthFail: true,
     takeoverOnConflict: true,
