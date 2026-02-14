@@ -406,26 +406,7 @@ function createClientOptions(sessionId) {
     //   ]
     // },
 
-    // puppeteer: {
-    //         headless: true,
-    //         handleSIGINT: false,
-    //         handleSIGTERM: false,
-    //         handleSIGHUP: false,
-    //         defaultViewport: null,
-    //         args: [
-    //             '--no-sandbox',
-    //             '--disable-setuid-sandbox',
-    //             '--disable-dev-shm-usage',
-    //             '--disable-gpu',
-    //             '--no-first-run',
-    //             '--no-zygote',
-    //             '--disable-extensions',
-    //             '--disable-background-timer-throttling',
-    //             '--disable-backgrounding-occluded-windows',
-    //             '--disable-renderer-backgrounding'
-    //         ]
-    //         },
-
+    
     puppeteer: {
             headless: true,
             executablePath: '/usr/bin/chromium',
