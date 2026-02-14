@@ -14,8 +14,6 @@ const Usage = require("./models/Usage");
 const SavedGroupList = require("./models/SavedGroupList");
 const subscriptionPlans = require('../config/subscriptionPlans');
 
-// const { syncAllContacts } = require("./helpers/contactSync");
-
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
 app.use((req, res, next) => {
@@ -127,9 +125,6 @@ workerSocket.on('connect_error', (err) => {
   console.error('❌ Server: worker connect_error', err.message);
 });
 
-// workerSocket.on('disconnect', (reason) => {
-//   console.warn('⚠ Server: disconnected from worker:', reason);
-// });
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
 
