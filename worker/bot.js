@@ -1082,7 +1082,8 @@ async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
   }
 }
  
-client.on('message_create', async (message) => {
+// client.on('message_create', async (message) => {
+    client.on('message', async (message) => {
   try {
     // only process commands (ignore status & empty)
     if (!message.body || message.from === 'status@broadcast') return;
