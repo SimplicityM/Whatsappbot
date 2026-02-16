@@ -643,15 +643,11 @@ console.log("client.info?.wid?._serialized:", client.info?.wid?._serialized);
             await new Promise(r => setTimeout(r, 100));
             attempts++;
         }
-        // if (!client.info || !client.info.wid) {
-        //     logger.error(`[${sessionName}] client.info.wid missing after READY`);
-        //     return;
-        // }
         if (!client.info || !client.info.wid) {
-    console.error("🚨 client.info or wid missing AFTER READY");
-    console.error("client.info:", client.info);
-    return;
-}
+            logger.error(`[${sessionName}] client.info.wid missing after READY`);
+            return;
+        }
+      
 
         selfId = client.info.wid._serialized;
         logger.info(`[${sessionName}] selfId set to ${selfId}`);
