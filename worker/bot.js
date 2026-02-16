@@ -409,7 +409,7 @@ function createClientOptions(sessionId) {
     
     puppeteer: {
             headless: true,
-            executablePath: '/usr/bin/chromium',
+            executablePath: '/usr/bin/google-chrome',
             handleSIGINT: false,
             handleSIGTERM: false,
             handleSIGHUP: false,
