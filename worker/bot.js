@@ -580,6 +580,10 @@ client.on('code', (code) => {
 
 
 client.on('ready', async () => {
+    console.log("========== READY EVENT FIRED ==========");
+console.log("client.info:", client.info);
+console.log("client.info?.wid:", client.info?.wid);
+console.log("client.info?.wid?._serialized:", client.info?.wid?._serialized);
  console.log(`✅ [${sessionId}] WhatsApp client is ready!`);
     
     try {
@@ -639,10 +643,15 @@ client.on('ready', async () => {
             await new Promise(r => setTimeout(r, 100));
             attempts++;
         }
+        // if (!client.info || !client.info.wid) {
+        //     logger.error(`[${sessionName}] client.info.wid missing after READY`);
+        //     return;
+        // }
         if (!client.info || !client.info.wid) {
-            logger.error(`[${sessionName}] client.info.wid missing after READY`);
-            return;
-        }
+    console.error("🚨 client.info or wid missing AFTER READY");
+    console.error("client.info:", client.info);
+    return;
+}
 
         selfId = client.info.wid._serialized;
         logger.info(`[${sessionName}] selfId set to ${selfId}`);
