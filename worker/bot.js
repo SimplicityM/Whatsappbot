@@ -1155,12 +1155,12 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
     }
 
     // ensure selfId is set
-    // if (!client.info || !client.info.wid) {
-    //   if (message.fromMe) {
-    //     client.info = client.info || {};
-    //     client.info.wid = client.info.wid || { _serialized: message.from };
-    //   }
-    // }
+    if (!client.info || !client.info.wid) {
+      if (message.fromMe) {
+        client.info = client.info || {};
+        client.info.wid = client.info.wid || { _serialized: message.from };
+      }
+    }
 
     const mySelf = client.info?.wid?._serialized;
 
@@ -1168,9 +1168,9 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
     const auto = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
 
     // determine sender
-    // const sender = message.fromMe ? mySelf : message.from;
-    // const isSelfChat = sender === mySelf;
-    const isSelfChat = message.fromMe && message.to === message.from;
+    const sender = message.fromMe ? mySelf : message.from;
+    const isSelfChat = sender === mySelf;
+    // const isSelfChat = message.fromMe && message.to === message.from;
     // --------------------------------------------------
     // 🟢 RECORD GROUP MESSAGE SENDERS INTO DB (NEW)
     // --------------------------------------------------
@@ -1291,18 +1291,15 @@ if (!message.fromMe && message.from !== 'status@broadcast') {
     //     await message.react('✔️');
     //   } catch {}
     // }
-    //     if (message.body.startsWith(COMMAND_PREFIX)) {
-    // if (sender !== mySelf || !isSelfChat) {
-    //     return;
-    // }
+        if (message.body.startsWith(COMMAND_PREFIX)) {
+    if (sender !== mySelf || !isSelfChat) {
+        return;
+    }
 
-    // // React but DO NOT exit command flow
-    // message.react('🚗').catch(() => {});
-    // }
-            if (message.body.startsWith(COMMAND_PREFIX)) {
-        if (!message.fromMe) return;
-        message.react('🚗').catch(() => {});
-            }
+    // React but DO NOT exit command flow
+    message.react('🚗').catch(() => {});
+    }
+            
 
   // --------------------------------------------------
   // 🟢 MEDIA AUTO-REPLY (NEW)

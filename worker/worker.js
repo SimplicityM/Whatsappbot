@@ -385,17 +385,17 @@ socket.on('worker:sync_contacts', async ({ sessionId, userId }, callback) => {
 /* =====================================================
    GRACEFUL SHUTDOWN
    ===================================================== */
-process.on("SIGINT", async () => {
-    console.log("⚠ Worker shutting down...");
+// process.on("SIGINT", async () => {
+//     console.log("⚠ Worker shutting down...");
 
-    for (const [sessionId, data] of clients) {
-        try {
-            // await data.client.destroy();
-        } catch (err) {
-            console.error(`Error destroying ${sessionId}:`, err);
-        }
-    }
+//     for (const [sessionId, data] of clients) {
+//         try {
+//             // await data.client.destroy();
+//         } catch (err) {
+//             console.error(`Error destroying ${sessionId}:`, err);
+//         }
+//     }
 
-    await mongoose.connection.close();
-    process.exit(0);
-});
+//     await mongoose.connection.close();
+//     process.exit(0);
+// });
