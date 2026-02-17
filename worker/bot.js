@@ -6674,10 +6674,11 @@ async function gracefulShutdown() {
     }
   }
   clients.clear();
-  process.exit(0);
+//   process.exit(0);
+console.log("Shutdown requested — PM2 will manage lifecycle.");
 }
-process.once('SIGINT', gracefulShutdown);
-process.once('SIGTERM', gracefulShutdown);
+// process.once('SIGINT', gracefulShutdown);
+// process.once('SIGTERM', gracefulShutdown);
 
 
 // Export the new function
