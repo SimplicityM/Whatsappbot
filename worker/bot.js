@@ -21,18 +21,16 @@ const RestorationMonitor = require('./restorationMonitor');
 
 
 // Create a global monitor instance
-const restorationMonitor = new RestorationMonitor();
-
+// ✅ Correct auth directory inside project
 const BASE_AUTH_PATH = path.resolve(__dirname, '../.wwebjs_auth');
 
-// Add directory creation with proper permissions
+// Ensure directory exists
 if (!fs.existsSync(BASE_AUTH_PATH)) {
-    fs.mkdirSync(BASE_AUTH_PATH, { recursive: true, mode: 0o777 });
+    fs.mkdirSync(BASE_AUTH_PATH, { recursive: true });
     console.log(`✅ Created auth directory: ${BASE_AUTH_PATH}`);
 } else {
     console.log(`✅ Auth directory exists: ${BASE_AUTH_PATH}`);
 }
-
 
 // bot.js (multi-session, isolated per-client implementation)
 // - Exports createBotSession, restoreAllSessions, start (dev helper) and clients map
@@ -383,63 +381,7 @@ const logger = {
 };
 
 
-// function createClientOptions(sessionId) {
-//   const store = new MongoStore(sessionId);
-  
-//   return {
-//     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
-//       clientId: sessionId,
-//       store: store,
 
-//       // ✅ MINIMUM ALLOWED VALUE (NO VALIDATION ERROR)
-//       backupSyncIntervalMs: 60000,
-
-//       dataPath: BASE_AUTH_PATH
-//     }),
-
-   
-//     puppeteer: {
-//             headless: true,
-//             executablePath: '/usr/bin/google-chrome',
-
-//             // Prevent PM2 from killing Chrome incorrectly
-//             handleSIGINT: false,
-//             handleSIGTERM: false,
-//             handleSIGHUP: false,
-
-//             defaultViewport: null,
-
-//             protocolTimeout: 120000, // prevents Runtime.callFunctionOn timeout
-
-//             args: [
-//                 '--no-sandbox',
-//                 '--disable-setuid-sandbox',
-//                 '--disable-dev-shm-usage',      // critical for VPS
-//                 '--disable-gpu',
-//                 '--no-first-run',
-//                 '--no-zygote',
-//                 '--disable-extensions',
-//                 '--disable-accelerated-2d-canvas',
-//                 '--disable-background-networking',
-//                 '--disable-background-timer-throttling',
-//                 '--disable-backgrounding-occluded-windows',
-//                 '--disable-renderer-backgrounding',
-//                 '--disable-sync',
-//                 '--metrics-recording-only',
-//                 '--mute-audio',
-//                 '--hide-scrollbars'
-//             ]
-//         },
-//     restartOnAuthFail: true,
-//     takeoverOnConflict: true,
-//     takeoverTimeoutMs: 0,
-//     qrMaxRetries: 3,
-//     webVersionCache: {
-//       type: "local",
-//       path: path.join(BASE_AUTH_PATH, 'wwebVersion.json')
-//     }
-//   };
-// }
 
 function createClientOptions(sessionId) {
     const { RemoteAuth } = require('whatsapp-web.js');
