@@ -11,14 +11,16 @@
  *  - Keeping Puppeteer running forever
  * =====================================================
  */
+process.removeAllListeners('SIGINT');
+process.removeAllListeners('SIGTERM');
 
 require("dotenv").config();
 const http = require("http");
 const socketIo = require("socket.io");
 const mongoose = require("mongoose");
 
-const Session = require("./models/Session.js");
-const User = require("./models/User.js");
+const Session = require("./models/Session");
+const User = require("./models/User");
 const config = require('./config');
 const {
     createBotSession,
@@ -40,18 +42,47 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('🚨 Uncaught Exception:', error);
-  // Don't crash for RemoteAuth zip file errors
-  if (error.code === 'ENOENT' && error.path?.includes('RemoteAuth')) {
-    console.error('⚠️ Session file error - continuing operation');
-    return;
+  try {
+    console.error('🚨 Uncaught Exception:', error);
+
+    // ✅ Ignore missing RemoteAuth zip file errors
+    if (
+      error?.code === 'ENOENT' &&
+      typeof error?.path === 'string' &&
+      error.path.includes('RemoteAuth')
+    ) {
+      console.warn('⚠️ Missing RemoteAuth zip file - skipping (non-fatal)');
+      return;
+    }
+
+    // ✅ Ignore Puppeteer protocol timeout errors (very common on VPS)
+    if (
+      error?.message &&
+      error.message.includes('Runtime.callFunctionOn timed out')
+    ) {
+      console.warn('⚠️ Puppeteer protocol timeout - ignoring');
+      return;
+    }
+
+    // ✅ Ignore whatsapp-web.js Channel patch errors
+    if (
+      error?.message &&
+      error.message.includes("Cannot read properties of undefined (reading 'description')")
+    ) {
+      console.warn('⚠️ Channel patch error - ignoring');
+      return;
+    }
+
+    // ❌ DO NOT exit process in production
+    console.error('❗ Non-fatal error caught, process will continue.');
+
+  } catch (handlerError) {
+    console.error('🔥 Error inside uncaughtException handler:', handlerError);
   }
-  // For other critical errors, exit gracefully
-  process.exit(1);
 });
 
 // Configuration
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 3000;
 const MAX_SESSIONS = config.client.MAX_SESSIONS;
 
 /* =====================================================
@@ -60,8 +91,10 @@ const MAX_SESSIONS = config.client.MAX_SESSIONS;
 const server = http.createServer((req, res) => {
     // Skip Socket.IO requests - let Socket.IO handle them
     if (req.url.startsWith('/socket.io/')) {
-        return;
-    }
+        res.writeHead(200);
+        return res.end("OK");
+        }
+
     
     console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
     
@@ -88,116 +121,7 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 
-//     const mongoURI = process.env.MONGODB_URI;
 
-//     if (!mongoURI) {
-//         console.error("❌ MONGODB_URI missing");
-//         process.exit(1);
-//     }
-
-//     try {
-//         await mongoose.connect(mongoURI);
-//         console.log("📦 Worker connected to MongoDB");
-
-//         // Add this logging to verify mounted disk
-//         const fs = require('fs');
-//         const path = require('path');
-//         const authPath = path.resolve('/app/.wwebjs_auth');
-        
-//         console.log(`📁 Auth path: ${authPath}`);
-//         console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
-        
-//         if (fs.existsSync(authPath)) {
-//             const stats = fs.statSync(authPath);
-//             console.log(`📁 Auth path is directory: ${stats.isDirectory()}`);
-//             console.log(`📁 Auth path permissions: ${stats.mode.toString(8)}`);
-            
-//             // List contents to verify it's writable
-//             try {
-//                 const files = fs.readdirSync(authPath);
-//                 console.log(`📁 Auth path contents (${files.length} items):`, files.slice(0, 5));
-//             } catch (err) {
-//                 console.error(`❌ Cannot read auth path:`, err.message);
-//             }
-//         } else {
-//             console.log(`⚠️ Auth path does not exist - it will be created on first session`);
-//         }
-
-//                     console.log('🧹 Cleaning up incomplete sessions...');
-         
-
-//             async function cleanupIncompleteSessions() {
-//                 try {
-//                     const authPath = path.resolve('/app/.wwebjs_auth');
-                    
-//                     // Get all browser profile folders
-//                     const browserProfiles = fs.existsSync(authPath) 
-//                         ? fs.readdirSync(authPath)
-//                             .filter(f => f.startsWith('RemoteAuth-'))
-//                             .map(f => f.replace('RemoteAuth-', ''))
-//                         : [];
-
-//                     console.log(`📁 Found ${browserProfiles.length} browser profiles on disk`);
-
-//                     // Find sessions in DB that don't have browser profiles
-//                     const dbSessions = await Session.find({
-//                         status: { $nin: ['disconnected', 'failed', 'auth_failed'] }
-//                     });
-
-//                     let cleanedCount = 0;
-                    
-//                     for (const session of dbSessions) {
-//                         if (!browserProfiles.includes(session.sessionId)) {
-//                             console.log(`⚠️ Orphaned session (no browser profile): ${session.sessionId}`);
-                            
-//                             await Session.findOneAndUpdate(
-//                                 { sessionId: session.sessionId },
-//                                 {
-//                                     status: 'disconnected',
-//                                     errorMessage: 'Session incomplete. Please reconnect.',
-//                                     disconnectedAt: new Date()
-//                                 }
-//                             );
-                            
-//                             // Clean up orphaned MongoDB auth data
-//                             await SessionAuth.deleteOne({ sessionId: session.sessionId });
-                            
-//                             cleanedCount++;
-//                         }
-//                     }
-                    
-//                     console.log(`✅ Cleaned up ${cleanedCount} incomplete sessions`);
-                    
-//                 } catch (err) {
-//                     console.error('❌ Cleanup error:', err);
-//                 }
-//             }
-
-//             await cleanupIncompleteSessions();
-
-//         // Restore all sessions and capture stats
-//         console.log("♻ Restoring existing WhatsApp sessions...");
-//         const startTime = Date.now();
-        
-//         let restorationStats = null;
-        
-//         try {
-//             restorationStats = await restoreAllSessions(io);
-//             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-//             console.log(`✅ Session restoration completed in ${duration}s`);
-            
-//             if (restorationStats) {
-//                 console.log(`📊 Final Stats: ${JSON.stringify(restorationStats.progress)}`);
-//             }
-//         } catch (error) {
-//             console.error("❌ Session restoration failed:", error);
-//         }
-
-//     } catch (error) {
-//         console.error("❌ Worker DB connection failed:", error);
-//         process.exit(1);
-//     }
-// })();
 
 (async () => {
     const mongoURI = process.env.MONGODB_URI;
@@ -244,7 +168,7 @@ server.listen(PORT, '0.0.0.0', () => {
          */
         async function cleanupIncompleteSessions() {
             try {
-                const authPath = path.resolve('/app/.wwebjs_auth');
+                const authPath = path.resolve('/');
 
                 const browserProfiles = fs.existsSync(authPath)
                     ? fs.readdirSync(authPath).filter(f => f.startsWith('RemoteAuth-'))
@@ -492,17 +416,17 @@ socket.on('worker:sync_contacts', async ({ sessionId, userId }, callback) => {
 /* =====================================================
    GRACEFUL SHUTDOWN
    ===================================================== */
-process.on("SIGINT", async () => {
-    console.log("⚠ Worker shutting down...");
+// process.on("SIGINT", async () => {
+//     console.log("⚠ Worker shutting down...");
 
-    for (const [sessionId, data] of clients) {
-        try {
-            // await data.client.destroy();
-        } catch (err) {
-            console.error(`Error destroying ${sessionId}:`, err);
-        }
-    }
+//     for (const [sessionId, data] of clients) {
+//         try {
+//             // await data.client.destroy();
+//         } catch (err) {
+//             console.error(`Error destroying ${sessionId}:`, err);
+//         }
+//     }
 
-    await mongoose.connection.close();
-    process.exit(0);
-});
+//     await mongoose.connection.close();
+//     process.exit(0);
+// });

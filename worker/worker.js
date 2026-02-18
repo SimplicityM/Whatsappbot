@@ -42,14 +42,43 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('🚨 Uncaught Exception:', error);
-  // Don't crash for RemoteAuth zip file errors
-  if (error.code === 'ENOENT' && error.path?.includes('RemoteAuth')) {
-    console.error('⚠️ Session file error - continuing operation');
-    return;
+  try {
+    console.error('🚨 Uncaught Exception:', error);
+
+    // ✅ Ignore missing RemoteAuth zip file errors
+    if (
+      error?.code === 'ENOENT' &&
+      typeof error?.path === 'string' &&
+      error.path.includes('RemoteAuth')
+    ) {
+      console.warn('⚠️ Missing RemoteAuth zip file - skipping (non-fatal)');
+      return;
+    }
+
+    // ✅ Ignore Puppeteer protocol timeout errors (very common on VPS)
+    if (
+      error?.message &&
+      error.message.includes('Runtime.callFunctionOn timed out')
+    ) {
+      console.warn('⚠️ Puppeteer protocol timeout - ignoring');
+      return;
+    }
+
+    // ✅ Ignore whatsapp-web.js Channel patch errors
+    if (
+      error?.message &&
+      error.message.includes("Cannot read properties of undefined (reading 'description')")
+    ) {
+      console.warn('⚠️ Channel patch error - ignoring');
+      return;
+    }
+
+    // ❌ DO NOT exit process in production
+    console.error('❗ Non-fatal error caught, process will continue.');
+
+  } catch (handlerError) {
+    console.error('🔥 Error inside uncaughtException handler:', handlerError);
   }
-  // For other critical errors, exit gracefully
-  process.exit(1);
 });
 
 // Configuration

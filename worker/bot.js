@@ -221,6 +221,7 @@ async function syncAllContacts(client, sessionId, userId) {
         await new Promise(resolve => setTimeout(resolve, 8000));
 
         const chats = await client.getChats();
+        const limitedChats = chats.slice(0, 200);
 
         let syncedCount = 0;
         let groupsCount = 0;
