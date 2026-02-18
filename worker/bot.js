@@ -6242,18 +6242,18 @@ async function restoreAllSessions(io) {
         }
 
         // Start monitoring
-        restorationMonitor.start(totalCount);
+        restorationMonitors.get(sessionId)?.start(totalCount);
 
         // Restore in priority order
         await restoreSessionsByPriority(io, totalCount);
 
         // Complete monitoring
-        restorationMonitor.complete();
+        restorationMonitors.get(sessionId)?.complete();
 
         logger.info("🎉 Session restoration completed!");
 
         // Return stats for worker to emit
-        return restorationMonitor.getStats();
+        return restorationMonitors.get(sessionId)?.getStats();
 
     } catch (err) {
         logger.error("❌ restoreAllSessions error:", err);
@@ -6711,7 +6711,7 @@ module.exports = {
     lazyRestoreSession,
     start,
     clients,
-    restorationMonitor
+    restorationMonitors
 };
 
 // if run directly, start one session (dev)
