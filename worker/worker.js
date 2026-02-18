@@ -127,101 +127,86 @@ server.listen(PORT, '0.0.0.0', () => {
     const mongoURI = process.env.MONGODB_URI;
 
     if (!mongoURI) {
-        console.error("❌ MONGODB_URI missing");
-        process.exit(1);
+        console.error("❌ MONGODB_URI missing - retrying in 10 seconds...");
+        setTimeout(() => process.exit(1), 10000);
+        return;
     }
 
     try {
-        await mongoose.connect(mongoURI);
+        await mongoose.connect(mongoURI, {
+            serverSelectionTimeoutMS: 10000
+        });
+
         console.log("📦 Worker connected to MongoDB");
 
-        const fs = require('fs');
-        const path = require('path');
         const authPath = path.resolve('/app/.wwebjs_auth');
-        
+
         console.log(`📁 Auth path: ${authPath}`);
         console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
-        
+
         if (fs.existsSync(authPath)) {
             const stats = fs.statSync(authPath);
             console.log(`📁 Auth path is directory: ${stats.isDirectory()}`);
             console.log(`📁 Auth path permissions: ${stats.mode.toString(8)}`);
-            
+
             try {
                 const files = fs.readdirSync(authPath);
                 console.log(`📁 Auth path contents (${files.length} items):`, files.slice(0, 5));
             } catch (err) {
-                console.error(`❌ Cannot read auth path:`, err.message);
+                console.error(`⚠️ Cannot read auth path:`, err.message);
             }
         } else {
-            console.log(`⚠️ Auth path does not exist - it will be created on first session`);
+            console.log(`⚠️ Auth path does not exist - will be created on first session`);
         }
 
-        console.log('🧹 Cleaning up incomplete sessions...');
+        console.log('🧹 Cleanup phase (non-destructive)...');
 
-        /**
-         * 🔒 SAFE CLEANUP (NON-DESTRUCTIVE)
-         * - RemoteAuth folder names do NOT reliably match sessionId
-         * - DO NOT compare
-         * - DO NOT delete SessionAuth
-         * - DB is the source of truth
-         */
         async function cleanupIncompleteSessions() {
             try {
-                const authPath = path.resolve('/');
-
                 const browserProfiles = fs.existsSync(authPath)
                     ? fs.readdirSync(authPath).filter(f => f.startsWith('RemoteAuth-'))
                     : [];
 
-                console.log(`📁 Found ${browserProfiles.length} RemoteAuth browser profiles on disk`);
+                console.log(`📁 Found ${browserProfiles.length} RemoteAuth profiles on disk`);
 
                 const dbSessions = await Session.find({
                     status: { $nin: ['disconnected', 'failed', 'auth_failed'] }
                 });
 
                 for (const session of dbSessions) {
-                    /**
-                     * IMPORTANT:
-                     * We no longer attempt to match:
-                     *   RemoteAuth-session-* !== session.sessionId
-                     * Restoration is handled safely by restoreAllSessions()
-                     */
-                    console.log(
-                        `ℹ️ Session ${session.sessionId} queued for restore`
-                    );
+                    console.log(`ℹ️ Session ${session.sessionId} queued for restore`);
                 }
 
                 console.log(`✅ Cleanup phase completed safely`);
 
             } catch (err) {
-                console.error('❌ Cleanup error:', err);
+                console.error('⚠️ Cleanup error (non-fatal):', err);
             }
         }
 
         await cleanupIncompleteSessions();
 
-        // Restore all sessions and capture stats
+        // Restore sessions
         console.log("♻ Restoring existing WhatsApp sessions...");
         const startTime = Date.now();
-        
-        let restorationStats = null;
-        
+
         try {
-            restorationStats = await restoreAllSessions(io);
+            const restorationStats = await restoreAllSessions(io);
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
             console.log(`✅ Session restoration completed in ${duration}s`);
-            
-            if (restorationStats) {
+
+            if (restorationStats?.progress) {
                 console.log(`📊 Final Stats: ${JSON.stringify(restorationStats.progress)}`);
             }
-        } catch (error) {
-            console.error("❌ Session restoration failed:", error);
+
+        } catch (restoreError) {
+            console.error("⚠️ Session restoration failed (non-fatal):", restoreError);
         }
 
     } catch (error) {
-        console.error("❌ Worker DB connection failed:", error);
-        process.exit(1);
+        console.error("❌ Mongo connection failed. Retrying in 10 seconds...");
+        setTimeout(() => process.exit(1), 10000);
     }
 })();
 
