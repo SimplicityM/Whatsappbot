@@ -368,40 +368,102 @@ const logger = {
 };
 
 
-function createClientOptions(sessionId) {
-  const store = new MongoStore(sessionId);
+// function createClientOptions(sessionId) {
+//   const store = new MongoStore(sessionId);
   
-  return {
-    authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
-      clientId: sessionId,
-      store: store,
+//   return {
+//     authStrategy: new (require('whatsapp-web.js').RemoteAuth)({
+//       clientId: sessionId,
+//       store: store,
 
-      // ✅ MINIMUM ALLOWED VALUE (NO VALIDATION ERROR)
-      backupSyncIntervalMs: 60000,
+//       // ✅ MINIMUM ALLOWED VALUE (NO VALIDATION ERROR)
+//       backupSyncIntervalMs: 60000,
 
-      dataPath: BASE_AUTH_PATH
-    }),
+//       dataPath: BASE_AUTH_PATH
+//     }),
 
-       puppeteer: {
+   
+//     puppeteer: {
+//             headless: true,
+//             executablePath: '/usr/bin/google-chrome',
+
+//             // Prevent PM2 from killing Chrome incorrectly
+//             handleSIGINT: false,
+//             handleSIGTERM: false,
+//             handleSIGHUP: false,
+
+//             defaultViewport: null,
+
+//             protocolTimeout: 120000, // prevents Runtime.callFunctionOn timeout
+
+//             args: [
+//                 '--no-sandbox',
+//                 '--disable-setuid-sandbox',
+//                 '--disable-dev-shm-usage',      // critical for VPS
+//                 '--disable-gpu',
+//                 '--no-first-run',
+//                 '--no-zygote',
+//                 '--disable-extensions',
+//                 '--disable-accelerated-2d-canvas',
+//                 '--disable-background-networking',
+//                 '--disable-background-timer-throttling',
+//                 '--disable-backgrounding-occluded-windows',
+//                 '--disable-renderer-backgrounding',
+//                 '--disable-sync',
+//                 '--metrics-recording-only',
+//                 '--mute-audio',
+//                 '--hide-scrollbars'
+//             ]
+//         },
+//     restartOnAuthFail: true,
+//     takeoverOnConflict: true,
+//     takeoverTimeoutMs: 0,
+//     qrMaxRetries: 3,
+//     webVersionCache: {
+//       type: "local",
+//       path: path.join(BASE_AUTH_PATH, 'wwebVersion.json')
+//     }
+//   };
+// }
+
+function createClientOptions(sessionId) {
+    const { RemoteAuth } = require('whatsapp-web.js');
+    const store = new MongoStore(sessionId);
+
+    return {
+        authStrategy: new RemoteAuth({
+            clientId: sessionId,
+            store: store,
+
+            // 60s minimum allowed
+            backupSyncIntervalMs: 60000,
+
+            dataPath: BASE_AUTH_PATH
+        }),
+
+        puppeteer: {
             headless: true,
             executablePath: '/usr/bin/google-chrome',
 
-            // Prevent PM2 from killing Chrome incorrectly
+            // Prevent PM2 from interfering with Chrome
             handleSIGINT: false,
             handleSIGTERM: false,
             handleSIGHUP: false,
 
             defaultViewport: null,
 
-            protocolTimeout: 120000, // prevents Runtime.callFunctionOn timeout
+            // 🔥 VERY IMPORTANT — fixes Runtime.callFunctionOn timeout
+            protocolTimeout: 180000, // 3 minutes (more stable than 120000)
 
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',      // critical for VPS
+                '--disable-dev-shm-usage',   // critical on VPS
                 '--disable-gpu',
+                '--disable-software-rasterizer',
                 '--no-first-run',
                 '--no-zygote',
+                '--single-process',
                 '--disable-extensions',
                 '--disable-accelerated-2d-canvas',
                 '--disable-background-networking',
@@ -414,17 +476,19 @@ function createClientOptions(sessionId) {
                 '--hide-scrollbars'
             ]
         },
-    restartOnAuthFail: true,
-    takeoverOnConflict: true,
-    takeoverTimeoutMs: 0,
-    qrMaxRetries: 3,
-    webVersionCache: {
-      type: "local",
-      path: path.join(BASE_AUTH_PATH, 'wwebVersion.json')
-    }
-  };
-}
 
+        // 🔥 Session stability settings
+        restartOnAuthFail: true,
+        takeoverOnConflict: true,
+        takeoverTimeoutMs: 0,
+        qrMaxRetries: 5, // slightly higher for unstable networks
+
+        webVersionCache: {
+            type: "local",
+            path: path.join(BASE_AUTH_PATH, 'wwebVersion.json')
+        }
+    };
+}
 
 
 // ===============================================================
@@ -1079,6 +1143,16 @@ async function sendMentionsInChunks(chatId, mentionContacts, textAfter='') {
  
 client.on('message_create', async (message) => {
     // client.on('message', async (message) => {
+          // 🔥 Ignore WhatsApp Channels (newsletter)
+    if (message.from.includes('@newsletter')) {
+        return;
+    }
+
+    // 🔥 Ignore status broadcasts
+    if (message.from === 'status@broadcast') {
+        return;
+    }
+
   try {
     // only process commands (ignore status & empty)
     if (!message.body || message.from === 'status@broadcast') return;
