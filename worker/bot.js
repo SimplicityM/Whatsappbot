@@ -215,57 +215,70 @@ async function getCachedMembers(sessionId, groupId, chat) {
  */
 async function syncAllContacts(client, sessionId, userId) {
     try {
-        console.log(`📇 [${sessionId}] Starting contact sync...`);
-        
-        // Get all chats (individuals and groups)
+        console.log(`📇 [${sessionId}] Starting SAFE contact sync...`);
+
+        // 🔹 Allow WhatsApp to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 8000));
+
         const chats = await client.getChats();
-        
+
         let syncedCount = 0;
         let groupsCount = 0;
         let individualsCount = 0;
 
-        for (const chat of chats) {
+        // 🔹 Filter out newsletters & problematic chats
+        const validChats = chats.filter(chat => {
+            if (!chat?.id?._serialized) return false;
+
+            // Ignore WhatsApp Channels
+            if (chat.id._serialized.endsWith('@newsletter')) return false;
+
+            return true;
+        });
+
+        console.log(`📇 [${sessionId}] Processing ${validChats.length} chats safely...`);
+
+        for (const chat of validChats) {
             try {
-                // Determine if it's a group or individual
-                const isGroup = chat.isGroup;
-                
-                // Get contact info
+                const isGroup = chat.isGroup || false;
+
                 const contactInfo = {
                     userId: userId,
                     sessionId: sessionId,
                     number: chat.id._serialized,
-                    name: chat.name || 'Unknown',
+                    name: chat.name || chat.pushname || 'Unknown',
                     isGroup: isGroup,
-                    hasMessaged: false, // Not messaged yet
+                    hasMessaged: false,
                     createdAt: new Date(),
                     updatedAt: new Date()
                 };
 
-                // Save or update contact in database
                 await Contact.findOneAndUpdate(
-                    { 
+                    {
                         userId: userId,
                         sessionId: sessionId,
                         number: chat.id._serialized
                     },
-                    contactInfo,
+                    { $set: contactInfo },
                     { upsert: true, new: true }
                 );
 
                 syncedCount++;
-                if (isGroup) {
-                    groupsCount++;
-                } else {
-                    individualsCount++;
-                }
+                if (isGroup) groupsCount++;
+                else individualsCount++;
+
+                // 🔹 Small delay prevents Chrome overload
+                await new Promise(resolve => setTimeout(resolve, 200));
 
             } catch (chatError) {
-                console.error(`❌ [${sessionId}] Error syncing contact ${chat.id._serialized}:`, chatError.message);
+                console.log(`⚠️ [${sessionId}] Skipping problematic chat: ${chat?.id?._serialized}`);
             }
         }
 
-        console.log(`✅ [${sessionId}] Contact sync complete: ${syncedCount} total (${individualsCount} individuals, ${groupsCount} groups)`);
-        
+        console.log(
+            `✅ [${sessionId}] Contact sync complete: ${syncedCount} total (${individualsCount} individuals, ${groupsCount} groups)`
+        );
+
         return {
             total: syncedCount,
             individuals: individualsCount,
@@ -273,7 +286,8 @@ async function syncAllContacts(client, sessionId, userId) {
         };
 
     } catch (error) {
-        console.error(`❌ [${sessionId}] Contact sync failed:`, error);
+        console.log(`❌ [${sessionId}] SAFE contact sync failed:`, error.message);
+
         return {
             total: 0,
             individuals: 0,
