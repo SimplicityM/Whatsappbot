@@ -6127,11 +6127,20 @@ try {
   }
 }
 
+// Create a storage for monitors
+const restorationMonitors = new Map();
+
 function createClient(sessionId) {
   // MongoStore handles auth restoration automatically
   const opts = createClientOptions(sessionId);
   const client = new Client(opts);
+
+  // Create restoration monitor for this session
+  const restorationMonitor = new RestorationMonitor(client);
+  restorationMonitors.set(sessionId, restorationMonitor);
+
   setupClientEvents(client, sessionId, global.io || null);
+
   return client;
 }
 
