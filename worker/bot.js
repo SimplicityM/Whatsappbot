@@ -16,6 +16,7 @@ const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
 const AutoReply = require('./models/AutoReply');
 const config = require('./config');
+const User = require('../models/User');
 const RestorationMonitor = require('./restorationMonitor');
 
 
@@ -4846,16 +4847,7 @@ case 'tag': {
             continue;
         }
 
-        // ✅ ROTATION: Get last mention position for this group
-        // let mentionHistory = await TagUsage.findOne({ sessionId, groupId });
-        // if (!mentionHistory) {
-        //     mentionHistory = new TagUsage({
-        //         sessionId,
-        //         groupId,
-        //         lastPosition: 0,
-        //         lastTaggedAt: new Date()
-        //     });
-        // }
+        
 
                 let mentionHistory = await TagUsage.findOneAndUpdate(
             { sessionId, groupId },

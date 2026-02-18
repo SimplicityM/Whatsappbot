@@ -1,23 +1,71 @@
 const mongoose = require("mongoose");
 
-const TagUsageSchema = new mongoose.Schema({
-    // Original fields for daily tag tracking
-    phone: { type: String },
-    date: { type: String }, // "YYYY-MM-DD"
-    tagsToday: { type: Number, default: 0 },
-    
-    // ✅ NEW FIELDS for rotation and reply tracking
-    sessionId: { type: String },
-    groupId: { type: String },
-    lastPosition: { type: Number, default: 0 },
-    lastMessageId: { type: String, default: null },
-    lastTaggedAt: { type: Date }
-});
+const TagUsageSchema = new mongoose.Schema(
+  {
+    // ===== Daily tag tracking =====
+    phone: {
+      type: String,
+      required: false,
+      index: true
+    },
+    date: {
+      type: String, // "YYYY-MM-DD"
+      required: false,
+      index: true
+    },
+    tagsToday: {
+      type: Number,
+      default: 0
+    },
 
-// Keep original index for daily tracking
-TagUsageSchema.index({ phone: 1, date: 1 });
+    // ===== Rotation + reply tracking =====
+    sessionId: {
+      type: String,
+      required: false,
+      index: true
+    },
+    groupId: {
+      type: String,
+      required: false,
+      index: true
+    },
+    lastPosition: {
+      type: Number,
+      default: 0
+    },
+    lastMessageId: {
+      type: String,
+      default: null
+    },
+    lastTaggedAt: {
+      type: Date
+    }
+  },
+  { timestamps: true }
+);
 
-// ✅ Add new index for rotation tracking
-TagUsageSchema.index({ sessionId: 1, groupId: 1 });
+// ✅ UNIQUE index for daily tracking (only when phone + date exist)
+TagUsageSchema.index(
+  { phone: 1, date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      phone: { $exists: true, $ne: null },
+      date: { $exists: true, $ne: null }
+    }
+  }
+);
+
+// ✅ UNIQUE index for rotation tracking (only when sessionId + groupId exist)
+TagUsageSchema.index(
+  { sessionId: 1, groupId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sessionId: { $exists: true, $ne: null },
+      groupId: { $exists: true, $ne: null }
+    }
+  }
+);
 
 module.exports = mongoose.model("TagUsage", TagUsageSchema);
