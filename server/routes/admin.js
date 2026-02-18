@@ -826,7 +826,8 @@ router.post('/create-session', authenticateAdmin, async (req, res) => {
         }
         
         // Generate session ID
-        const sessionId = `session-${userId}-${Date.now()}`;
+        // const sessionId = `session-${userId}-${Date.now()}`;
+        const sessionId = `session-${userId}`;
         
         // Create session record
         const session = new Session({
@@ -1010,7 +1011,8 @@ router.get('/export/users', authenticateAdmin, async (req, res) => {
 router.post('/sessions/create', authenticateAdmin, async (req, res) => {
     try {
         const adminId = req.user.id;
-        const sessionId = `admin-bot-${adminId}-${Date.now()}`;
+        // const sessionId = `admin-bot-${adminId}-${Date.now()}`;
+        const sessionId = `admin-bot-${adminId}`;
         
         console.log('🔄 ADMIN: Creating bot session for admin:', adminId);
         console.log('📱 ADMIN: Session ID:', sessionId);

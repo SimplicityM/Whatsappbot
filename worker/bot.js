@@ -408,23 +408,56 @@ function createClientOptions(sessionId) {
     // },
 
     
+    // puppeteer: {
+    //         headless: true,
+    //         executablePath: '/usr/bin/google-chrome',
+    //         handleSIGINT: false,
+    //         handleSIGTERM: false,
+    //         handleSIGHUP: false,
+    //         defaultViewport: null,
+    //         args: [
+    //             '--no-sandbox',
+    //             '--disable-setuid-sandbox',
+    //             '--disable-dev-shm-usage',
+    //             '--disable-gpu',
+    //             '--no-first-run',
+    //             '--no-zygote',
+    //             '--disable-extensions'
+    //         ]
+    //         },
+
     puppeteer: {
             headless: true,
             executablePath: '/usr/bin/google-chrome',
+
+            // Prevent PM2 from killing Chrome incorrectly
             handleSIGINT: false,
             handleSIGTERM: false,
             handleSIGHUP: false,
+
             defaultViewport: null,
+
+            protocolTimeout: 120000, // prevents Runtime.callFunctionOn timeout
+
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
+                '--disable-dev-shm-usage',      // critical for VPS
                 '--disable-gpu',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--disable-accelerated-2d-canvas',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-sync',
+                '--metrics-recording-only',
+                '--mute-audio',
+                '--hide-scrollbars'
             ]
-            },
+        },
     restartOnAuthFail: true,
     takeoverOnConflict: true,
     takeoverTimeoutMs: 0,
@@ -6552,7 +6585,8 @@ async function lazyRestoreSession(sessionId, io) {
 // tiny start helper for local dev
 function start(count = 1) {
   for (let i = 0; i < count; i++) {
-    const sid = `session-${Date.now()}-${i}`;
+    // const sid = `session-${Date.now()}-${i}`;
+    const sid = `session-${userId}`;
     createSession(sid);
   }
 }
