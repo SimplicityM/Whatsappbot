@@ -87,7 +87,8 @@ router.post('/create', authenticate, checkSubscription, async (req, res) => {
     }
 
     // 4. Generate unique session ID
-    const sessionId = `session-${user._id}-${Date.now()}`;
+    // const sessionId = `session-${user._id}-${Date.now()}`;
+    const sessionId = `session-${user._id}`;
 
     console.log('🔄 API: Creating session for user:', user._id);
     console.log('📱 Session ID:', sessionId);

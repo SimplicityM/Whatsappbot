@@ -266,7 +266,8 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
   try {
     console.log('🔄 ADMIN: Creating session for admin:', req.user.id);
 
-    const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
+    // const sessionId = `admin-session-${req.user.id}-${Date.now()}`;
+    const sessionId = `admin-session-${req.user.id}`;
 
     const workerSocket = req.app.get("workerSocket");
     await createWhatsAppSession(req.user.id, sessionId, workerSocket);
@@ -290,9 +291,9 @@ app.post('/api/admin/sessions/create', authenticateAdmin, async (req, res) => {
 app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
     try {
         console.log('📱 Creating session with phone number for user:', req.user.id);
-        
-        const { phoneNumber, usePairingCode } = req.body; // Add usePairingCode flag
-        
+
+        const { phoneNumber, usePairingCode } = req.body;
+
         if (!phoneNumber) {
             return res.status(400).json({
                 success: false,
@@ -300,10 +301,8 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             });
         }
 
-        // Format phone number (remove all non-digits)
         const formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
-        
-        // Validate phone number
+
         if (formattedPhone.length < 10 || formattedPhone.length > 13) {
             return res.status(400).json({
                 success: false,
@@ -311,58 +310,73 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             });
         }
 
-        // Check subscription limits
         const user = await User.findById(req.user.id);
-        const userSessions = await Session.find({ 
-            userId: req.user.id, 
-            status: { $in: ['connected', 'waiting_qr', 'connecting'] } 
-        });
-        
         const maxSessions = subscriptionPlans[user.subscription]?.maxSessions || 1;
-        
-        if (maxSessions !== -1 && userSessions.length >= maxSessions) {
-            return res.status(403).json({
-                success: false,
-                message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions.`
+
+        // 🔒 STABLE SESSION ID
+        const sessionId = `session-${req.user.id}`;
+
+        // 🔎 Check if session already exists
+        let session = await Session.findOne({ sessionId });
+
+        if (session) {
+            console.log('♻️ Existing session found, reusing');
+
+            session.phone = formattedPhone;
+            session.linkingMethod = usePairingCode ? 'pairing_code' : 'qr';
+            session.updatedAt = new Date();
+            await session.save();
+        } else {
+
+            // Only check limit when creating new session
+            const activeSessions = await Session.find({
+                userId: req.user.id,
+                status: { $in: ['connected', 'waiting_qr', 'connecting'] }
             });
+
+            if (maxSessions !== -1 && activeSessions.length >= maxSessions) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions.`
+                });
+            }
+
+            session = new Session({
+                userId: req.user.id,
+                sessionId,
+                phone: formattedPhone,
+                status: 'waiting_qr',
+                linkingMethod: usePairingCode ? 'pairing_code' : 'qr',
+                subscriptionAtTime: user.subscription,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            await session.save();
+            console.log('✅ New session created');
         }
 
-        const sessionId = `session-${req.user.id}-${Date.now()}`;
-
-        // Create session record
-        const session = new Session({
-            userId: req.user.id,
-            sessionId,
-            phone: formattedPhone,
-            status: 'waiting_qr',
-            linkingMethod: usePairingCode ? 'pairing_code' : 'qr', // Track method
-            subscriptionAtTime: user.subscription,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
-        await session.save();
-
-        // Create WhatsApp session with phone number for pairing
+        // 🚀 Initialize WhatsApp session
         const workerSocket = req.app.get("workerSocket");
+
         await createWhatsAppSession(
-            req.user.id, 
-            sessionId, 
+            req.user.id,
+            sessionId,
             workerSocket,
-            usePairingCode ? formattedPhone : null // Pass phone for pairing
+            usePairingCode ? formattedPhone : null
         );
 
         res.json({
             success: true,
-            data: { 
-                sessionId, 
+            data: {
+                sessionId,
                 phoneNumber: formattedPhone,
-                status: 'waiting_qr',
-                linkingMethod: usePairingCode ? 'pairing_code' : 'qr',
-                message: 'Session created successfully'
+                status: session.status,
+                linkingMethod: session.linkingMethod
             },
-            message: usePairingCode 
-                ? 'WhatsApp session created. Please enter the pairing code in your WhatsApp app.'
-                : 'WhatsApp session created. Please scan the QR code.'
+            message: usePairingCode
+                ? 'Session ready. Enter pairing code in WhatsApp.'
+                : 'Session ready. Scan QR code.'
         });
 
     } catch (error) {
@@ -373,7 +387,6 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
         });
     }
 });
-
 
 // Global variables
 const activeClients = new Map();
@@ -1371,10 +1384,9 @@ app.get('/api/statistics/user', authenticate, async (req, res) => {
 app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
     try {
         console.log('📱 MOBILE: Creating session with phone number for user:', req.user.id);
-        
+
         const { phoneNumber } = req.body;
-        
-        // Validate phone number
+
         if (!phoneNumber) {
             return res.status(400).json({
                 success: false,
@@ -1382,10 +1394,8 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             });
         }
 
-        // Format and validate phone number
         const formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
-        
-        // Check if phone number is valid (Nigerian format)
+
         if (formattedPhone.length < 10 || formattedPhone.length > 13) {
             return res.status(400).json({
                 success: false,
@@ -1393,7 +1403,6 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             });
         }
 
-        // Normalize to international format
         let normalizedPhone = formattedPhone;
         if (formattedPhone.startsWith('0')) {
             normalizedPhone = '234' + formattedPhone.substring(1);
@@ -1403,54 +1412,67 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
 
         console.log('📱 MOBILE: Formatted phone number:', normalizedPhone);
 
-        // Check subscription limits
         const user = await User.findById(req.user.id);
-        const userSessions = await Session.find({ 
-            userId: req.user.id, 
-            status: { $in: ['connected', 'waiting_qr', 'connecting'] } 
-        });
-        
+
         const maxSessions = subscriptionPlans[user.subscription]?.maxSessions || 1;
-        
-        if (maxSessions !== -1 && userSessions.length >= maxSessions) {
-            return res.status(403).json({
-                success: false,
-                message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions. Please upgrade your plan.`
+
+        // 🔒 STABLE SESSION ID (NO Date.now EVER)
+        const sessionId = `session-${req.user.id}`;
+
+        // 🔎 Check if session already exists
+        let session = await Session.findOne({ sessionId });
+
+        if (session) {
+            console.log('♻️ Existing session found, reusing...');
+
+            // Update phone if changed
+            session.phone = normalizedPhone;
+            session.updatedAt = new Date();
+            await session.save();
+        } else {
+
+            // Check active sessions count only if creating new
+            const activeSessions = await Session.find({
+                userId: req.user.id,
+                status: { $in: ['connected', 'waiting_qr', 'connecting'] }
             });
+
+            if (maxSessions !== -1 && activeSessions.length >= maxSessions) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Session limit reached. ${user.subscription} plan allows ${maxSessions} sessions.`
+                });
+            }
+
+            session = new Session({
+                userId: req.user.id,
+                sessionId,
+                phone: normalizedPhone,
+                status: 'waiting_qr',
+                subscriptionAtTime: user.subscription,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            await session.save();
+            console.log('✅ New session record created');
         }
 
-        const sessionId = `session-${req.user.id}-${Date.now()}`;
-
-        // Create session record in database
-        const session = new Session({
-            userId: req.user.id,
-            sessionId,
-            phone: normalizedPhone,
-            status: 'waiting_qr',
-            subscriptionAtTime: user.subscription,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
-        await session.save();
-        
-        console.log('✅ MOBILE: Session record created in database');
-
-        // Create WhatsApp session
+        // 🚀 Initialize WhatsApp session ONLY if not already connected
         const workerSocket = req.app.get("workerSocket");
+
         await createWhatsAppSession(req.user.id, sessionId, workerSocket);
 
-        
-        console.log('✅ MOBILE: WhatsApp session initialized');
+        console.log('✅ WhatsApp session initialized');
 
         res.json({
             success: true,
-            data: { 
-                sessionId, 
+            data: {
+                sessionId,
                 phoneNumber: normalizedPhone,
-                status: 'waiting_qr',
-                message: 'Session created successfully'
+                status: session.status
             },
-            message: 'WhatsApp session created. Please scan the QR code that will appear, or wait for a pairing code on your WhatsApp.'
+            message: 'WhatsApp session ready.'
         });
 
     } catch (error) {
