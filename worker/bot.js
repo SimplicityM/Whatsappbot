@@ -23,7 +23,7 @@ const RestorationMonitor = require('./restorationMonitor');
 // Create a global monitor instance
 const restorationMonitor = new RestorationMonitor();
 
-const BASE_AUTH_PATH = path.resolve('/app/.wwebjs_auth');
+const BASE_AUTH_PATH = path.resolve(__dirname, '../.wwebjs_auth');
 
 // Add directory creation with proper permissions
 if (!fs.existsSync(BASE_AUTH_PATH)) {
