@@ -6257,7 +6257,7 @@ async function restoreAllSessions(io) {
 
     } catch (err) {
         logger.error("❌ restoreAllSessions error:", err);
-        restorationMonitor.complete();
+        restorationMonitors.get(sessionId)?.complete();
         throw err;
     }
 }
