@@ -11,6 +11,8 @@
  *  - Keeping Puppeteer running forever
  * =====================================================
  */
+process.removeAllListeners('SIGINT');
+process.removeAllListeners('SIGTERM');
 
 require("dotenv").config();
 const http = require("http");
