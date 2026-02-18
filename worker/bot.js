@@ -16,7 +16,7 @@ const ActiveGroup = require('./models/ActiveGroup');
 const GroupMembers = require('./models/GroupMembers');
 const AutoReply = require('./models/AutoReply');
 const config = require('./config');
-const User = require('../models/User');
+const User = require('./models/User');
 const RestorationMonitor = require('./restorationMonitor');
 
 
