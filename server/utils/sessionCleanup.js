@@ -35,7 +35,7 @@ async function cleanupOrphanedSessions() {
 // Run cleanup every 2 minutes
 function startSessionCleanup() {
     // setInterval(cleanupOrphanedSessions, 2 * 60 * 1000);
-    cleanupOrphanedSessions(); // Run immediately on start
+    // cleanupOrphanedSessions(); // Run immediately on start
     console.log('🧹 Session cleanup job started');
 }
 
