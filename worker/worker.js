@@ -22,8 +22,7 @@ const mongoose = require("mongoose");
 const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
-// In-memory session store for Baileys
-const clients = new Map();
+
 const {
     createBaileysSession,
     sendMessage,
@@ -194,7 +193,7 @@ io.on("connection", (socket) => {
             callback(err.message || "Failed to create session", null);
         }
     }
-});
+    });
 
     /** =========================================
      *  RESUME SUSPENDED SESSION
@@ -246,117 +245,94 @@ io.on("connection", (socket) => {
     } catch (err) {
         console.error("❌ Worker stop session error:", err);
     }
-});
+    });
 
     /** =========================================
      *  DELETE SESSION COMPLETELY
      * ========================================= */
     socket.on("worker:delete_session", async ({ sessionId }) => {
-        console.log("🗑 Worker: delete session:", sessionId);
+    console.log("🗑 Worker: delete session:", sessionId);
 
-        try {
-            const data = clients.get(sessionId);
-            if (data && data.client) {
-                await data.client.destroy();
-                clients.delete(sessionId);
-            }
+    try {
+        const sock = sessions.get(sessionId);
 
-            await Session.deleteOne({ sessionId });
-
-            console.log(`🗑 Session ${sessionId} removed`);
-        } catch (err) {
-            console.error("❌ Worker delete error:", err);
+        if (sock) {
+            sock.ws.close();
+            sessions.delete(sessionId);
         }
+
+        await Session.deleteOne({ sessionId });
+
+        console.log(`🗑 Session ${sessionId} removed`);
+
+    } catch (err) {
+        console.error("❌ Worker delete error:", err);
+    }
     });
 
     /** =========================================
      *  SEND BROADCAST MESSAGE
      * ========================================= */
-    socket.on('worker:send_broadcast', async ({ sessionId, message, userId }, callback) => {
-        try {
-            console.log(`📢 WORKER: Sending broadcast to session ${sessionId}`);
-            
-            // Get the client for this session
-            const clientData = clients.get(sessionId);
-            
-            if (!clientData || !clientData.client) {
-                return callback('Session not found or not connected');
-            }
+    socket.on('worker:send_broadcast', async ({ sessionId, message }, callback) => {
+    try {
+        console.log(`📢 WORKER: Sending broadcast to ${sessionId}`);
 
-            const client = clientData.client;
-            
-            // Get the user's own WhatsApp number to send to themselves
-            const info = client.info;
-            if (!info || !info.wid) {
-                return callback('Could not get user WhatsApp info');
-            }
+        const sock = sessions.get(sessionId);
 
-            // Send message to user's own number
-            const userJid = info.wid._serialized;
-            await client.sendMessage(userJid, message);
-            
-            console.log(`✅ WORKER: Broadcast sent to ${sessionId}`);
-            callback(null, { success: true, sessionId });
-            
-        } catch (error) {
-            console.error(`❌ WORKER: Broadcast error for ${sessionId}:`, error);
-            callback(error.message || 'Failed to send broadcast');
+        if (!sock) {
+            return callback("Session not connected");
         }
+
+        // send to yourself (example)
+        const jid = sock.user.id;
+
+        await sock.sendMessage(jid, { text: message });
+
+        console.log(`✅ Broadcast sent for ${sessionId}`);
+
+        callback(null, { success: true });
+
+    } catch (error) {
+        console.error("❌ Broadcast error:", error);
+        callback(error.message);
+    }
     });
 
     /** =========================================
  *  SYNC CONTACTS MANUALLY
  * ========================================= */
-socket.on('worker:sync_contacts', async ({ sessionId, userId }, callback) => {
-    console.log(`📇 WORKER: Manual contact sync requested for ${sessionId}`);
-    
+    socket.on('worker:sync_contacts', async ({ sessionId }, callback) => {
+    console.log(`📇 WORKER: Contact sync requested for ${sessionId}`);
+
     try {
-        const clientData = clients.get(sessionId);
-        
-        if (!clientData || !clientData.client) {
-            return callback('Session not found or not connected');
+        const sock = sessions.get(sessionId);
+
+        if (!sock) {
+            return callback("Session not connected");
         }
 
-        const client = clientData.client;
-        
-        // Get all contacts
-        const contacts = await client.getContacts();
-        
-        console.log(`✅ WORKER: Retrieved ${contacts.length} contacts for ${sessionId}`);
-        
-        // You can save to database here if needed
-        // await Contact.insertMany(...)
-        
+        const contacts = Object.values(sock.store?.contacts || {});
+
+        console.log(`📦 Found ${contacts.length} contacts`);
+
+        // Example: filter only real users (not groups)
+        const filtered = contacts.filter(c => 
+            c.id && c.id.endsWith('@s.whatsapp.net')
+        );
+
+        console.log(`👤 ${filtered.length} user contacts after filtering`);
+
         callback(null, {
             success: true,
-            total: contacts.length,
-            synced: contacts.length,
+            total: filtered.length,
             timestamp: new Date()
         });
-        
-        } catch (error) {
-        console.error(`❌ WORKER: Contact sync error for ${sessionId}:`, error);
-        callback(error.message || 'Failed to sync contacts');
-        }
+
+    } catch (error) {
+        console.error("❌ Contact sync error:", error);
+        callback(error.message);
+    }
     });
-});
 
+})
 
-
-/* =====================================================
-   GRACEFUL SHUTDOWN
-   ===================================================== */
-// process.on("SIGINT", async () => {
-//     console.log("⚠ Worker shutting down...");
-
-//     for (const [sessionId, data] of clients) {
-//         try {
-//             // await data.client.destroy();
-//         } catch (err) {
-//             console.error(`Error destroying ${sessionId}:`, err);
-//         }
-//     }
-
-//     await mongoose.connection.close();
-//     process.exit(0);
-// });
