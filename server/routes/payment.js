@@ -206,7 +206,7 @@ router.post('/verify-flutterwave', authenticate, async (req, res) => {
         
                 // Restore bot session if available
                 try {
-                    const { restoreUserSessionAfterPayment } = require('../bot.js');
+                    const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
                     await restoreUserSessionAfterPayment(userId);
                 } catch (botError) {
                     console.error('Error restoring bot session:', botError);
@@ -312,7 +312,7 @@ router.post('/flutterwave-webhook', async (req, res) => {
 
                 // Restore bot session
                 try {
-                    const { restoreUserSessionAfterPayment } = require('../bot.js');
+                    const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
                     await restoreUserSessionAfterPayment(userId);
                 } catch (botError) {
                     console.error('Error restoring bot session:', botError);

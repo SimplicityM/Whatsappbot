@@ -333,7 +333,7 @@ userSchema.methods.setAsSystemAdmin = function() {
 
 userSchema.statics.ensureOwnerPrivileges = async function(user) {
     try {
-        const CONFIG = require('../config.json');
+        const CONFIG = require('../../config.json');
         const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
 
         if (!user || !user.whatsappNumber || !ownerNumber) return user;
