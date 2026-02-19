@@ -32,6 +32,7 @@ const MAX_SESSIONS = config?.client?.MAX_SESSIONS || 100;
 const MIN_DELAY_MS = 1500;
 const MAX_PER_MINUTE = 20;
 const MAX_PER_HOUR = 200;
+const localRateState = new Map();
 
 /* =====================================================
    LOGGER
@@ -55,9 +56,20 @@ const logger = createLogger({
 ===================================================== */
 
 const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6379");
+let redisReady = false;
 
-redis.on("connect", () => logger.info("Redis connected"));
+redis.on("connect", () => {
+    redisReady = true;
+    logger.info("Redis connected");
+});
 redis.on("error", err => logger.error("Redis error", { err }));
+redis.on("close", () => {
+    redisReady = false;
+    logger.warn("Redis connection closed; using local rate-limit fallback");
+});
+redis.on("end", () => {
+    redisReady = false;
+});
 
 /* =====================================================
    PROMETHEUS METRICS
@@ -91,7 +103,9 @@ async function gracefulShutdown() {
     }
 
     await mongoose.connection.close();
-    await redis.quit();
+    try {
+        await redis.quit();
+    } catch {}
 
     process.exit(0);
 }
@@ -155,6 +169,37 @@ server.listen(PORT, "0.0.0.0", () => {
 ===================================================== */
 
 async function checkRateLimit(sessionId) {
+    if (!redisReady) {
+        const now = Date.now();
+        const key = String(sessionId);
+        const entry = localRateState.get(key) || {
+            minuteStart: now,
+            hourStart: now,
+            minuteCount: 0,
+            hourCount: 0
+        };
+
+        if (now - entry.minuteStart >= 60000) {
+            entry.minuteStart = now;
+            entry.minuteCount = 0;
+        }
+        if (now - entry.hourStart >= 3600000) {
+            entry.hourStart = now;
+            entry.hourCount = 0;
+        }
+
+        entry.minuteCount += 1;
+        entry.hourCount += 1;
+        localRateState.set(key, entry);
+
+        if (entry.minuteCount > MAX_PER_MINUTE)
+            return "Rate limit exceeded (minute)";
+
+        if (entry.hourCount > MAX_PER_HOUR)
+            return "Rate limit exceeded (hour)";
+
+        return null;
+    }
 
     const minuteKey = `rate:${sessionId}:minute`;
     const hourKey = `rate:${sessionId}:hour`;
