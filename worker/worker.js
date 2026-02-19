@@ -119,9 +119,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
 });
 
-
-
-
 (async () => {
     const mongoURI = process.env.MONGODB_URI;
 
@@ -138,70 +135,32 @@ server.listen(PORT, '0.0.0.0', () => {
 
         console.log("📦 Worker connected to MongoDB");
 
-        const authPath = path.resolve('/app/.wwebjs_auth');
+        console.log("🧹 Cleanup phase (Baileys safe)...");
 
-        console.log(`📁 Auth path: ${authPath}`);
-        console.log(`📁 Auth path exists: ${fs.existsSync(authPath)}`);
+        // Simple safe restore for Baileys
+        console.log("♻ Restoring existing WhatsApp sessions...");
+        const startTime = Date.now();
 
-        if (fs.existsSync(authPath)) {
-            const stats = fs.statSync(authPath);
-            console.log(`📁 Auth path is directory: ${stats.isDirectory()}`);
-            console.log(`📁 Auth path permissions: ${stats.mode.toString(8)}`);
+        try {
+            const sessions = await Session.find({
+                status: { $in: ["connected", "waiting_qr"] }
+            });
 
-            try {
-                const files = fs.readdirSync(authPath);
-                console.log(`📁 Auth path contents (${files.length} items):`, files.slice(0, 5));
-            } catch (err) {
-                console.error(`⚠️ Cannot read auth path:`, err.message);
+            for (const session of sessions) {
+                console.log(`🔄 Reconnecting session: ${session.sessionId}`);
+                await createBotSession(session.userId, session.sessionId);
             }
-        } else {
-            console.log(`⚠️ Auth path does not exist - will be created on first session`);
+
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.log(`✅ Baileys session restoration completed in ${duration}s`);
+
+        } catch (restoreError) {
+            console.error("⚠️ Baileys restoration failed (non-fatal):", restoreError);
         }
 
-        console.log('🧹 Cleanup phase (non-destructive)...');
-
-        async function cleanupIncompleteSessions() {
-            try {
-                const browserProfiles = fs.existsSync(authPath)
-                    ? fs.readdirSync(authPath).filter(f => f.startsWith('RemoteAuth-'))
-                    : [];
-
-                console.log(`📁 Found ${browserProfiles.length} RemoteAuth profiles on disk`);
-
-                const dbSessions = await Session.find({
-                    status: { $nin: ['disconnected', 'failed', 'auth_failed'] }
-                });
-
-                for (const session of dbSessions) {
-                    console.log(`ℹ️ Session ${session.sessionId} queued for restore`);
-                }
-
-                console.log(`✅ Cleanup phase completed safely`);
-
-            } catch (err) {
-                console.error('⚠️ Cleanup error (non-fatal):', err);
-            }
-        }
-
-        await cleanupIncompleteSessions();
-
-            // Restore sessions (Baileys version)
-    console.log("♻ Restoring existing WhatsApp sessions...");
-    const startTime = Date.now();
-
-    try {
-        const sessions = await Session.find({ status: { $in: ["connected", "waiting_qr"] } });
-
-        for (const session of sessions) {
-            console.log(`🔄 Reconnecting session: ${session.sessionId}`);
-            await createBotSession(session.userId, session.sessionId);
-        }
-
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`✅ Baileys session restoration completed in ${duration}s`);
-
-    } catch (restoreError) {
-        console.error("⚠️ Baileys restoration failed (non-fatal):", restoreError);
+    } catch (error) {
+        console.error("❌ Mongo connection failed. Retrying in 10 seconds...");
+        setTimeout(() => process.exit(1), 10000);
     }
 })();
 
