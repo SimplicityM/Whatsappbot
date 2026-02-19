@@ -23,6 +23,8 @@ const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
 
+const clients = new Map();
+
 const {
     createBaileysSession,
     sendMessage,
@@ -31,6 +33,7 @@ const {
    const fs = require('fs');
             const path = require('path');
             const SessionAuth = require('./models/SessionAuth');
+            
 
 // Add near the top of worker.js, after imports
 process.on('unhandledRejection', (reason, promise) => {
