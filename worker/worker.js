@@ -101,14 +101,12 @@ io.on("connection", (socket) => {
     // ================= HEALTH CHECK =================
 
     socket.on("worker:ping", (data, callback) => {
-    if (typeof callback === 'function') {
-        callback(null, {
-            status: 'healthy',
+        callback?.(null, {
+            status: "healthy",
             activeSessions: sessions.size,
             timestamp: Date.now()
         });
-    }
-});
+    });
 
     // ================= CREATE SESSION =================
 
@@ -153,7 +151,9 @@ io.on("connection", (socket) => {
             if (!sessions.has(sessionId)) {
                 await resumeUserSession(userId, sessionId, io);
             }
+
             console.log(`✅ Session resumed: ${sessionId}`);
+
         } catch (err) {
             console.error("❌ Resume failed:", err);
         }
@@ -161,7 +161,7 @@ io.on("connection", (socket) => {
 
     // ================= STOP SESSION =================
 
-    socket.on("worker:stop_session", async ({ sessionId }) => {
+    socket.on("worker:stop_session", async ({ sessionId }, callback) => {
 
         console.log("🔴 Stop session:", sessionId);
 
@@ -169,8 +169,7 @@ io.on("connection", (socket) => {
             const sock = sessions.get(sessionId);
 
             if (!sock) {
-                console.log("⚠ No active session found");
-                return;
+                return callback?.("Session not found");
             }
 
             await sock.logout();
@@ -183,14 +182,17 @@ io.on("connection", (socket) => {
 
             console.log(`🛑 Session stopped: ${sessionId}`);
 
+            callback?.(null, { success: true });
+
         } catch (err) {
             console.error("❌ Stop error:", err);
+            callback?.(err.message);
         }
     });
 
     // ================= DELETE SESSION =================
 
-    socket.on("worker:delete_session", async ({ sessionId }) => {
+    socket.on("worker:delete_session", async ({ sessionId }, callback) => {
 
         console.log("🗑 Delete session:", sessionId);
 
@@ -206,8 +208,36 @@ io.on("connection", (socket) => {
 
             console.log(`🗑 Session deleted: ${sessionId}`);
 
+            callback?.(null, { success: true });
+
         } catch (err) {
             console.error("❌ Delete error:", err);
+            callback?.(err.message);
+        }
+    });
+
+    // ================= SEND MESSAGE (NEW API) =================
+
+    socket.on("worker:send_message", async ({ sessionId, to, message }, callback) => {
+
+        try {
+            const sock = sessions.get(sessionId);
+
+            if (!sock) {
+                return callback?.("Session not connected");
+            }
+
+            const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
+
+            await sock.sendMessage(jid, { text: message });
+
+            console.log(`📨 Message sent from ${sessionId} to ${jid}`);
+
+            callback?.(null, { success: true });
+
+        } catch (err) {
+            console.error("❌ Send message error:", err);
+            callback?.(err.message);
         }
     });
 
