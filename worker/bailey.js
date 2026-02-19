@@ -1,7 +1,5 @@
 /**
- * =====================================================
- *        BAILEYS SESSION ENGINE (FULL ENTERPRISE)
- * =====================================================
+ * Baileys session engine
  */
 
 const {
@@ -17,24 +15,20 @@ const fs = require("fs");
 const path = require("path");
 
 const GroupSettings = require("./models/GroupSettings");
-
-// ================= SESSION MANAGEMENT =================
+const botEngine = require("./botEngine");
 
 const sessions = new Map();
 const sessionLocks = new Set();
 const groupMetadataCache = new Map();
+const sessionSchedulers = new Map();
 
 const SESSION_START_DELAY = 1500;
 const GROUP_CACHE_TTL = 5 * 60 * 1000;
-
 const SESSIONS_DIR = path.join(__dirname, "sessions");
-if (!fs.existsSync(SESSIONS_DIR)) {
-    fs.mkdirSync(SESSIONS_DIR);
-}
 
-/* =====================================================
-   CLEAN GROUP CACHE PERIODICALLY
-===================================================== */
+if (!fs.existsSync(SESSIONS_DIR)) {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+}
 
 setInterval(() => {
     const now = Date.now();
@@ -45,20 +39,14 @@ setInterval(() => {
     }
 }, 60 * 1000);
 
-/* =====================================================
-   GROUP ADMIN HELPER (CACHED)
-===================================================== */
-
 async function getGroupAdmins(sock, groupId) {
     const cached = groupMetadataCache.get(groupId);
-
     if (cached && Date.now() - cached.timestamp < GROUP_CACHE_TTL) {
         return cached.admins;
     }
 
     const metadata = await sock.groupMetadata(groupId);
-
-    const admins = metadata.participants
+    const admins = (metadata.participants || [])
         .filter(p => p.admin !== null)
         .map(p => p.id);
 
@@ -70,20 +58,42 @@ async function getGroupAdmins(sock, groupId) {
     return admins;
 }
 
-/* =====================================================
-   CREATE SESSION
-===================================================== */
+function startScheduler(sessionId, sock) {
+    if (sessionSchedulers.has(sessionId)) {
+        return;
+    }
+
+    const intervalId = setInterval(async () => {
+        try {
+            await botEngine.runScheduledJobs({ sock, sessionId });
+        } catch {}
+    }, 30 * 1000);
+
+    sessionSchedulers.set(sessionId, intervalId);
+
+    setTimeout(async () => {
+        try {
+            await botEngine.runScheduledJobs({ sock, sessionId });
+        } catch {}
+    }, 3000);
+}
+
+function stopScheduler(sessionId) {
+    const intervalId = sessionSchedulers.get(sessionId);
+    if (intervalId) {
+        clearInterval(intervalId);
+        sessionSchedulers.delete(sessionId);
+    }
+}
 
 async function createBaileysSession(sessionId, io) {
-
     if (sessions.has(sessionId)) return sessions.get(sessionId);
     if (sessionLocks.has(sessionId)) return;
 
     sessionLocks.add(sessionId);
-    console.log("🚀 Starting session:", sessionId);
+    console.log("Starting session:", sessionId);
 
     try {
-
         const sessionPath = path.join(SESSIONS_DIR, sessionId);
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
         const { version } = await fetchLatestBaileysVersion();
@@ -93,7 +103,7 @@ async function createBaileysSession(sessionId, io) {
             logger: P({ level: "error" }),
             auth: state,
             printQRInTerminal: false,
-            browser: ['TagThemAll Engine', 'Chrome', '1.0.0'],
+            browser: ["TagThemAll Engine", "Chrome", "1.0.0"],
             markOnlineOnConnect: false,
             syncFullHistory: false,
             shouldSyncHistoryMessage: () => false,
@@ -107,15 +117,9 @@ async function createBaileysSession(sessionId, io) {
 
         sessions.set(sessionId, sock);
         sock.ev.setMaxListeners(0);
-
         sock.ev.on("creds.update", saveCreds);
 
-        /* =====================================================
-           CONNECTION HANDLER
-        ===================================================== */
-
-        sock.ev.on("connection.update", async (update) => {
-
+        sock.ev.on("connection.update", async update => {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
@@ -123,27 +127,23 @@ async function createBaileysSession(sessionId, io) {
             }
 
             if (connection === "open") {
-                console.log("✅ Connected:", sessionId);
                 io.emit("session:ready", { sessionId });
+                startScheduler(sessionId, sock);
             }
 
             if (connection === "close") {
-
-                const statusCode =
-                    lastDisconnect?.error?.output?.statusCode;
-
-                const shouldReconnect =
-                    statusCode !== DisconnectReason.loggedOut;
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
                 sessions.delete(sessionId);
+                stopScheduler(sessionId);
 
                 try {
                     sock.ev.removeAllListeners();
                     sock.ws?.close?.();
-                } catch (e) {}
+                } catch {}
 
                 if (shouldReconnect) {
-                    console.log("🔄 Reconnecting:", sessionId);
                     setTimeout(() => {
                         createBaileysSession(sessionId, io);
                     }, SESSION_START_DELAY);
@@ -153,83 +153,47 @@ async function createBaileysSession(sessionId, io) {
             }
         });
 
-        /* =====================================================
-           CALL HANDLER
-        ===================================================== */
-
-        sock.ev.on("call", async () => {
-            console.log("📞 Call event:", sessionId);
-        });
-
-        /* =====================================================
-           ANTI-DELETE HANDLER
-        ===================================================== */
-
         sock.ev.on("messages.update", async updates => {
             for (const update of updates) {
-                if (update.update?.message === null) {
+                if (update.update?.message !== null) continue;
 
-                    const groupId = update.key.remoteJid;
-                    if (!groupId?.endsWith("@g.us")) continue;
+                const groupId = update.key.remoteJid;
+                if (!groupId?.endsWith("@g.us")) continue;
 
-                    const settings =
-                        await GroupSettings.findOne({ groupId });
-
-                    if (settings?.antiDelete) {
-                        await sock.sendMessage(groupId, {
-                            text: "🚨 A message was deleted."
-                        });
-                    }
+                const settings = await GroupSettings.findOne({ groupId });
+                if (settings?.antiDelete) {
+                    await sock.sendMessage(groupId, {
+                        text: "A message was deleted."
+                    });
                 }
             }
         });
 
-        /* =====================================================
-           WELCOME / GOODBYE HANDLER
-        ===================================================== */
-
         sock.ev.on("group-participants.update", async update => {
-
-            const settings =
-                await GroupSettings.findOne({ groupId: update.id });
-
+            const settings = await GroupSettings.findOne({ groupId: update.id });
             if (!settings?.welcome) return;
 
             if (update.action === "add") {
-                await sock.sendMessage(update.id, {
-                    text: "👋 Welcome to the group!"
-                });
+                await sock.sendMessage(update.id, { text: "Welcome to the group!" });
             }
 
             if (update.action === "remove") {
-                await sock.sendMessage(update.id, {
-                    text: "👋 A member left the group."
-                });
+                await sock.sendMessage(update.id, { text: "A member left the group." });
             }
         });
 
-        /* =====================================================
-           MESSAGE HANDLER
-        ===================================================== */
-
-        const botEngine = require("./botEngine");
-
         sock.ev.on("messages.upsert", async ({ messages, type }) => {
-
             if (type !== "notify") return;
 
             const msg = messages?.[0];
             if (!msg?.message) return;
-            if (msg.key.fromMe) return;
 
             try {
-
                 const from = msg.key.remoteJid;
                 const sender = msg.key.participant || from;
-                const isGroup = from.endsWith("@g.us");
+                const isGroup = !!from && from.endsWith("@g.us");
 
                 let isAdmin = false;
-
                 if (isGroup) {
                     const admins = await getGroupAdmins(sock, from);
                     isAdmin = admins.includes(sender);
@@ -244,40 +208,24 @@ async function createBaileysSession(sessionId, io) {
                     sender,
                     from
                 });
-
             } catch (err) {
-                console.error("❌ Bot engine error:", err);
+                console.error("Bot engine error:", err);
             }
-
         });
 
         return sock;
-
     } catch (error) {
-
-        console.error("❌ Session creation failed:", sessionId, error);
+        console.error("Session creation failed:", sessionId, error);
         sessions.delete(sessionId);
-
     } finally {
         sessionLocks.delete(sessionId);
     }
 }
 
-/* =====================================================
-   RESUME SESSION
-===================================================== */
-
 async function resumeUserSession(userId, sessionId, io) {
-    if (sessions.has(sessionId))
-        return sessions.get(sessionId);
-
-    console.log("♻ Restoring session:", sessionId);
+    if (sessions.has(sessionId)) return sessions.get(sessionId);
     return createBaileysSession(sessionId, io);
 }
-
-/* =====================================================
-   EXPORTS
-===================================================== */
 
 module.exports = {
     createBaileysSession,
