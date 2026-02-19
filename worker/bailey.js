@@ -21,6 +21,7 @@ const sessions = new Map();
 const sessionLocks = new Set();
 const groupMetadataCache = new Map();
 const sessionSchedulers = new Map();
+const sessionInitOptions = new Map();
 
 const SESSION_START_DELAY = 1500;
 const GROUP_CACHE_TTL = 5 * 60 * 1000;
@@ -86,9 +87,35 @@ function stopScheduler(sessionId) {
     }
 }
 
-async function createBaileysSession(sessionId, io) {
+function extractUserId(sessionId) {
+    const m = String(sessionId || "").match(/^session-([^-]+)/);
+    return m ? m[1] : null;
+}
+
+async function requestPairingCodeWithRetry(sock, sessionId, io, phoneNumber) {
+    const digits = String(phoneNumber || "").replace(/[^0-9]/g, "");
+    if (!digits || typeof sock.requestPairingCode !== "function") return;
+
+    for (let i = 0; i < 8; i++) {
+        try {
+            const code = await sock.requestPairingCode(digits);
+            if (!code) throw new Error("Empty pairing code");
+            const userId = extractUserId(sessionId);
+            const payload = { sessionId, code, phoneNumber: digits, userId };
+            io.emit("pairingCode", payload);
+            io.emit("session:pairing_code", payload);
+            return;
+        } catch {
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+}
+
+async function createBaileysSession(sessionId, io, options = null) {
     if (sessions.has(sessionId)) return sessions.get(sessionId);
     if (sessionLocks.has(sessionId)) return;
+    if (options) sessionInitOptions.set(sessionId, options);
+    const initOptions = options || sessionInitOptions.get(sessionId) || {};
 
     sessionLocks.add(sessionId);
     console.log("Starting session:", sessionId);
@@ -123,11 +150,18 @@ async function createBaileysSession(sessionId, io) {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
-                io.emit("session:qr", { sessionId, qr });
+                const userId = extractUserId(sessionId);
+                const payload = { sessionId, qr, userId };
+                io.emit("session:qr", payload);
+                io.emit("qrCode", payload);
             }
 
             if (connection === "open") {
-                io.emit("session:ready", { sessionId });
+                const userId = extractUserId(sessionId);
+                const phone = (sock.user?.id || "").split(":")[0] || null;
+                const payload = { sessionId, userId, phone };
+                io.emit("session:ready", payload);
+                io.emit("sessionReady", payload);
                 startScheduler(sessionId, sock);
             }
 
@@ -145,10 +179,11 @@ async function createBaileysSession(sessionId, io) {
 
                 if (shouldReconnect) {
                     setTimeout(() => {
-                        createBaileysSession(sessionId, io);
+                        createBaileysSession(sessionId, io, sessionInitOptions.get(sessionId) || null);
                     }, SESSION_START_DELAY);
                 } else {
                     io.emit("session:logged_out", { sessionId });
+                    sessionInitOptions.delete(sessionId);
                 }
             }
         });
@@ -212,6 +247,10 @@ async function createBaileysSession(sessionId, io) {
                 console.error("Bot engine error:", err);
             }
         });
+
+        if (initOptions.usePairingCode && initOptions.phoneNumber) {
+            requestPairingCodeWithRetry(sock, sessionId, io, initOptions.phoneNumber).catch(() => {});
+        }
 
         return sock;
     } catch (error) {

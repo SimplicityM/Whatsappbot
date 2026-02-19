@@ -2,19 +2,21 @@
 #        TAGTHEMALL PRODUCTION DOCKERFILE
 # =====================================================
 
-FROM node:18-bullseye-slim
+FROM node:20-alpine
+
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Set working directory
 WORKDIR /app
 
-# Install only minimal required system packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    tzdata \
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
     dumb-init \
-    && rm -rf /var/lib/apt/lists/*
+    tzdata \
+    ca-certificates
 
-# Copy dependency files first (better layer caching)
+# Copy dependency files first (better caching)
 COPY package*.json ./
 
 # Install production dependencies only
@@ -24,15 +26,19 @@ RUN npm install --omit=dev
 COPY . .
 
 # Create required directories
-RUN mkdir -p ./media ./logs
+RUN mkdir -p ./media ./logs && \
+    chown -R appuser:appgroup /app
 
 # Set environment
 ENV NODE_ENV=production
 
+# Switch to non-root user (security best practice)
+USER appuser
+
 # Expose worker port
 EXPOSE 3000
 
-# Use dumb-init for proper signal handling
+# Proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
 CMD ["node", "worker.js"]

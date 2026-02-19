@@ -1,7 +1,7 @@
 const Session = require("../models/Session");
 const User = require("../models/User");
 
-module.exports.createWhatsAppSession = async function (userId, sessionId, workerSocket) {
+module.exports.createWhatsAppSession = async function (userId, sessionId, workerSocket, options = {}) {
   let sessionCreated = false;
   let session = null;
 
@@ -28,7 +28,12 @@ module.exports.createWhatsAppSession = async function (userId, sessionId, worker
     const ack = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Worker timeout")), 20000);
 
-      workerSocket.emit("worker:create_session", { userId, sessionId }, (err, result) => {
+      workerSocket.emit("worker:create_session", {
+        userId,
+        sessionId,
+        phoneNumber: options.phoneNumber || null,
+        usePairingCode: !!options.usePairingCode
+      }, (err, result) => {
         clearTimeout(timeout);
         if (err) return reject(new Error(String(err)));
         resolve(result);

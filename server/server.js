@@ -196,7 +196,7 @@ const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
 
 
 // Forward worker events to frontend sockets
-const workerEventNames = ['qrCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
+const workerEventNames = ['qrCode', 'pairingCode', 'sessionReady', 'authFailure', 'disconnected', 'newMessage'];
 workerEventNames.forEach(evt => {
   workerSocket.on(evt, (payload) => {
     try {
@@ -388,7 +388,7 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
         if (session) {
             console.log('♻️ Existing session found, reusing');
 
-            session.phone = formattedPhone;
+            session.whatsappNumber = formattedPhone;
             session.linkingMethod = usePairingCode ? 'pairing_code' : 'qr';
             session.updatedAt = new Date();
             await session.save();
@@ -410,7 +410,7 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             session = new Session({
                 userId: req.user.id,
                 sessionId,
-                phone: formattedPhone,
+                whatsappNumber: formattedPhone,
                 status: 'waiting_qr',
                 linkingMethod: usePairingCode ? 'pairing_code' : 'qr',
                 subscriptionAtTime: user.subscription,
@@ -425,12 +425,10 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
         // 🚀 Initialize WhatsApp session
         const workerSocket = req.app.get("workerSocket");
 
-        await createWhatsAppSession(
-            req.user.id,
-            sessionId,
-            workerSocket,
-            usePairingCode ? formattedPhone : null
-        );
+        await createWhatsAppSession(req.user.id, sessionId, workerSocket, {
+            phoneNumber: formattedPhone,
+            usePairingCode: !!usePairingCode
+        });
 
         res.json({
             success: true,
@@ -505,7 +503,7 @@ function checkUsageLimit(subscription, limitType, currentUsage) {
 }
 
 // ------------------ session creation: ask worker to create ------------------
-async function createWhatsAppSession(userId, sessionId, workerSocket) {
+async function createWhatsAppSession(userId, sessionId, workerSocket, options = {}) {
   let sessionCreated = false;
   let session = null;
 
@@ -524,17 +522,21 @@ async function createWhatsAppSession(userId, sessionId, workerSocket) {
       throw new Error('Worker service is not available. Please try again in a moment.');
     }
 
-    // Store initial session record ONLY after worker check passes
-    session = new Session({
+    const sessionPayload = {
       userId,
       sessionId,
       status: 'waiting_qr',
       subscriptionAtTime: user.subscription,
-      createdAt: new Date(),
+      linkingMethod: options.usePairingCode ? 'pairing_code' : 'qr',
+      ...(options.phoneNumber ? { whatsappNumber: String(options.phoneNumber).replace(/[^0-9]/g, '') } : {}),
       updatedAt: new Date()
-    });
+    };
 
-    await session.save();
+    session = await Session.findOneAndUpdate(
+      { sessionId },
+      { $set: sessionPayload, $setOnInsert: { createdAt: new Date() } },
+      { upsert: true, new: true }
+    );
     sessionCreated = true;
 
     console.log('✅ SERVER: Session record created in DB');
@@ -547,7 +549,12 @@ async function createWhatsAppSession(userId, sessionId, workerSocket) {
 
       workerSocket.emit(
         'worker:create_session',
-        { userId, sessionId },
+        {
+          userId,
+          sessionId,
+          phoneNumber: options.phoneNumber || null,
+          usePairingCode: !!options.usePairingCode
+        },
         (err, result) => {
           clearTimeout(timeout);
           if (err) return reject(new Error(String(err)));
@@ -1492,7 +1499,8 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             console.log('♻️ Existing session found, reusing...');
 
             // Update phone if changed
-            session.phone = normalizedPhone;
+            session.whatsappNumber = normalizedPhone;
+            session.linkingMethod = 'pairing_code';
             session.updatedAt = new Date();
             await session.save();
         } else {
@@ -1513,8 +1521,9 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
             session = new Session({
                 userId: req.user.id,
                 sessionId,
-                phone: normalizedPhone,
+                whatsappNumber: normalizedPhone,
                 status: 'waiting_qr',
+                linkingMethod: 'pairing_code',
                 subscriptionAtTime: user.subscription,
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -1527,7 +1536,10 @@ app.post('/api/sessions/create-with-phone', authenticate, async (req, res) => {
         // 🚀 Initialize WhatsApp session ONLY if not already connected
         const workerSocket = req.app.get("workerSocket");
 
-        await createWhatsAppSession(req.user.id, sessionId, workerSocket);
+        await createWhatsAppSession(req.user.id, sessionId, workerSocket, {
+            phoneNumber: normalizedPhone,
+            usePairingCode: true
+        });
 
         console.log('✅ WhatsApp session initialized');
 

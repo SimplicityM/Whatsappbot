@@ -289,20 +289,25 @@ io.on("connection", (socket) => {
 
     /* ===== CREATE SESSION ===== */
 
-    socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
+    socket.on("worker:create_session", async ({ userId, sessionId, phoneNumber = null, usePairingCode = false }, callback) => {
         try {
 
             if (sessions.size >= MAX_SESSIONS)
                 return callback?.("Maximum session limit reached");
 
             if (!sessions.has(sessionId))
-                await createBaileysSession(sessionId, io);
+                await createBaileysSession(sessionId, io, { phoneNumber, usePairingCode });
 
             activeSessionsGauge.set(sessions.size);
 
             await Session.findOneAndUpdate(
                 { sessionId },
-                { status: "waiting_qr", updatedAt: new Date() }
+                {
+                    status: "waiting_qr",
+                    linkingMethod: usePairingCode ? "pairing_code" : "qr",
+                    ...(phoneNumber ? { whatsappNumber: String(phoneNumber).replace(/[^0-9]/g, "") } : {}),
+                    updatedAt: new Date()
+                }
             );
 
             callback?.(null, { success: true });
