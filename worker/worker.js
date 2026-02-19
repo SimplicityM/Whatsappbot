@@ -120,47 +120,24 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 (async () => {
-    const mongoURI = process.env.MONGODB_URI;
-
-    if (!mongoURI) {
-        console.error("❌ MONGODB_URI missing - retrying in 10 seconds...");
-        setTimeout(() => process.exit(1), 10000);
-        return;
-    }
-
     try {
+        const mongoURI = process.env.MONGODB_URI;
+
+        if (!mongoURI) {
+            console.error("❌ MONGODB_URI missing");
+            process.exit(1);
+        }
+
         await mongoose.connect(mongoURI, {
             serverSelectionTimeoutMS: 10000
         });
 
         console.log("📦 Worker connected to MongoDB");
-
-        console.log("🧹 Cleanup phase (Baileys safe)...");
-
-        // Simple safe restore for Baileys
-        console.log("♻ Restoring existing WhatsApp sessions...");
-        const startTime = Date.now();
-
-        try {
-            const sessions = await Session.find({
-                status: { $in: ["connected", "waiting_qr"] }
-            });
-
-            for (const session of sessions) {
-                console.log(`🔄 Reconnecting session: ${session.sessionId}`);
-                await createBotSession(session.userId, session.sessionId);
-            }
-
-            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-            console.log(`✅ Baileys session restoration completed in ${duration}s`);
-
-        } catch (restoreError) {
-            console.error("⚠️ Baileys restoration failed (non-fatal):", restoreError);
-        }
+        console.log("🧹 Baileys system ready");
 
     } catch (error) {
-        console.error("❌ Mongo connection failed. Retrying in 10 seconds...");
-        setTimeout(() => process.exit(1), 10000);
+        console.error("❌ Mongo connection failed:", error);
+        process.exit(1);
     }
 })();
 
