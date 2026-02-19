@@ -55,21 +55,39 @@ const logger = createLogger({
    REDIS
 ===================================================== */
 
-const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6379");
+const redisEnabled = config?.redis?.ENABLED !== false;
+const redisUrl = config?.redis?.URL || process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const redis = redisEnabled
+    ? new Redis(redisUrl, {
+        lazyConnect: true,
+        connectTimeout: config?.redis?.CONNECT_TIMEOUT_MS || 10000,
+        maxRetriesPerRequest: 1,
+        retryStrategy: times => Math.min(times * 2000, 15000)
+    })
+    : null;
 let redisReady = false;
 
-redis.on("connect", () => {
-    redisReady = true;
-    logger.info("Redis connected");
-});
-redis.on("error", err => logger.error("Redis error", { err }));
-redis.on("close", () => {
-    redisReady = false;
-    logger.warn("Redis connection closed; using local rate-limit fallback");
-});
-redis.on("end", () => {
-    redisReady = false;
-});
+if (redis) {
+    redis.on("connect", () => {
+        redisReady = true;
+        logger.info("Redis connected", { redisUrl });
+    });
+    redis.on("error", err => logger.error("Redis error", { err, redisUrl }));
+    redis.on("close", () => {
+        redisReady = false;
+        logger.warn("Redis connection closed; using local rate-limit fallback");
+    });
+    redis.on("end", () => {
+        redisReady = false;
+    });
+
+    redis.connect().catch(err => {
+        redisReady = false;
+        logger.warn("Redis initial connect failed; using local rate-limit fallback", { err: err?.message || err });
+    });
+} else {
+    logger.warn("Redis disabled via REDIS_ENABLED=false; using local rate-limit fallback only");
+}
 
 /* =====================================================
    PROMETHEUS METRICS
@@ -103,9 +121,11 @@ async function gracefulShutdown() {
     }
 
     await mongoose.connection.close();
-    try {
-        await redis.quit();
-    } catch {}
+    if (redis) {
+        try {
+            await redis.quit();
+        } catch {}
+    }
 
     process.exit(0);
 }
@@ -204,11 +224,18 @@ async function checkRateLimit(sessionId) {
     const minuteKey = `rate:${sessionId}:minute`;
     const hourKey = `rate:${sessionId}:hour`;
 
-    const minuteCount = await redis.incr(minuteKey);
-    if (minuteCount === 1) await redis.expire(minuteKey, 60);
+    let minuteCount;
+    let hourCount;
+    try {
+        minuteCount = await redis.incr(minuteKey);
+        if (minuteCount === 1) await redis.expire(minuteKey, 60);
 
-    const hourCount = await redis.incr(hourKey);
-    if (hourCount === 1) await redis.expire(hourKey, 3600);
+        hourCount = await redis.incr(hourKey);
+        if (hourCount === 1) await redis.expire(hourKey, 3600);
+    } catch {
+        redisReady = false;
+        return checkRateLimit(sessionId);
+    }
 
     if (minuteCount > MAX_PER_MINUTE)
         return "Rate limit exceeded (minute)";

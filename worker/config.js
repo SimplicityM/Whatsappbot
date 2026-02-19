@@ -53,6 +53,15 @@ module.exports = {
     },
 
     // ========================================
+    // REDIS CONFIGURATION
+    // ========================================
+    redis: {
+        ENABLED: process.env.REDIS_ENABLED !== 'false',
+        URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
+        CONNECT_TIMEOUT_MS: parseInt(process.env.REDIS_CONNECT_TIMEOUT_MS || '10000'),
+    },
+
+    // ========================================
     // WHATSAPP CLIENT CONFIGURATION
     // ========================================
     client: {

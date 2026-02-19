@@ -24,6 +24,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - mongo
       - redis
@@ -36,6 +38,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - mongo
       - redis
@@ -48,6 +52,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - mongo
       - redis
