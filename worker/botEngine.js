@@ -5,290 +5,906 @@ const SavedGroupList = require("./models/SavedGroupList");
 const ActiveGroup = require("./models/ActiveGroup");
 const AutoReply = require("./models/AutoReply");
 const TagUsage = require("./models/TagUsage");
+const GroupPermission = require("./models/GroupPermission");
 const Schedule = require("./models/Schedule");
+const User = require("./models/User");
+
+const subscriptionPlans = require("../config/subscriptionPlans");
+const CommandGrant = require("../models/CommandGrant");
 
 const PREFIX = config?.client?.COMMAND_PREFIX || "!";
 const SPAM_WINDOW = 10000;
 const SPAM_LIMIT = 5;
+const TAG_ROTATE_SIZE = 100;
+
 const spam = new Map();
 const runningSchedule = new Set();
 
-function txt(msg) {
+function msgText(msg) {
     const m = msg.message || {};
     return (
         m.conversation ||
         m.extendedTextMessage?.text ||
         m.imageMessage?.caption ||
         m.videoMessage?.caption ||
+        m.documentMessage?.caption ||
         ""
     ).trim();
 }
 
-function jid(x) {
-    if (!x) return "";
-    const [a, b] = x.split("@");
-    return `${a.split(":")[0]}@${b}`;
+function normalizeJid(j) {
+    if (!j) return "";
+    const [left, right] = j.split("@");
+    if (!left || !right) return j;
+    return `${left.split(":")[0]}@${right}`;
 }
 
-async function send(sock, to, text, extra = {}) {
+function digitsToJid(s) {
+    const d = String(s || "").replace(/[^0-9]/g, "");
+    if (!d) return null;
+    return `${d}@s.whatsapp.net`;
+}
+
+function mentionToken(j) {
+    return `@${normalizeJid(j).split("@")[0]}`;
+}
+
+function getSelfJid(sock) {
+    return normalizeJid(sock.user?.id);
+}
+
+function extractUserId(sessionId) {
+    const m = String(sessionId || "").match(/^session-([^-]+)/);
+    return m ? m[1] : null;
+}
+
+async function sendText(sock, to, text, extra = {}) {
     return sock.sendMessage(to, { text, ...extra });
 }
 
-async function allGroups(sock, adminOnly) {
-    const raw = await sock.groupFetchAllParticipating();
-    const me = jid(sock.user?.id);
+function addDelay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseQuoted(msg) {
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const quoted = ctx?.quotedMessage;
+    if (!quoted) return null;
+
+    const text =
+        quoted.conversation ||
+        quoted.extendedTextMessage?.text ||
+        quoted.imageMessage?.caption ||
+        quoted.videoMessage?.caption ||
+        quoted.documentMessage?.caption ||
+        "";
+
+    return {
+        text,
+        stanzaId: ctx.stanzaId || null,
+        participant: normalizeJid(ctx.participant || "")
+    };
+}
+
+async function loadAllGroups(sock, adminOnly) {
+    const all = await sock.groupFetchAllParticipating();
+    const me = getSelfJid(sock);
     const rows = [];
-    for (const [groupId, g] of Object.entries(raw || {})) {
-        const p = g.participants || [];
+
+    for (const [groupId, g] of Object.entries(all || {})) {
+        const participants = g.participants || [];
         if (adminOnly) {
-            const mine = p.find(x => jid(x.id) === me);
+            const mine = participants.find(p => normalizeJid(p.id) === me);
             if (!mine?.admin) continue;
         }
-        rows.push({ name: g.subject || "Unnamed Group", groupId });
+        rows.push({
+            name: g.subject || "Unnamed Group",
+            groupId
+        });
     }
+
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return rows;
 }
 
-async function resolveGroup(sock, sessionId, idx, all = false) {
+async function getCachedGroups(sock, sessionId, all = false, refresh = false) {
     const key = all ? `${sessionId}_all` : sessionId;
-    let c = await SavedGroupList.findOne({ sessionId: key }).lean().catch(() => null);
-    let groups = c?.groups || [];
-    if (!groups.length) {
-        groups = await allGroups(sock, !all);
-        await SavedGroupList.findOneAndUpdate({ sessionId: key }, { groups, updatedAt: new Date() }, { upsert: true });
+    let cache = null;
+    if (!refresh) {
+        cache = await SavedGroupList.findOne({ sessionId: key }).lean().catch(() => null);
     }
-    if (idx) return groups[idx - 1] || null;
-    const a = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
-    return a?.groupId ? groups.find(g => g.groupId === a.groupId) : null;
+    let groups = cache?.groups || [];
+
+    if (!groups.length || refresh) {
+        groups = await loadAllGroups(sock, !all);
+        await SavedGroupList.findOneAndUpdate(
+            { sessionId: key },
+            { groups, updatedAt: new Date() },
+            { upsert: true }
+        );
+    }
+
+    return groups;
 }
 
-async function members(sock, sessionId, groupId) {
-    const c = await GroupMembers.findOne({ sessionId, groupId }).lean().catch(() => null);
-    if (c?.members?.length) return c.members;
+async function resolveGroup(sock, sessionId, idx, all = false) {
+    const groups = await getCachedGroups(sock, sessionId, all, false);
+    if (idx && !Number.isNaN(idx)) return groups[idx - 1] || null;
+
+    const active = await ActiveGroup.findOne({ sessionId }).lean().catch(() => null);
+    if (active?.groupId) {
+        return groups.find(g => g.groupId === active.groupId) || null;
+    }
+
+    return null;
+}
+
+async function getGroupMembers(sock, sessionId, groupId, forceRefresh = false) {
+    if (!forceRefresh) {
+        const c = await GroupMembers.findOne({ sessionId, groupId }).lean().catch(() => null);
+        if (c?.members?.length) return c.members;
+    }
+
     const m = await sock.groupMetadata(groupId);
-    const rows = (m.participants || []).map(p => jid(p.id));
-    await GroupMembers.findOneAndUpdate({ sessionId, groupId }, { members: rows, updatedAt: new Date() }, { upsert: true });
-    return rows;
+    const members = (m.participants || []).map(p => normalizeJid(p.id));
+    await GroupMembers.findOneAndUpdate(
+        { sessionId, groupId },
+        { members, updatedAt: new Date() },
+        { upsert: true }
+    );
+    return members;
 }
 
-async function autoReply(sock, from, sessionId, body, isGroup, fromMe) {
-    if (!body || fromMe) return;
-    const d = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
-    if (!d || d.globalEnabled === false) return;
-    if (isGroup && d.disabledGroups?.includes(from)) return;
-    if (isGroup && d.allowedGroups?.length && !d.allowedGroups.includes(from)) return;
-    const rules = d.globalRules || d.rules || [];
-    const t = body.toLowerCase();
-    for (const r of rules) {
-        const k = String(r.keyword || "").toLowerCase();
-        if (!k || r.active === false) continue;
-        const ok =
-            (r.matchType === "exact" && t === k) ||
-            (r.matchType === "starts" && t.startsWith(k)) ||
-            (r.matchType === "ends" && t.endsWith(k)) ||
-            ((r.matchType === "contains" || !r.matchType) && t.includes(k));
-        if (ok) {
-            await send(sock, from, r.response);
-            return;
+function parseTargets(tokens, sourceMembers = []) {
+    const out = new Set();
+
+    for (const token of tokens) {
+        if (!token) continue;
+
+        if (/^\d+-\d+$/.test(token)) {
+            const [a, b] = token.split("-").map(v => parseInt(v, 10));
+            const end = Math.min(b, sourceMembers.length);
+            for (let i = a; i <= end; i++) {
+                if (sourceMembers[i - 1]) out.add(sourceMembers[i - 1]);
+            }
+            continue;
+        }
+
+        if (/^\d+(,\d+)+$/.test(token)) {
+            token.split(",").map(v => parseInt(v, 10)).forEach(i => {
+                if (sourceMembers[i - 1]) out.add(sourceMembers[i - 1]);
+            });
+            continue;
+        }
+
+        if (token.includes("@")) {
+            const d = token.replace(/[^0-9]/g, "");
+            if (d.length >= 7) out.add(digitsToJid(d));
+            continue;
+        }
+
+        if (/^\d+$/.test(token)) {
+            const n = parseInt(token, 10);
+            if (token.length >= 10) out.add(digitsToJid(token));
+            else if (sourceMembers[n - 1]) out.add(sourceMembers[n - 1]);
+            continue;
         }
     }
+
+    return Array.from(out).filter(Boolean).map(normalizeJid);
+}
+
+function mapPlanCommand(c) {
+    const map = {
+        autoreply: "auto_reply",
+        schedule: "scheduler",
+        listschedules: "scheduler",
+        cancelschedule: "scheduler",
+        forwardone: "forward",
+        forwardmulti: "forward",
+        forwardall: "forward",
+        tagfew: "tag",
+        dmall: "dmall",
+        dmallmulti: "dmall",
+        dmselected: "dmall"
+    };
+    return map[c] || c;
+}
+
+async function canUseCommand(sessionId, commandName) {
+    const userId = extractUserId(sessionId);
+    if (!userId) return true;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) return false;
+
+        if (typeof user.isExemptFromPayment === "function" && user.isExemptFromPayment()) return true;
+        if (typeof user.isBotOwner === "function" && user.isBotOwner()) return true;
+        if (typeof user.isSystemAdmin === "function" && user.isSystemAdmin()) return true;
+
+        const now = new Date();
+        const isActive = user.subscriptionExpiry && new Date(user.subscriptionExpiry) > now;
+        const isPaid = user.paymentStatus === "paid" || user.paymentStatus === "trial";
+        const c = mapPlanCommand(commandName);
+
+        if (!isActive && !isPaid) return ["ping", "help", "status"].includes(c);
+
+        const planName = String(user.subscription || "free").toLowerCase();
+        const plan = subscriptionPlans[planName] || subscriptionPlans.free;
+        if (plan.allowedCommands === "all") return true;
+        if (Array.isArray(plan.allowedCommands) && plan.allowedCommands.includes(c)) return true;
+        if (Array.isArray(user.customCommands) && user.customCommands.includes(c)) return true;
+
+        const grant = await CommandGrant.findOne({
+            $and: [
+                { $or: [{ userId: user._id }, { planType: planName }] },
+                { commandName: c },
+                { isActive: true },
+                { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] }
+            ]
+        }).lean();
+        return !!grant;
+    } catch {
+        return false;
+    }
+}
+
+async function processAutoReply({ sock, from, sessionId, isGroup, body, fromMe }) {
+    if (!body || fromMe) return;
+
+    const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+    if (!doc || doc.globalEnabled === false) return;
+    if (isGroup && doc.disabledGroups?.includes(from)) return;
+    if (isGroup && doc.allowedGroups?.length && !doc.allowedGroups.includes(from)) return;
+
+    const text = body.toLowerCase();
+    const groupRule = (doc.groupRules || []).find(g => g.groupId === from && g.enabled !== false);
+    const globalRules = doc.globalRules || doc.rules || [];
+    let rules = globalRules;
+
+    if (groupRule?.overrideGlobal) rules = groupRule.rules || [];
+    else if (groupRule?.rules?.length) rules = [...globalRules, ...groupRule.rules];
+
+    for (const r of rules) {
+        if (r.active === false) continue;
+        const k = String(r.keyword || "").toLowerCase();
+        if (!k) continue;
+        const mt = r.matchType || "contains";
+        const ok =
+            (mt === "exact" && text === k) ||
+            (mt === "starts" && text.startsWith(k)) ||
+            (mt === "ends" && text.endsWith(k)) ||
+            (mt === "contains" && text.includes(k));
+        if (!ok) continue;
+        await sendText(sock, from, r.response);
+        return;
+    }
+}
+
+async function processRecallKeywords({ sock, sessionId, from, body, fromMe }) {
+    if (fromMe || !body || body.startsWith(PREFIX)) return false;
+
+    const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
+    const kws = doc?.recallKeywords || [];
+    if (!kws.length) return false;
+
+    const text = body.toLowerCase().trim();
+    const parts = text.split(/\s+/);
+    const idx = parseInt(parts[parts.length - 1], 10);
+    if (Number.isNaN(idx) || idx < 1) return false;
+
+    const picked = kws.find(k => text.includes(String(k.term || "").toLowerCase()));
+    if (!picked) return false;
+
+    const store = sock.store?.messages?.[from];
+    if (!store) return false;
+
+    const items = Object.values(store).map(v => v.message ? v : v.array?.[0]).filter(Boolean);
+    if (!items.length) return false;
+
+    const wantMedia = picked.mapsToMedia;
+    const filtered = items.filter(w => {
+        const m = w.message || {};
+        if (!wantMedia) return true;
+        if (wantMedia === "image") return !!m.imageMessage;
+        if (wantMedia === "video") return !!m.videoMessage;
+        if (wantMedia === "audio") return !!m.audioMessage;
+        if (wantMedia === "document") return !!m.documentMessage;
+        if (wantMedia === "sticker") return !!m.stickerMessage;
+        return true;
+    });
+
+    if (idx > filtered.length) {
+        await sendText(sock, from, `I found ${filtered.length} matching items only.`);
+        return true;
+    }
+
+    const target = filtered[idx - 1];
+    const q = target.message;
+    const t =
+        q?.conversation ||
+        q?.extendedTextMessage?.text ||
+        q?.imageMessage?.caption ||
+        q?.videoMessage?.caption ||
+        q?.documentMessage?.caption;
+
+    if (!t) {
+        await sendText(sock, from, "Found a matching item but cannot resend this media type yet.");
+        return true;
+    }
+
+    await sendText(sock, from, t);
+    return true;
 }
 
 function nextRun(hhmm) {
-    const [h, m] = String(hhmm).split(":").map(Number);
-    if ([h, m].some(Number.isNaN) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
     const d = new Date();
     d.setHours(h, m, 0, 0);
     if (d <= new Date()) d.setDate(d.getDate() + 1);
     return d;
 }
 
-async function handleCmd({ sock, msg, sessionId, from, sender, isGroup, isAdmin, body }) {
-    const [cmd, ...args] = body.slice(PREFIX.length).trim().split(/\s+/);
-    const c = String(cmd || "").toLowerCase();
-    const fromMe = !!msg.key.fromMe || jid(sender) === jid(sock.user?.id);
-    if (!fromMe && ["list", "listall", "use", "unset", "status", "members", "admins", "tag", "tagexcept", "autoreply", "schedule", "listschedules", "cancelschedule"].includes(c)) return;
+async function handleCommand(ctx) {
+    const { sock, msg, sessionId, from, sender, isGroup, isAdmin, body } = ctx;
+    const selfJid = getSelfJid(sock);
+    const senderJid = normalizeJid(sender);
+    const isSelfChat = normalizeJid(from) === selfJid && senderJid === selfJid;
+    const fromMe = !!msg.key.fromMe || senderJid === selfJid;
 
-    if (c === "ping") return send(sock, from, "Pong!");
-    if (c === "help" || c === "menu") return send(sock, from, "*Commands*\n!ping !list !listall !use !tag !tagexcept !autoreply !schedule");
+    const full = body.slice(PREFIX.length).trim();
+    const [rawCmd, ...args] = full.split(/\s+/);
+    const cmd = String(rawCmd || "").toLowerCase();
 
-    if (c === "antilink" || c === "antidelete" || c === "welcome") {
-        if (!isGroup || !isAdmin) return send(sock, from, "Group admin only.");
-        const mode = (args[0] || "").toLowerCase();
-        if (!["on", "off"].includes(mode)) return send(sock, from, `Usage: !${c} on/off`);
+    const ownerOnly = new Set([
+        "list", "listall", "use", "unset", "status", "members", "admins",
+        "tag", "tagexcept", "tagfew", "dmall", "dmallmulti", "dmselected",
+        "forwardone", "forwardmulti", "forwardall", "autoreply",
+        "keyword", "find", "schedule", "listschedules", "cancelschedule"
+    ]);
+
+    if (ownerOnly.has(cmd) && !(fromMe && isSelfChat)) return;
+
+    if (!(await canUseCommand(sessionId, cmd))) {
+        await sendText(sock, from, `Command !${cmd} is not available on your current plan.`);
+        return;
+    }
+
+    if (cmd === "ping") return sendText(sock, from, "Pong!");
+
+    if (cmd === "help" || cmd === "menu") {
+        return sendText(
+            sock,
+            from,
+            [
+                "*Commands*",
+                "!list !listall !use !unset",
+                "!status !members !admins",
+                "!tag !tagexcept !tagfew",
+                "!dmall !dmallmulti !dmselected",
+                "!forwardone !forwardmulti !forwardall",
+                "!autoreply ...",
+                "!keyword ... !find ...",
+                "!schedule !listschedules !cancelschedule",
+                "!antilink !antidelete !welcome"
+            ].join("\n")
+        );
+    }
+
+    if (cmd === "antilink" || cmd === "antidelete" || cmd === "welcome") {
+        if (!isGroup || !isAdmin) return sendText(sock, from, "Group admin only.");
+        const mode = String(args[0] || "").toLowerCase();
+        if (!["on", "off"].includes(mode)) return sendText(sock, from, `Usage: !${cmd} on/off`);
         const g = (await GroupSettings.findOne({ groupId: from })) || (await GroupSettings.create({ groupId: from }));
-        if (c === "antilink") g.antiLink = mode === "on";
-        if (c === "antidelete") g.antiDelete = mode === "on";
-        if (c === "welcome") g.welcome = mode === "on";
+        if (cmd === "antilink") g.antiLink = mode === "on";
+        if (cmd === "antidelete") g.antiDelete = mode === "on";
+        if (cmd === "welcome") g.welcome = mode === "on";
         await g.save();
-        return send(sock, from, `${c} ${mode.toUpperCase()}`);
+        return sendText(sock, from, `${cmd} ${mode.toUpperCase()}`);
     }
 
-    if (c === "list") {
-        const g = await allGroups(sock, true);
-        await SavedGroupList.findOneAndUpdate({ sessionId }, { groups: g, updatedAt: new Date() }, { upsert: true });
-        if (!g.length) return send(sock, from, "No admin groups.");
-        return send(sock, from, g.map((x, i) => `${i + 1}. ${x.name}`).join("\n"));
+    if (cmd === "list" || cmd === "listall") {
+        const groups = await getCachedGroups(sock, sessionId, cmd === "listall", args[0] === "refresh");
+        if (!groups.length) return sendText(sock, from, "No groups found.");
+        return sendText(sock, from, groups.map((g, i) => `${i + 1}. ${g.name}`).join("\n"));
     }
 
-    if (c === "listall") {
-        const g = await allGroups(sock, false);
-        await SavedGroupList.findOneAndUpdate({ sessionId: `${sessionId}_all` }, { groups: g, updatedAt: new Date() }, { upsert: true });
-        if (!g.length) return send(sock, from, "No groups found.");
-        return send(sock, from, g.map((x, i) => `${i + 1}. ${x.name}`).join("\n"));
-    }
-
-    if (c === "use") {
+    if (cmd === "use") {
         const idx = parseInt(args[0], 10);
-        if (Number.isNaN(idx)) return send(sock, from, "Usage: !use <index>");
+        if (Number.isNaN(idx)) return sendText(sock, from, "Usage: !use <groupIndex>");
         const g = await resolveGroup(sock, sessionId, idx, false);
-        if (!g) return send(sock, from, "Invalid index.");
-        await ActiveGroup.findOneAndUpdate({ sessionId }, { sessionId, activeIndex: idx, groupId: g.groupId, groupName: g.name, updatedAt: new Date() }, { upsert: true });
-        return send(sock, from, `Active group: ${g.name}`);
+        if (!g) return sendText(sock, from, "Invalid group index.");
+        await ActiveGroup.findOneAndUpdate(
+            { sessionId },
+            { sessionId, activeIndex: idx, groupId: g.groupId, groupName: g.name, updatedAt: new Date() },
+            { upsert: true }
+        );
+        return sendText(sock, from, `Active group set: ${g.name}`);
     }
 
-    if (c === "unset") {
+    if (cmd === "unset") {
         await ActiveGroup.deleteOne({ sessionId });
-        return send(sock, from, "Active group cleared.");
+        return sendText(sock, from, "Active group cleared.");
     }
 
-    if (c === "status") {
-        const a = await SavedGroupList.findOne({ sessionId }).lean().catch(() => null);
-        const b = await SavedGroupList.findOne({ sessionId: `${sessionId}_all` }).lean().catch(() => null);
-        return send(sock, from, `Session: ${sessionId}\nAdmin cache: ${a?.groups?.length || 0}\nAll cache: ${b?.groups?.length || 0}`);
+    if (cmd === "status") {
+        const admin = await SavedGroupList.findOne({ sessionId }).lean().catch(() => null);
+        const all = await SavedGroupList.findOne({ sessionId: `${sessionId}_all` }).lean().catch(() => null);
+        const m = await GroupMembers.countDocuments({ sessionId }).catch(() => 0);
+        return sendText(sock, from, `Session: ${sessionId}\nAdmin groups: ${admin?.groups?.length || 0}\nAll groups: ${all?.groups?.length || 0}\nCached member docs: ${m}`);
     }
 
-    if (c === "members" || c === "admins") {
+    if (cmd === "members" || cmd === "admins") {
         const idx = args[0] ? parseInt(args[0], 10) : null;
-        const g = await resolveGroup(sock, sessionId, idx, c === "admins");
-        if (!g) return send(sock, from, "No target group.");
+        const g = await resolveGroup(sock, sessionId, idx, cmd === "admins");
+        if (!g) return sendText(sock, from, "No target group found.");
         const md = await sock.groupMetadata(g.groupId);
-        const rows = c === "admins" ? (md.participants || []).filter(p => !!p.admin).map(p => jid(p.id)) : (md.participants || []).map(p => jid(p.id));
-        if (!rows.length) return send(sock, from, "No entries.");
-        return send(sock, from, rows.map((x, i) => `${i + 1}. ${x.split("@")[0]}`).join("\n"));
+        const rows = cmd === "admins"
+            ? (md.participants || []).filter(p => !!p.admin).map(p => normalizeJid(p.id))
+            : (md.participants || []).map(p => normalizeJid(p.id));
+        if (!rows.length) return sendText(sock, from, "No entries.");
+        return sendText(sock, from, rows.map((x, i) => `${i + 1}. ${x.split("@")[0]}`).join("\n"));
     }
 
-    if (c === "tag") {
+    if (cmd === "tag" || cmd === "tagfew") {
         const idx = args[0] && /^\d+$/.test(args[0]) ? parseInt(args[0], 10) : null;
         const g = await resolveGroup(sock, sessionId, idx, false);
-        if (!g) return send(sock, from, "No target group. Use !list / !use.");
-        const list = await members(sock, sessionId, g.groupId);
-        const me = jid(sock.user?.id);
-        const clean = list.filter(x => x !== me);
-        if (!clean.length) return send(sock, from, "No members to tag.");
-        const u = await TagUsage.findOneAndUpdate({ sessionId, groupId: g.groupId }, { $setOnInsert: { lastPosition: 0 } }, { upsert: true, new: true });
+        if (!g) return sendText(sock, from, "No target group. Use !list and !use.");
+        const list = await getGroupMembers(sock, sessionId, g.groupId, false);
+        const me = getSelfJid(sock);
+        const pool = list.filter(x => x !== me);
+        if (!pool.length) return sendText(sock, from, "No members available.");
+
+        let targets = [];
+        if (cmd === "tagfew") {
+            const raw = full.slice("tagfew".length).trim();
+            const [left, right] = raw.split("|");
+            const parts = String(left || "").trim().split(/\s+/);
+            const tk = parts.slice(1);
+            targets = parseTargets(tk, pool);
+            if (!targets.length) return sendText(sock, from, "No valid selected targets.");
+            const text = (right || "*Attention selected users*").trim();
+            await sendText(sock, g.groupId, `${text}\n\n${targets.map(mentionToken).join(" ")}`, { mentions: targets });
+            return sendText(sock, from, `Tagfew completed in ${g.name}.`);
+        }
+
+        const u = await TagUsage.findOneAndUpdate(
+            { sessionId, groupId: g.groupId },
+            { $setOnInsert: { lastPosition: 0, lastTaggedAt: new Date() } },
+            { upsert: true, new: true }
+        );
         let p = u.lastPosition || 0;
-        if (p >= clean.length) p = 0;
-        const batch = clean.slice(p, p + 100);
-        u.lastPosition = p + 100 >= clean.length ? 0 : p + 100;
+        if (p >= pool.length) p = 0;
+        targets = pool.slice(p, p + TAG_ROTATE_SIZE);
+        u.lastPosition = p + TAG_ROTATE_SIZE >= pool.length ? 0 : p + TAG_ROTATE_SIZE;
         u.lastTaggedAt = new Date();
         await u.save();
-        const msgText = args.slice(idx ? 1 : 0).join(" ").trim() || "*Attention everyone*";
-        await send(sock, g.groupId, `${msgText}\n\n${batch.map(x => `@${x.split("@")[0]}`).join(" ")}`, { mentions: batch });
-        return send(sock, from, `Tagged ${batch.length} in ${g.name}`);
+
+        const text = args.slice(idx ? 1 : 0).join(" ").trim() || "*Attention everyone*";
+        await sendText(sock, g.groupId, `${text}\n\n${targets.map(mentionToken).join(" ")}`, { mentions: targets });
+        return sendText(sock, from, `Tagged ${targets.length} members in ${g.name}.`);
     }
 
-    if (c === "tagexcept") {
-        const raw = body.slice(`${PREFIX}tagexcept`.length).trim();
+    if (cmd === "tagexcept") {
+        const raw = full.slice("tagexcept".length).trim();
         const [left, right] = raw.split("|");
-        const p = String(left || "").trim().split(/\s+/);
-        const idx = parseInt(p[0], 10);
-        if (Number.isNaN(idx)) return send(sock, from, "Usage: !tagexcept <index> <targets> | <message>");
+        const parts = String(left || "").trim().split(/\s+/);
+        const idx = parseInt(parts[0], 10);
+        if (Number.isNaN(idx)) return sendText(sock, from, "Usage: !tagexcept <groupIndex> <targets> | <message>");
         const g = await resolveGroup(sock, sessionId, idx, false);
-        if (!g) return send(sock, from, "Invalid group index.");
-        const list = await members(sock, sessionId, g.groupId);
-        const ex = new Set();
-        for (const t of p.slice(1)) {
-            if (/^\d+(,\d+)*$/.test(t)) t.split(",").map(x => parseInt(x, 10)).forEach(i => list[i - 1] && ex.add(list[i - 1]));
-            else {
-                const d = t.replace(/[^0-9]/g, "");
-                if (d.length >= 7) ex.add(`${d}@s.whatsapp.net`);
+        if (!g) return sendText(sock, from, "Invalid group index.");
+        const list = await getGroupMembers(sock, sessionId, g.groupId, false);
+        const ex = new Set(parseTargets(parts.slice(1), list));
+        const me = getSelfJid(sock);
+        const targets = list.map(normalizeJid).filter(x => x !== me && !ex.has(x));
+        if (!targets.length) return sendText(sock, from, "No members left after exclusion.");
+        const text = (right || "*Attention filtered*").trim();
+        await sendText(sock, g.groupId, `${text}\n\n${targets.map(mentionToken).join(" ")}`, { mentions: targets });
+        return sendText(sock, from, `Tag-except completed in ${g.name}.`);
+    }
+
+    if (cmd === "dmall" || cmd === "dmselected" || cmd === "dmallmulti") {
+        const raw = full.slice(cmd.length).trim();
+        const [left, right] = raw.split("|");
+        const message = String(right || "").trim();
+        if (!message) return sendText(sock, from, `Usage: !${cmd} ... | <message>`);
+
+        const leftParts = String(left || "").trim().split(/\s+/).filter(Boolean);
+        let recipients = [];
+
+        if (cmd === "dmallmulti") {
+            const idxs = (leftParts[0] || "").split(",").map(v => parseInt(v, 10)).filter(v => !Number.isNaN(v));
+            for (const idx of idxs) {
+                const g = await resolveGroup(sock, sessionId, idx, true);
+                if (!g) continue;
+                const list = await getGroupMembers(sock, sessionId, g.groupId, true).catch(() => []);
+                recipients.push(...list);
+            }
+        } else {
+            const maybeIdx = parseInt(leftParts[0], 10);
+            if (!Number.isNaN(maybeIdx) && maybeIdx <= 999) {
+                const g = await resolveGroup(sock, sessionId, maybeIdx, true);
+                if (!g) return sendText(sock, from, "Invalid group index.");
+                const list = await getGroupMembers(sock, sessionId, g.groupId, true);
+                if (cmd === "dmall") {
+                    const targets = parseTargets(leftParts.slice(1), list);
+                    recipients = targets.length ? targets : list;
+                } else {
+                    recipients = parseTargets(leftParts.slice(1), list);
+                }
+            } else {
+                recipients = parseTargets(leftParts, []);
             }
         }
-        const me = jid(sock.user?.id);
-        const targets = list.map(jid).filter(x => x !== me && !ex.has(x));
-        if (!targets.length) return send(sock, from, "No members left after exclusions.");
-        const m = (right || "*Attention filtered*").trim();
-        await send(sock, g.groupId, `${m}\n\n${targets.map(x => `@${x.split("@")[0]}`).join(" ")}`, { mentions: targets });
-        return send(sock, from, "Tag-except completed.");
+
+        const me = getSelfJid(sock);
+        recipients = Array.from(new Set(recipients.map(normalizeJid))).filter(j => j && j !== me && !j.endsWith("@g.us"));
+        if (!recipients.length) return sendText(sock, from, "No valid DM recipients found.");
+
+        let sent = 0;
+        for (const r of recipients) {
+            try {
+                await sendText(sock, r, message);
+                sent++;
+            } catch {}
+            await addDelay(350);
+        }
+        return sendText(sock, from, `DM completed: ${sent}/${recipients.length}`);
     }
 
-    if (c === "autoreply") {
-        const sub = (args[0] || "").toLowerCase();
-        if (sub === "list") {
-            const d = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
-            const r = d?.globalRules || d?.rules || [];
-            return send(sock, from, r.length ? r.map((x, i) => `${i + 1}. ${x.keyword} => ${x.response}`).join("\n") : "No auto-reply rules.");
+    if (cmd === "forwardone" || cmd === "forwardmulti" || cmd === "forwardall") {
+        const q = parseQuoted(msg);
+        if (!q?.text) return sendText(sock, from, "Reply to a text/media-caption message first.");
+
+        let targetGroups = [];
+        if (cmd === "forwardone") {
+            const idx = parseInt(args[0], 10);
+            if (Number.isNaN(idx)) return sendText(sock, from, "Usage: !forwardone <groupIndex>");
+            const g = await resolveGroup(sock, sessionId, idx, true);
+            if (!g) return sendText(sock, from, "Invalid group index.");
+            targetGroups = [g];
+        } else if (cmd === "forwardmulti") {
+            const idxs = String(args[0] || "").split(",").map(v => parseInt(v, 10)).filter(v => !Number.isNaN(v));
+            for (const idx of idxs) {
+                const g = await resolveGroup(sock, sessionId, idx, true);
+                if (g) targetGroups.push(g);
+            }
+        } else {
+            targetGroups = await getCachedGroups(sock, sessionId, true, true);
         }
+
+        if (!targetGroups.length) return sendText(sock, from, "No target groups found.");
+
+        const me = getSelfJid(sock);
+        const recipients = new Set();
+        for (const g of targetGroups) {
+            const list = await getGroupMembers(sock, sessionId, g.groupId, true).catch(() => []);
+            list.forEach(j => {
+                const n = normalizeJid(j);
+                if (n && n !== me && !n.endsWith("@g.us")) recipients.add(n);
+            });
+        }
+
+        if (!recipients.size) return sendText(sock, from, "No recipients found.");
+
+        let sent = 0;
+        for (const r of recipients) {
+            try {
+                await sendText(sock, r, q.text);
+                sent++;
+            } catch {}
+            await addDelay(350);
+        }
+        return sendText(sock, from, `Forward completed: ${sent}/${recipients.size}`);
+    }
+
+    if (cmd === "keyword") {
+        const sub = String(args[0] || "").toLowerCase();
+        const doc = (await AutoReply.findOne({ sessionId })) || (await AutoReply.create({ sessionId }));
+        doc.recallKeywords = doc.recallKeywords || [];
+
         if (sub === "add") {
-            const v = args.slice(1).join(" ");
-            const i = v.indexOf("|");
-            if (i === -1) return send(sock, from, "Usage: !autoreply add <keyword> | <response>");
-            const k = v.slice(0, i).trim().toLowerCase();
-            const r = v.slice(i + 1).trim();
-            if (!k || !r) return send(sock, from, "Keyword/response missing.");
-            await AutoReply.findOneAndUpdate({ sessionId }, { $setOnInsert: { sessionId, globalEnabled: true }, $push: { globalRules: { keyword: k, response: r } } }, { upsert: true });
-            return send(sock, from, "Auto-reply added.");
+            const fullArg = args.slice(1).join(" ");
+            const i = fullArg.indexOf("|");
+            if (i === -1) return sendText(sock, from, "Usage: !keyword add <term> | <mapping>");
+            const term = fullArg.slice(0, i).trim().toLowerCase();
+            const map = fullArg.slice(i + 1).trim().toLowerCase();
+            if (!term || !map) return sendText(sock, from, "Invalid term/mapping.");
+
+            let mapsToMedia = null;
+            if (/image|picture|photo|pic/.test(map)) mapsToMedia = "image";
+            else if (/video|vid|mp4/.test(map)) mapsToMedia = "video";
+            else if (/audio|voice|ptt/.test(map)) mapsToMedia = "audio";
+            else if (/document|doc|pdf|file/.test(map)) mapsToMedia = "document";
+            else if (/sticker|gif/.test(map)) mapsToMedia = "sticker";
+
+            const existing = doc.recallKeywords.find(k => String(k.term).toLowerCase() === term);
+            if (existing) {
+                existing.mapsToTime = map;
+                existing.mapsToMedia = mapsToMedia;
+            } else {
+                doc.recallKeywords.push({ term, mapsToTime: map, mapsToMedia });
+            }
+            await doc.save();
+            return sendText(sock, from, `Keyword saved: ${term}`);
         }
+
         if (sub === "remove") {
-            const k = args.slice(1).join(" ").trim().toLowerCase();
-            if (!k) return send(sock, from, "Usage: !autoreply remove <keyword>");
-            await AutoReply.updateOne({ sessionId }, { $pull: { globalRules: { keyword: k } } });
-            return send(sock, from, "Auto-reply removed.");
+            const term = args.slice(1).join(" ").trim().toLowerCase();
+            if (!term) return sendText(sock, from, "Usage: !keyword remove <term>");
+            doc.recallKeywords = doc.recallKeywords.filter(k => String(k.term).toLowerCase() !== term);
+            await doc.save();
+            return sendText(sock, from, `Keyword removed: ${term}`);
         }
-        return send(sock, from, "Usage: !autoreply add/remove/list");
+
+        if (sub === "list") {
+            if (!doc.recallKeywords.length) return sendText(sock, from, "No recall keywords set.");
+            const out = doc.recallKeywords.map((k, i) => `${i + 1}. ${k.term} -> time:${k.mapsToTime || "-"} media:${k.mapsToMedia || "-"}`).join("\n");
+            return sendText(sock, from, out);
+        }
+
+        return sendText(sock, from, "Usage: !keyword add/remove/list");
     }
 
-    if (c === "schedule") {
-        const raw = body.slice(`${PREFIX}schedule`.length).trim();
+    if (cmd === "find") {
+        const keyword = args.join(" ").trim().toLowerCase();
+        if (!keyword) return sendText(sock, from, "Usage: !find <keyword>");
+        const groups = await getCachedGroups(sock, sessionId, true, false);
+        const foundIn = [];
+        const store = sock.store?.messages || {};
+
+        for (const g of groups) {
+            const bucket = store[g.groupId];
+            if (!bucket) continue;
+            const items = Object.values(bucket).map(v => v.message ? v : v.array?.[0]).filter(Boolean);
+            const hit = items.find(w => {
+                const m = w.message || {};
+                const t =
+                    m.conversation ||
+                    m.extendedTextMessage?.text ||
+                    m.imageMessage?.caption ||
+                    m.videoMessage?.caption ||
+                    m.documentMessage?.caption ||
+                    "";
+                return String(t).toLowerCase().includes(keyword);
+            });
+            if (hit) foundIn.push(g.name);
+        }
+
+        if (!foundIn.length) return sendText(sock, from, "No cached matches found. Baileys search checks cached history only.");
+        return sendText(sock, from, `Found cached matches in:\n${foundIn.map(x => `- ${x}`).join("\n")}`);
+    }
+
+    if (cmd === "allow" || cmd === "unallow" || cmd === "deny" || cmd === "unblock" || cmd === "whitelist" || cmd === "blocklist") {
+        const idx = parseInt(args[0], 10);
+        const g = await resolveGroup(sock, sessionId, idx, false);
+        if (!g) return sendText(sock, from, "Usage: !<cmd> <groupIndex> [number]");
+
+        if (cmd === "whitelist" || cmd === "blocklist") {
+            const d = await GroupPermission.findOne({ botUserId: sessionId, groupId: g.groupId }).lean().catch(() => null);
+            const list = cmd === "whitelist" ? (d?.allowed || []) : (d?.blocked || []);
+            return sendText(sock, from, list.length ? list.join("\n") : "No entries.");
+        }
+
+        const j = digitsToJid(args[1]);
+        if (!j) return sendText(sock, from, "Provide a valid number.");
+
+        if (cmd === "allow") {
+            await GroupPermission.updateOne({ botUserId: sessionId, groupId: g.groupId }, { $addToSet: { allowed: j }, $pull: { blocked: j } }, { upsert: true });
+        } else if (cmd === "unallow") {
+            await GroupPermission.updateOne({ botUserId: sessionId, groupId: g.groupId }, { $pull: { allowed: j } }, { upsert: true });
+        } else if (cmd === "deny") {
+            await GroupPermission.updateOne({ botUserId: sessionId, groupId: g.groupId }, { $addToSet: { blocked: j }, $pull: { allowed: j } }, { upsert: true });
+        } else if (cmd === "unblock") {
+            await GroupPermission.updateOne({ botUserId: sessionId, groupId: g.groupId }, { $pull: { blocked: j } }, { upsert: true });
+        }
+
+        return sendText(sock, from, "Permission list updated.");
+    }
+
+    if (cmd === "autoreply") {
+        const sub = String(args[0] || "").toLowerCase();
+        let doc = await AutoReply.findOne({ sessionId }).catch(() => null);
+        if (!doc) doc = await AutoReply.create({ sessionId, globalRules: [], groupRules: [], allowedGroups: [], disabledGroups: [] });
+
+        const pickGroupFromSub = async pos => {
+            const idx = parseInt(args[pos], 10);
+            if (Number.isNaN(idx)) return null;
+            return resolveGroup(sock, sessionId, idx, true);
+        };
+
+        if (sub === "add" || sub === "remove" || sub === "list") {
+            if (sub === "list") {
+                const rules = doc.globalRules || [];
+                if (!rules.length) return sendText(sock, from, "No global autoreply rules.");
+                return sendText(sock, from, rules.map((r, i) => `${i + 1}. ${r.keyword} => ${r.response}`).join("\n"));
+            }
+            if (sub === "add") {
+                const payload = args.slice(1).join(" ");
+                const i = payload.indexOf("|");
+                if (i === -1) return sendText(sock, from, "Usage: !autoreply add <keyword> | <response>");
+                const keyword = payload.slice(0, i).trim().toLowerCase();
+                const response = payload.slice(i + 1).trim();
+                if (!keyword || !response) return sendText(sock, from, "Keyword or response missing.");
+                doc.globalRules = doc.globalRules || [];
+                doc.globalRules.push({ keyword, response });
+                await doc.save();
+                return sendText(sock, from, "Global autoreply rule added.");
+            }
+            const keyword = args.slice(1).join(" ").trim().toLowerCase();
+            doc.globalRules = (doc.globalRules || []).filter(r => String(r.keyword).toLowerCase() !== keyword);
+            await doc.save();
+            return sendText(sock, from, `Removed keyword: ${keyword}`);
+        }
+
+        if (["addgroup", "removegroup", "listgroup", "enablegroup", "disablegroup", "override"].includes(sub)) {
+            const g = await pickGroupFromSub(1);
+            if (!g) return sendText(sock, from, "Invalid group index.");
+            doc.groupRules = doc.groupRules || [];
+            let gr = doc.groupRules.find(r => r.groupId === g.groupId);
+            if (!gr) {
+                gr = { groupId: g.groupId, groupName: g.name, enabled: true, rules: [], mediaRules: [], overrideGlobal: false };
+                doc.groupRules.push(gr);
+            }
+
+            if (sub === "listgroup") {
+                if (!gr.rules?.length) return sendText(sock, from, "No group-specific rules.");
+                return sendText(sock, from, gr.rules.map((r, i) => `${i + 1}. ${r.keyword} => ${r.response}`).join("\n"));
+            }
+
+            if (sub === "addgroup") {
+                const payload = args.slice(2).join(" ");
+                const i = payload.indexOf("|");
+                if (i === -1) return sendText(sock, from, "Usage: !autoreply addgroup <index> <keyword> | <response>");
+                const keyword = payload.slice(0, i).trim().toLowerCase();
+                const response = payload.slice(i + 1).trim();
+                gr.rules.push({ keyword, response });
+                await doc.save();
+                return sendText(sock, from, `Group rule added for ${g.name}.`);
+            }
+
+            if (sub === "removegroup") {
+                const keyword = args.slice(2).join(" ").trim().toLowerCase();
+                gr.rules = (gr.rules || []).filter(r => String(r.keyword).toLowerCase() !== keyword);
+                await doc.save();
+                return sendText(sock, from, `Group rule removed for ${g.name}.`);
+            }
+
+            if (sub === "enablegroup" || sub === "disablegroup") {
+                gr.enabled = sub === "enablegroup";
+                await doc.save();
+                return sendText(sock, from, `Group rules ${gr.enabled ? "enabled" : "disabled"} for ${g.name}.`);
+            }
+
+            if (sub === "override") {
+                const mode = String(args[2] || "").toLowerCase();
+                if (!["on", "off"].includes(mode)) return sendText(sock, from, "Usage: !autoreply override <index> <on|off>");
+                gr.overrideGlobal = mode === "on";
+                await doc.save();
+                return sendText(sock, from, `Override ${mode.toUpperCase()} for ${g.name}.`);
+            }
+        }
+
+        if (["allow", "disallow", "disable", "enable"].includes(sub)) {
+            const g = await pickGroupFromSub(1);
+            if (!g) return sendText(sock, from, "Invalid group index.");
+            doc.allowedGroups = doc.allowedGroups || [];
+            doc.disabledGroups = doc.disabledGroups || [];
+
+            if (sub === "allow") {
+                doc.disabledGroups = doc.disabledGroups.filter(x => x !== g.groupId);
+                if (!doc.allowedGroups.includes(g.groupId)) doc.allowedGroups.push(g.groupId);
+            }
+            if (sub === "disallow") doc.allowedGroups = doc.allowedGroups.filter(x => x !== g.groupId);
+            if (sub === "disable") {
+                doc.allowedGroups = doc.allowedGroups.filter(x => x !== g.groupId);
+                if (!doc.disabledGroups.includes(g.groupId)) doc.disabledGroups.push(g.groupId);
+            }
+            if (sub === "enable") doc.disabledGroups = doc.disabledGroups.filter(x => x !== g.groupId);
+
+            await doc.save();
+            return sendText(sock, from, "Autoreply group filter updated.");
+        }
+
+        if (sub === "clearwhitelist") {
+            doc.allowedGroups = [];
+            await doc.save();
+            return sendText(sock, from, "Whitelist cleared.");
+        }
+
+        if (sub === "clearblacklist") {
+            doc.disabledGroups = [];
+            await doc.save();
+            return sendText(sock, from, "Blacklist cleared.");
+        }
+
+        if (sub === "status" || sub === "listall") {
+            const out = [
+                `Global enabled: ${doc.globalEnabled !== false ? "YES" : "NO"}`,
+                `Global rules: ${(doc.globalRules || []).length}`,
+                `Group rulesets: ${(doc.groupRules || []).length}`,
+                `Whitelisted groups: ${(doc.allowedGroups || []).length}`,
+                `Disabled groups: ${(doc.disabledGroups || []).length}`
+            ].join("\n");
+            return sendText(sock, from, out);
+        }
+
+        return sendText(sock, from, "Usage: !autoreply add/remove/list/addgroup/removegroup/listgroup/allow/disallow/disable/enable/override/status/help");
+    }
+
+    if (cmd === "schedule") {
+        const raw = full.slice("schedule".length).trim();
         const [left, right] = raw.split("|");
         const p = String(left || "").trim().split(/\s+/);
-        if (p.length < 4 || !right?.trim()) return send(sock, from, "Usage: !schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>");
+        if (p.length < 4 || !right?.trim()) return sendText(sock, from, "Usage: !schedule <index> HH:MM <group|dm> <once|daily|weekly> | <message>");
         const idx = parseInt(p[0], 10);
         const nr = nextRun(p[1]);
-        if (Number.isNaN(idx) || !nr) return send(sock, from, "Invalid schedule arguments.");
+        if (Number.isNaN(idx) || !nr) return sendText(sock, from, "Invalid schedule arguments.");
         const mode = p[2];
         const repeat = p[3];
-        if (!["group", "dm"].includes(mode) || !["once", "daily", "weekly"].includes(repeat)) return send(sock, from, "Invalid schedule mode/repeat.");
+        if (!["group", "dm"].includes(mode) || !["once", "daily", "weekly"].includes(repeat)) return sendText(sock, from, "Invalid schedule mode/repeat.");
         const g = await resolveGroup(sock, sessionId, idx, false);
-        if (!g) return send(sock, from, "Invalid group index.");
-        await Schedule.create({ userId: sessionId, chatId: g.groupId, mode, repeat, message: right.trim(), timeHHMM: p[1], nextRun: nr, active: true });
-        return send(sock, from, "Schedule created.");
+        if (!g) return sendText(sock, from, "Invalid group index.");
+        await Schedule.create({
+            userId: sessionId,
+            chatId: g.groupId,
+            mode,
+            repeat,
+            message: right.trim(),
+            timeHHMM: p[1],
+            nextRun: nr,
+            active: true
+        });
+        return sendText(sock, from, "Schedule created.");
     }
 
-    if (c === "listschedules") {
+    if (cmd === "listschedules") {
         const docs = await Schedule.find({ userId: sessionId, active: true }).sort({ nextRun: 1 }).lean();
-        return send(sock, from, docs.length ? docs.map(d => `${d._id} | ${d.mode} ${d.repeat} ${d.timeHHMM}`).join("\n") : "No active schedules.");
+        if (!docs.length) return sendText(sock, from, "No active schedules.");
+        return sendText(sock, from, docs.map(d => `${d._id} | ${d.mode} ${d.repeat} @ ${d.timeHHMM}`).join("\n"));
     }
 
-    if (c === "cancelschedule") {
+    if (cmd === "cancelschedule") {
         const id = args[0];
-        if (!id) return send(sock, from, "Usage: !cancelschedule <id>");
+        if (!id) return sendText(sock, from, "Usage: !cancelschedule <id>");
         const r = await Schedule.updateOne({ _id: id, userId: sessionId }, { active: false });
-        return send(sock, from, r.modifiedCount ? "Schedule canceled." : "Schedule not found.");
+        return sendText(sock, from, r.modifiedCount ? "Schedule canceled." : "Schedule not found.");
     }
 }
 
 async function runScheduledJobs({ sock, sessionId }) {
     if (runningSchedule.has(sessionId)) return;
     runningSchedule.add(sessionId);
+
     try {
-        const jobs = await Schedule.find({ userId: sessionId, active: true, nextRun: { $lte: new Date() } }).lean();
+        const jobs = await Schedule.find({
+            userId: sessionId,
+            active: true,
+            nextRun: { $lte: new Date() }
+        }).lean();
+
         for (const j of jobs) {
             try {
-                if (j.mode === "group") await send(sock, j.chatId, j.message);
-                else {
+                if (j.mode === "group") {
+                    await sendText(sock, j.chatId, j.message);
+                } else {
                     const md = await sock.groupMetadata(j.chatId);
-                    const me = jid(sock.user?.id);
-                    const to = (md.participants || []).map(p => jid(p.id)).filter(x => x !== me);
-                    for (const t of to) await send(sock, t, j.message);
+                    const me = getSelfJid(sock);
+                    const targets = (md.participants || []).map(p => normalizeJid(p.id)).filter(x => x !== me);
+                    for (const t of targets) {
+                        await sendText(sock, t, j.message);
+                        await addDelay(250);
+                    }
                 }
-                if (j.repeat === "once") await Schedule.updateOne({ _id: j._id }, { active: false });
-                else {
-                    const d = new Date(j.nextRun);
-                    d.setDate(d.getDate() + (j.repeat === "weekly" ? 7 : 1));
-                    await Schedule.updateOne({ _id: j._id }, { nextRun: d });
+
+                if (j.repeat === "once") {
+                    await Schedule.updateOne({ _id: j._id }, { active: false });
+                } else {
+                    const next = new Date(j.nextRun);
+                    next.setDate(next.getDate() + (j.repeat === "weekly" ? 7 : 1));
+                    await Schedule.updateOne({ _id: j._id }, { nextRun: next });
                 }
             } catch {}
         }
@@ -298,25 +914,42 @@ async function runScheduledJobs({ sock, sessionId }) {
 }
 
 module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdmin, sender, from }) {
-    const body = txt(msg);
     if (!from) return;
+    const body = msgText(msg);
+    const senderJid = normalizeJid(sender);
+
     const now = Date.now();
-    const a = (spam.get(sender) || []).filter(t => now - t < SPAM_WINDOW);
-    a.push(now);
-    spam.set(sender, a);
-    if (!msg.key.fromMe && a.length > SPAM_LIMIT) return send(sock, from, "Slow down. Spam detected.");
+    const marks = (spam.get(senderJid) || []).filter(t => now - t < SPAM_WINDOW);
+    marks.push(now);
+    spam.set(senderJid, marks);
+    if (!msg.key.fromMe && marks.length > SPAM_LIMIT) {
+        await sendText(sock, from, "Slow down. Spam detected.");
+        return;
+    }
+
+    if (isGroup && body) {
+        await GroupMembers.findOneAndUpdate(
+            { sessionId, groupId: from },
+            { $addToSet: { members: senderJid }, $set: { updatedAt: new Date() } },
+            { upsert: true }
+        ).catch(() => {});
+    }
 
     if (isGroup && body) {
         const gs = await GroupSettings.findOne({ groupId: from }).catch(() => null);
         if (gs?.antiLink && /https?:\/\/\S+/i.test(body) && !isAdmin) {
-            try { await sock.groupParticipantsUpdate(from, [jid(sender)], "remove"); } catch {}
-            return send(sock, from, "Links are not allowed.");
+            try { await sock.groupParticipantsUpdate(from, [senderJid], "remove"); } catch {}
+            await sendText(sock, from, "Links are not allowed.");
+            return;
         }
     }
 
-    await autoReply(sock, from, sessionId, body, isGroup, msg.key.fromMe);
+    await processAutoReply({ sock, from, sessionId, isGroup, body, fromMe: msg.key.fromMe });
+    const consumedRecall = await processRecallKeywords({ sock, sessionId, from, body, fromMe: msg.key.fromMe });
+    if (consumedRecall) return;
+
     if (!body.startsWith(PREFIX)) return;
-    await handleCmd({ sock, msg, sessionId, from, sender, isGroup, isAdmin, body });
+    await handleCommand({ sock, msg, sessionId, from, sender: senderJid, isGroup, isAdmin, body });
 };
 
 module.exports.runScheduledJobs = runScheduledJobs;

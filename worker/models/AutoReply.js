@@ -189,6 +189,25 @@ const AutoReplySchema = new mongoose.Schema({
                 default: true
             }
         }
+    ],
+
+    recallKeywords: [
+        {
+            term: {
+                type: String,
+                trim: true,
+                lowercase: true
+            },
+            mapsToTime: {
+                type: String,
+                default: null
+            },
+            mapsToMedia: {
+                type: String,
+                enum: ['image', 'video', 'audio', 'sticker', 'document', null],
+                default: null
+            }
+        }
     ]
 }, { timestamps: true });
 
