@@ -2,6 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const axios = require("axios");
 const socketIo = require('socket.io');       // server io for frontend
 const { io: socketIoClient } = require('socket.io-client'); // client to worker
 const mongoose = require('mongoose');
@@ -125,6 +126,71 @@ workerSocket.on('connect_error', (err) => {
   console.error('❌ Server: worker connect_error', err.message);
 });
 
+
+// ================= WEBHOOK LISTENER (ADD HERE) =================
+
+const crypto = require("crypto");
+
+workerSocket.on("worker:incoming_message", async (payload) => {
+
+  try {
+    const session = await Session.findOne({ sessionId: payload.sessionId });
+
+    if (!session || !session.webhookUrl) return;
+
+    // 🔐 Create HMAC signature if secret exists
+    let headers = {
+      "Content-Type": "application/json"
+    };
+
+    if (session.webhookSecret) {
+      const signature = crypto
+        .createHmac("sha256", session.webhookSecret)
+        .update(JSON.stringify(payload))
+        .digest("hex");
+
+      headers["X-Webhook-Signature"] = signature;
+    }
+
+    // 🔁 Retry logic (3 attempts)
+    let delivered = false;
+    let attempts = 0;
+
+    while (!delivered && attempts < 3) {
+      try {
+        await axios.post(session.webhookUrl, payload, {
+          timeout: 10000,
+          headers
+        });
+
+        delivered = true;
+
+      } catch (err) {
+        attempts++;
+        console.warn(`⚠ Webhook attempt ${attempts} failed for ${session.sessionId}`);
+      }
+    }
+
+    if (delivered) {
+      await session.markWebhookSuccess();
+      console.log("📡 Webhook delivered:", session.sessionId);
+    } else {
+      await session.markWebhookFailure();
+
+      console.error("❌ Webhook failed after 3 attempts:", session.sessionId);
+
+      // 🚫 Auto-disable webhook after 10 failures
+      if (session.webhookFailures >= 10) {
+        session.webhookUrl = null;
+        await session.save();
+        console.warn("🚫 Webhook auto-disabled due to repeated failures:", session.sessionId);
+      }
+    }
+
+  } catch (err) {
+    console.error("🔥 Webhook system error:", err.message);
+  }
+});
 
 const { startBroadcastScheduler } = require('./utils/broadcastScheduler');
 

@@ -1,13 +1,11 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto'); // Add this import at the top
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
-    fullName: {
-        type: String,
-        required: true,
-        trim: true
-    },
+
+    fullName: { type: String, required: true, trim: true },
+
     email: {
         type: String,
         required: true,
@@ -15,74 +13,70 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         trim: true
     },
-    password: {
-        type: String,
-        required: true,
-        minlength: 8
-    },
-    
-    // 🔑 ADD THIS NEW FIELD FOR USER TYPE DISTINCTION
+
+    password: { type: String, required: true, minlength: 8 },
+
     role: {
         type: String,
         enum: ['whatsapp_admin', 'system_admin'],
         default: 'whatsapp_admin'
     },
-    
+
     subscription: {
         type: String,
         enum: ['free','starter', 'professional', 'business', 'enterprise'],
-        default: 'Free'
+        default: 'free'
     },
+
     subscriptionExpiry: {
         type: Date,
-        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     },
-    sessionId: {
-        type: String,
-        default: null
+
+    // ================= MESSAGE QUOTA SYSTEM =================
+
+    messagesUsedThisMonth: { type: Number, default: 0 },
+
+    quotaResetDate: {
+        type: Date,
+        default: () => {
+            const now = new Date();
+            return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
     },
-    whatsappNumber: {
-        type: String,
-        default: null
+
+    quotaWarningSent: {
+    type: Boolean,
+    default: false
     },
-    phone: {
-        type: String,
-        default: null
-    },
+    // ================= ACCOUNT INFO =================
+
+    sessionId: { type: String, default: null },
+    whatsappNumber: { type: String, default: null },
+    phone: { type: String, default: null },
+
     status: {
         type: String,
         enum: ['pending', 'approved', 'suspended', 'active'],
         default: 'pending'
     },
+
     paymentStatus: {
         type: String,
         enum: ['unpaid', 'paid', 'trial', 'expired'],
         default: 'trial'
     },
-    paystackCustomerCode: {
-        type: String,
-        default: null
-    },
-    lastLogin: {
-        type: Date,
-        default: Date.now
-    },
-    isEmailVerified: {
-        type: Boolean,
-        default: false
-    },
-    emailVerificationToken: {
-        type: String,
-        default: null
-    },
-    resetPasswordToken: {
-        type: String,
-        default: null
-    },
-    resetPasswordExpires: {
-        type: Date,
-        default: null
-    },
+
+    paystackCustomerCode: { type: String, default: null },
+
+    lastLogin: { type: Date, default: Date.now },
+
+    isEmailVerified: { type: Boolean, default: false },
+
+    emailVerificationToken: { type: String, default: null },
+    resetPasswordToken: { type: String, default: null },
+    resetPasswordExpires: { type: Date, default: null },
+
     usage: {
         commandsUsed: { type: Number, default: 0 },
         groupsTagged: { type: Number, default: 0 },
@@ -90,152 +84,190 @@ const userSchema = new mongoose.Schema({
         messagesProcessed: { type: Number, default: 0 }
     },
 
-    // 🔑 NEW PAYMENT EXEMPTION FIELDS
-    exemptFromPayment: {
-        type: Boolean,
-        default: false
-    },
-    exemptedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        default: null
-    },
-    exemptedAt: {
-        type: Date,
-        default: null
-    },
-    exemptionReason: {
-        type: String,
-        default: null
-    },
+    // ================= PAYMENT EXEMPTIONS =================
 
-    // 👑 OWNER AND ADMIN PRIVILEGES
-    isOwner: {
-        type: Boolean,
-        default: false
-    },
-    isAdmin: {
-        type: Boolean,
-        default: false
-    },
+    exemptFromPayment: { type: Boolean, default: false },
+    exemptedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    exemptedAt: { type: Date, default: null },
+    exemptionReason: { type: String, default: null },
+
+    // ================= ADMIN PRIVILEGES =================
+
+    isOwner: { type: Boolean, default: false },
+    isAdmin: { type: Boolean, default: false },
+
     adminLevel: {
         type: String,
         enum: ['none', 'secondary', 'primary', 'owner'],
         default: 'none'
     },
 
-    // EMAIL PREFERENCES
+    // ================= EMAIL SETTINGS =================
+
     emailPreferences: {
         marketing: { type: Boolean, default: true },
         trialReminders: { type: Boolean, default: true },
         usageAlerts: { type: Boolean, default: true },
         productUpdates: { type: Boolean, default: true }
     },
+
     unsubscribeToken: {
         type: String,
         default: () => crypto.randomBytes(32).toString('hex')
     }
-}, {
-    timestamps: true
-});
 
-// Hash password before saving
+}, { timestamps: true });
+
+/* ======================================================
+   PASSWORD HASHING
+====================================================== */
+
 userSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();
-    
-    try {
-        const salt = await bcrypt.genSalt(12);
-        this.password = await bcrypt.hash(this.password, salt);
-        next();
-    } catch (error) {
-        next(error);
-    }
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
 });
 
-// Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-// 🔑 ENHANCED: Check if user is exempt from payment requirements
+/* ======================================================
+   SUBSCRIPTION & QUOTA LOGIC
+====================================================== */
+
+// Auto reset monthly quota
+userSchema.methods.resetQuotaIfNeeded = async function() {
+    if (new Date() > this.quotaResetDate) {
+        this.messagesUsedThisMonth = 0;
+        this.quotaWarningSent = false;
+        this.quotaResetDate = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            1
+        );
+        await this.save();
+    }
+};
+
+// Plan-based quota
+userSchema.methods.getPlanQuota = function() {
+
+    if (this.role === 'system_admin' ||
+        this.isExemptFromPayment() ||
+        this.subscription === 'enterprise') {
+        return -1; // unlimited
+    }
+
+    const quotas = {
+        free: 500,
+        starter: 1000,
+        professional: 5000,
+        business: 20000,
+        enterprise: -1
+    };
+
+    return quotas[this.subscription] || 500;
+};
+
+// Check send permission
+userSchema.methods.canSendMessage = async function() {
+
+    await this.resetQuotaIfNeeded();
+
+    if (!this.isSubscriptionActive()) {
+        return false;
+    }
+
+    const quota = this.getPlanQuota();
+
+    if (quota === -1) return true;
+
+    return this.messagesUsedThisMonth < quota;
+};
+
+// Increment usage
+userSchema.methods.incrementMessageUsage = async function() {
+
+    await this.resetQuotaIfNeeded();
+
+    const quota = this.getPlanQuota();
+
+    if (quota === -1) return;
+
+    this.messagesUsedThisMonth += 1;
+
+    const usagePercentage = (this.messagesUsedThisMonth / quota) * 100;
+
+    if (usagePercentage >= 80 && !this.quotaWarningSent) {
+        this.quotaWarningSent = true;
+
+        // Emit event or trigger email here
+        console.log(`⚠️ 80% quota reached for ${this.email}`);
+        
+        // You can integrate nodemailer here
+    }
+
+    await this.save();
+};
+
+/* ======================================================
+   ORIGINAL ADVANCED LOGIC (PRESERVED)
+====================================================== */
+
 userSchema.methods.isExemptFromPayment = function() {
-    // System admin is always exempt
     if (this.role === 'system_admin') return true;
-    
-    // Owner is always exempt
     if (this.isOwner) return true;
-    
-    // Admin exemption
     if (this.exemptFromPayment) return true;
-    
-    // Secondary admin privileges
     if (this.isAdmin || this.adminLevel !== 'none') return true;
-    
     return false;
 };
 
-// 👑 NEW: Check if user is the bot owner
 userSchema.methods.isBotOwner = function() {
-    // Check if this user's WhatsApp number matches the owner number from config
-    const CONFIG = require('../config'); // Adjust path as needed
+    const CONFIG = require('../config');
     const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
     const userNumber = this.whatsappNumber ? this.whatsappNumber.replace(/[^0-9]/g, '') : null;
-    
     return ownerNumber && userNumber && userNumber === ownerNumber;
 };
 
-// 🔑 ENHANCED: Check if user is system admin
 userSchema.methods.isSystemAdmin = function() {
-    return this.role === 'system_admin' || 
+    return this.role === 'system_admin' ||
            this.email === process.env.ADMIN_EMAIL ||
            this.adminLevel === 'owner';
 };
 
-// Check if subscription is active (enhanced with exemptions)
 userSchema.methods.isSubscriptionActive = function() {
-    // System admin always active
-    if (this.role === 'system_admin') {
-        return true;
-    }
-    
-    // Owner and exempt users always active
-    if (this.isExemptFromPayment() || this.isBotOwner()) {
-        return true;
-    }
-    
-    // Check if subscription hasn't expired
+
+    if (this.role === 'system_admin') return true;
+
+    if (this.isExemptFromPayment() || this.isBotOwner()) return true;
+
     const isNotExpired = this.subscriptionExpiry && this.subscriptionExpiry > new Date();
-    
-    // Check payment status - include 'trial' for free users
     const hasValidPayment = this.paymentStatus === 'paid' || this.paymentStatus === 'trial';
-    
+
     return isNotExpired && hasValidPayment;
 };
 
-// Get subscription limits (enhanced with exemptions)
 userSchema.methods.getSubscriptionLimits = function() {
-    // System admin gets unlimited access
-    if (this.role === 'system_admin') {
-        return { sessions: -1, commands: -1, groups: -1 }; // unlimited
+
+    if (this.role === 'system_admin' ||
+        this.isExemptFromPayment() ||
+        this.isBotOwner()) {
+        return { sessions: -1, commands: -1, groups: -1 };
     }
-    
-    // Owner and exempt users get unlimited access
-    if (this.isExemptFromPayment() || this.isBotOwner()) {
-        return { sessions: -1, commands: -1, groups: -1 }; // unlimited
-    }
-    
-        const limits = {
+
+    const limits = {
         free: { sessions: 1, commands: 50, groups: 5 },
         starter: { sessions: 1, commands: 100, groups: 10 },
         professional: { sessions: 1, commands: 500, groups: 50 },
         business: { sessions: 1, commands: 2000, groups: 200 },
-        enterprise: { sessions: -1, commands: -1, groups: -1 } // unlimited
+        enterprise: { sessions: -1, commands: -1, groups: -1 }
     };
 
     return limits[this.subscription] || limits.free;
 };
 
-// Update usage statistics
 userSchema.methods.updateUsage = function(type, increment = 1) {
     if (this.usage[type] !== undefined) {
         this.usage[type] += increment;
@@ -244,7 +276,10 @@ userSchema.methods.updateUsage = function(type, increment = 1) {
     return Promise.resolve(this);
 };
 
-// 🛡️ NEW: Grant exemption from payment
+/* ======================================================
+   ADMIN CONTROL HELPERS (PRESERVED)
+====================================================== */
+
 userSchema.methods.grantPaymentExemption = function(reason, exemptedByUserId) {
     this.exemptFromPayment = true;
     this.exemptedBy = exemptedByUserId;
@@ -253,7 +288,6 @@ userSchema.methods.grantPaymentExemption = function(reason, exemptedByUserId) {
     return this.save();
 };
 
-// 🛡️ NEW: Remove exemption from payment
 userSchema.methods.removePaymentExemption = function() {
     this.exemptFromPayment = false;
     this.exemptedBy = null;
@@ -262,7 +296,6 @@ userSchema.methods.removePaymentExemption = function() {
     return this.save();
 };
 
-// 👑 NEW: Set as bot owner
 userSchema.methods.setAsOwner = function() {
     this.isOwner = true;
     this.isAdmin = true;
@@ -272,14 +305,11 @@ userSchema.methods.setAsOwner = function() {
     return this.save();
 };
 
-// 👨‍💼 NEW: Set admin level
 userSchema.methods.setAdminLevel = function(level) {
     const validLevels = ['none', 'secondary', 'primary', 'owner'];
     if (validLevels.includes(level)) {
         this.adminLevel = level;
         this.isAdmin = level !== 'none';
-        
-        // Admins get payment exemption
         if (level !== 'none') {
             this.exemptFromPayment = true;
             this.exemptionReason = `${level} admin privileges`;
@@ -288,7 +318,6 @@ userSchema.methods.setAdminLevel = function(level) {
     return this.save();
 };
 
-// 🔑 NEW: Set as system admin
 userSchema.methods.setAsSystemAdmin = function() {
     this.role = 'system_admin';
     this.isAdmin = true;
@@ -298,19 +327,21 @@ userSchema.methods.setAsSystemAdmin = function() {
     return this.save();
 };
 
-// 👑 Auto-assign owner privileges if user matches configured owner number
-userSchema.statics.ensureOwnerPrivileges = async function (user) {
-    try {
-        const CONFIG = require('../config.json'); // adjust path if needed
-        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : '2347067012884';
+/* ======================================================
+   AUTO OWNER DETECTION (PRESERVED)
+====================================================== */
 
-        if (!user || !user.whatsappNumber) return user;
+userSchema.statics.ensureOwnerPrivileges = async function(user) {
+    try {
+        const CONFIG = require('../config.json');
+        const ownerNumber = CONFIG.owner ? CONFIG.owner.replace(/[^0-9]/g, '') : null;
+
+        if (!user || !user.whatsappNumber || !ownerNumber) return user;
 
         const userNumber = user.whatsappNumber.replace(/[^0-9]/g, '');
 
         if (userNumber === ownerNumber) {
-            if (!user.isOwner || !user.isAdmin || user.adminLevel !== 'owner') {
-                console.log(`👑 Ensuring owner privileges for ${userNumber}`);
+            if (!user.isOwner || user.adminLevel !== 'owner') {
                 user.isOwner = true;
                 user.isAdmin = true;
                 user.adminLevel = 'owner';
@@ -321,6 +352,7 @@ userSchema.statics.ensureOwnerPrivileges = async function (user) {
         }
 
         return user;
+
     } catch (err) {
         console.error('❌ Error ensuring owner privileges:', err);
         return user;

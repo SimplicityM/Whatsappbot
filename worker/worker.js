@@ -22,15 +22,24 @@ const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
 
+// ================= RATE LIMIT SYSTEM =================
+
+const messageQueues = new Map();
+const messageStats = new Map();
+
+const MIN_DELAY_MS = 1500;      // 1.5 sec between messages
+const MAX_PER_MINUTE = 20;      // safe burst cap
+const MAX_PER_HOUR = 200;       // hourly cap
+
 const {
     createBaileysSession,
     resumeUserSession,
     sessions
-} = require("./baileys.js");
+    } = require("./baileys.js");
 
-// ================= GLOBAL ERROR HANDLING =================
+    // ================= GLOBAL ERROR HANDLING =================
 
-process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', (reason, promise) => {
     console.error('🚨 Unhandled Rejection:', reason);
 });
 
@@ -216,27 +225,116 @@ io.on("connection", (socket) => {
         }
     });
 
-    // ================= SEND MESSAGE (NEW API) =================
 
-    socket.on("worker:send_message", async ({ sessionId, to, message }, callback) => {
+// ================= SEND MESSAGE (RATE LIMITED) =================
+
+socket.on("worker:send_message", async (data, callback) => {
 
         try {
+            const { sessionId, to, type = "text", message, mediaUrl, fileName } = data;
+
             const sock = sessions.get(sessionId);
 
             if (!sock) {
                 return callback?.("Session not connected");
             }
 
+            // ================= RATE LIMIT CHECK =================
+
+            const now = Date.now();
+
+            if (!messageStats.has(sessionId)) {
+                messageStats.set(sessionId, {
+                    minuteCount: 0,
+                    hourCount: 0,
+                    minuteStart: now,
+                    hourStart: now
+                });
+            }
+
+            const stats = messageStats.get(sessionId);
+
+            // Reset minute window
+            if (now - stats.minuteStart > 60000) {
+                stats.minuteCount = 0;
+                stats.minuteStart = now;
+            }
+
+            // Reset hour window
+            if (now - stats.hourStart > 3600000) {
+                stats.hourCount = 0;
+                stats.hourStart = now;
+            }
+
+            if (stats.minuteCount >= MAX_PER_MINUTE) {
+                return callback?.("Rate limit exceeded (per minute)");
+            }
+
+            if (stats.hourCount >= MAX_PER_HOUR) {
+                return callback?.("Rate limit exceeded (per hour)");
+            }
+
+            stats.minuteCount++;
+            stats.hourCount++;
+
+            // ================= QUEUE SYSTEM =================
+
+            if (!messageQueues.has(sessionId)) {
+                messageQueues.set(sessionId, Promise.resolve());
+            }
+
             const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
 
-            await sock.sendMessage(jid, { text: message });
+            const sendTask = async () => {
 
-            console.log(`📨 Message sent from ${sessionId} to ${jid}`);
+                let payload = {};
+
+                switch (type) {
+                    case "text":
+                        payload = { text: message };
+                        break;
+
+                    case "image":
+                        payload = { image: { url: mediaUrl }, caption: message || "" };
+                        break;
+
+                    case "video":
+                        payload = { video: { url: mediaUrl }, caption: message || "" };
+                        break;
+
+                    case "audio":
+                        payload = { audio: { url: mediaUrl }, mimetype: "audio/mp4", ptt: false };
+                        break;
+
+                    case "voice":
+                        payload = { audio: { url: mediaUrl }, mimetype: "audio/mp4", ptt: true };
+                        break;
+
+                    case "document":
+                        payload = {
+                            document: { url: mediaUrl },
+                            fileName: fileName || "file",
+                            mimetype: "application/pdf"
+                        };
+                        break;
+
+                    default:
+                        throw new Error("Unsupported message type");
+                }
+
+                await sock.sendMessage(jid, payload);
+
+                await new Promise(res => setTimeout(res, MIN_DELAY_MS));
+            };
+
+            // Queue sequentially
+            const queue = messageQueues.get(sessionId);
+            messageQueues.set(sessionId, queue.then(sendTask));
 
             callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Send message error:", err);
+            console.error("❌ Rate limited send error:", err);
             callback?.(err.message);
         }
     });

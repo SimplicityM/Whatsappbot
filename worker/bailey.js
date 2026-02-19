@@ -135,40 +135,40 @@ async function createBaileysSession(sessionId, io) {
 
         // ================= MESSAGE HANDLER =================
 
-        sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      sock.ev.on("messages.upsert", async ({ messages, type }) => {
 
-        if (type !== "notify") return;
+    if (type !== "notify") return;
 
-        const msg = messages?.[0];
-        if (!msg?.message) return;
+    const msg = messages?.[0];
+    if (!msg?.message) return;
 
-        const remoteJid = msg.key.remoteJid;
-        const fromMe = msg.key.fromMe;
-        const messageId = msg.key.id;
+    const remoteJid = msg.key.remoteJid;
+    const fromMe = msg.key.fromMe;
+    const messageId = msg.key.id;
 
-        let messageText = "";
+    let messageText = "";
 
-        if (msg.message.conversation) {
-            messageText = msg.message.conversation;
-        } else if (msg.message.extendedTextMessage?.text) {
-            messageText = msg.message.extendedTextMessage.text;
-        }
+    if (msg.message.conversation) {
+        messageText = msg.message.conversation;
+    } else if (msg.message.extendedTextMessage?.text) {
+        messageText = msg.message.extendedTextMessage.text;
+    }
 
-        const payload = {
-            sessionId,
-            messageId,
-            from: remoteJid,
-            fromMe,
-            text: messageText,
-            timestamp: msg.messageTimestamp,
-            pushName: msg.pushName || null
-        };
+    const payload = {
+        sessionId,
+        messageId,
+        from: remoteJid,
+        fromMe,
+        text: messageText,
+        timestamp: msg.messageTimestamp,
+        pushName: msg.pushName || null
+    };
 
-        // Real-time emit (for dashboard)
-        io.emit("session:message", payload);
+    // Real-time emit (dashboard)
+    io.emit("session:message", payload);
 
-        // Backend webhook event
-        io.emit("worker:incoming_message", payload);
+    // Emit to backend for webhook processing
+    io.emit("worker:incoming_message", payload);
     });
 
         return sock;
