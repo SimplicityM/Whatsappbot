@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagthemall-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tagthemall-api
+  template:
+    metadata:
+      labels:
+        app: tagthemall-api
+    spec:
+      containers:
+        - name: api
+          image: tagthemall-api
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
