@@ -8,6 +8,7 @@ const TagUsage = require("./models/TagUsage");
 const GroupPermission = require("./models/GroupPermission");
 const Schedule = require("./models/Schedule");
 const User = require("./models/User");
+const { generateForwardMessageContent, generateWAMessageFromContent } = require("@whiskeysockets/baileys");
 
 const subscriptionPlans = require("../config/subscriptionPlans");
 const CommandGrant = require("../models/CommandGrant");
@@ -16,9 +17,11 @@ const PREFIX = config?.client?.COMMAND_PREFIX || "!";
 const SPAM_WINDOW = 10000;
 const SPAM_LIMIT = 5;
 const TAG_ROTATE_SIZE = 100;
+const RECALL_CACHE_LIMIT_PER_CHAT = 800;
 
 const spam = new Map();
 const runningSchedule = new Set();
+const recallCache = new Map();
 
 function msgText(msg) {
     const m = msg.message || {};
@@ -66,7 +69,93 @@ function addDelay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function parseQuoted(msg) {
+function detectMediaType(message = {}) {
+    if (message.imageMessage) return "image";
+    if (message.videoMessage) return "video";
+    if (message.audioMessage) return "audio";
+    if (message.documentMessage) return "document";
+    if (message.stickerMessage) return "sticker";
+    return "text";
+}
+
+function toTimestampMs(value) {
+    if (!value) return Date.now();
+    if (typeof value === "number") return value * 1000;
+    if (typeof value === "object" && typeof value.low === "number") return value.low * 1000;
+    return Date.now();
+}
+
+function recallMapKey(sessionId, chatId) {
+    return `${sessionId}|${chatId}`;
+}
+
+function cacheMessageForRecall({ sessionId, chatId, msg }) {
+    if (!sessionId || !chatId || !msg?.message) return;
+
+    const key = recallMapKey(sessionId, chatId);
+    const list = recallCache.get(key) || [];
+    const id = msg.key?.id || "";
+
+    const next = list.filter(x => (x.wamessage?.key?.id || "") !== id);
+    next.unshift({
+        ts: toTimestampMs(msg.messageTimestamp),
+        text: msgText(msg),
+        mediaType: detectMediaType(msg.message),
+        wamessage: {
+            key: msg.key || {},
+            message: msg.message,
+            messageTimestamp: msg.messageTimestamp
+        }
+    });
+
+    if (next.length > RECALL_CACHE_LIMIT_PER_CHAT) {
+        next.length = RECALL_CACHE_LIMIT_PER_CHAT;
+    }
+
+    recallCache.set(key, next);
+}
+
+function parseStoreMessages(sock, chatId) {
+    const bucket = sock.store?.messages?.[chatId];
+    if (!bucket) return [];
+    return Object.values(bucket)
+        .map(v => (v?.message ? v : v?.array?.[0]))
+        .filter(Boolean)
+        .map(m => ({
+            ts: toTimestampMs(m.messageTimestamp),
+            text: msgText(m),
+            mediaType: detectMediaType(m.message || {}),
+            wamessage: {
+                key: m.key || {},
+                message: m.message || {},
+                messageTimestamp: m.messageTimestamp
+            }
+        }));
+}
+
+function getRecallEntries(sock, sessionId, chatId) {
+    const key = recallMapKey(sessionId, chatId);
+    const mem = recallCache.get(key) || [];
+    if (mem.length) return mem;
+    return parseStoreMessages(sock, chatId);
+}
+
+async function tryForwardMessage(sock, to, targetMessage, quotedMessage) {
+    if (!targetMessage?.message) return false;
+    try {
+        const content = await generateForwardMessageContent(targetMessage, false);
+        const generated = generateWAMessageFromContent(to, content, {
+            userJid: sock.user?.id,
+            quoted: quotedMessage || undefined
+        });
+        await sock.relayMessage(to, generated.message, { messageId: generated.key.id });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function parseQuoted(msg, currentChatId) {
     const ctx = msg.message?.extendedTextMessage?.contextInfo;
     const quoted = ctx?.quotedMessage;
     if (!quoted) return null;
@@ -82,7 +171,16 @@ function parseQuoted(msg) {
     return {
         text,
         stanzaId: ctx.stanzaId || null,
-        participant: normalizeJid(ctx.participant || "")
+        participant: normalizeJid(ctx.participant || ""),
+        quotedWAMessage: {
+            key: {
+                remoteJid: currentChatId,
+                fromMe: false,
+                id: ctx.stanzaId || undefined,
+                participant: ctx.participant || undefined
+            },
+            message: quoted
+        }
     };
 }
 
@@ -282,7 +380,7 @@ async function processAutoReply({ sock, from, sessionId, isGroup, body, fromMe }
     }
 }
 
-async function processRecallKeywords({ sock, sessionId, from, body, fromMe }) {
+async function processRecallKeywords({ sock, sessionId, from, body, fromMe, currentMessageId }) {
     if (fromMe || !body || body.startsWith(PREFIX)) return false;
 
     const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
@@ -297,21 +395,18 @@ async function processRecallKeywords({ sock, sessionId, from, body, fromMe }) {
     const picked = kws.find(k => text.includes(String(k.term || "").toLowerCase()));
     if (!picked) return false;
 
-    const store = sock.store?.messages?.[from];
-    if (!store) return false;
-
-    const items = Object.values(store).map(v => v.message ? v : v.array?.[0]).filter(Boolean);
+    const items = getRecallEntries(sock, sessionId, from);
     if (!items.length) return false;
 
     const wantMedia = picked.mapsToMedia;
     const filtered = items.filter(w => {
-        const m = w.message || {};
+        if (currentMessageId && w.wamessage?.key?.id === currentMessageId) return false;
         if (!wantMedia) return true;
-        if (wantMedia === "image") return !!m.imageMessage;
-        if (wantMedia === "video") return !!m.videoMessage;
-        if (wantMedia === "audio") return !!m.audioMessage;
-        if (wantMedia === "document") return !!m.documentMessage;
-        if (wantMedia === "sticker") return !!m.stickerMessage;
+        if (wantMedia === "image") return w.mediaType === "image";
+        if (wantMedia === "video") return w.mediaType === "video";
+        if (wantMedia === "audio") return w.mediaType === "audio";
+        if (wantMedia === "document") return w.mediaType === "document";
+        if (wantMedia === "sticker") return w.mediaType === "sticker";
         return true;
     });
 
@@ -321,20 +416,15 @@ async function processRecallKeywords({ sock, sessionId, from, body, fromMe }) {
     }
 
     const target = filtered[idx - 1];
-    const q = target.message;
-    const t =
-        q?.conversation ||
-        q?.extendedTextMessage?.text ||
-        q?.imageMessage?.caption ||
-        q?.videoMessage?.caption ||
-        q?.documentMessage?.caption;
-
-    if (!t) {
-        await sendText(sock, from, "Found a matching item but cannot resend this media type yet.");
-        return true;
+    const forwarded = await tryForwardMessage(sock, from, target.wamessage, null);
+    if (!forwarded) {
+        const t = target.text;
+        if (!t) {
+            await sendText(sock, from, "Found a matching item but resend failed for this media.");
+            return true;
+        }
+        await sendText(sock, from, t);
     }
-
-    await sendText(sock, from, t);
     return true;
 }
 
@@ -555,8 +645,8 @@ async function handleCommand(ctx) {
     }
 
     if (cmd === "forwardone" || cmd === "forwardmulti" || cmd === "forwardall") {
-        const q = parseQuoted(msg);
-        if (!q?.text) return sendText(sock, from, "Reply to a text/media-caption message first.");
+        const q = parseQuoted(msg, from);
+        if (!q?.quotedWAMessage && !q?.text) return sendText(sock, from, "Reply to a message first.");
 
         let targetGroups = [];
         if (cmd === "forwardone") {
@@ -592,8 +682,13 @@ async function handleCommand(ctx) {
         let sent = 0;
         for (const r of recipients) {
             try {
-                await sendText(sock, r, q.text);
-                sent++;
+                const forwarded = await tryForwardMessage(sock, r, q.quotedWAMessage, msg);
+                if (forwarded) {
+                    sent++;
+                } else if (q.text) {
+                    await sendText(sock, r, q.text);
+                    sent++;
+                }
             } catch {}
             await addDelay(350);
         }
@@ -652,29 +747,49 @@ async function handleCommand(ctx) {
         const keyword = args.join(" ").trim().toLowerCase();
         if (!keyword) return sendText(sock, from, "Usage: !find <keyword>");
         const groups = await getCachedGroups(sock, sessionId, true, false);
-        const foundIn = [];
-        const store = sock.store?.messages || {};
+        const nameMap = new Map(groups.map(g => [g.groupId, g.name]));
+        const hits = [];
 
-        for (const g of groups) {
-            const bucket = store[g.groupId];
-            if (!bucket) continue;
-            const items = Object.values(bucket).map(v => v.message ? v : v.array?.[0]).filter(Boolean);
-            const hit = items.find(w => {
-                const m = w.message || {};
-                const t =
-                    m.conversation ||
-                    m.extendedTextMessage?.text ||
-                    m.imageMessage?.caption ||
-                    m.videoMessage?.caption ||
-                    m.documentMessage?.caption ||
-                    "";
-                return String(t).toLowerCase().includes(keyword);
-            });
-            if (hit) foundIn.push(g.name);
+        for (const [k, entries] of recallCache.entries()) {
+            if (!k.startsWith(`${sessionId}|`)) continue;
+            const chatId = k.slice(sessionId.length + 1);
+            for (const item of entries) {
+                const hay = `${item.text || ""} ${item.mediaType || ""}`.toLowerCase();
+                if (!hay.includes(keyword)) continue;
+                hits.push({
+                    chatId,
+                    chatName: nameMap.get(chatId) || chatId,
+                    mediaType: item.mediaType || "text",
+                    preview: String(item.text || "[media]").slice(0, 45)
+                });
+                if (hits.length >= 20) break;
+            }
+            if (hits.length >= 20) break;
         }
 
-        if (!foundIn.length) return sendText(sock, from, "No cached matches found. Baileys search checks cached history only.");
-        return sendText(sock, from, `Found cached matches in:\n${foundIn.map(x => `- ${x}`).join("\n")}`);
+        if (!hits.length) {
+            for (const g of groups) {
+                const entries = parseStoreMessages(sock, g.groupId);
+                const hit = entries.find(item => `${item.text || ""} ${item.mediaType || ""}`.toLowerCase().includes(keyword));
+                if (!hit) continue;
+                hits.push({
+                    chatId: g.groupId,
+                    chatName: g.name || g.groupId,
+                    mediaType: hit.mediaType || "text",
+                    preview: String(hit.text || "[media]").slice(0, 45)
+                });
+                if (hits.length >= 20) break;
+            }
+        }
+
+        if (!hits.length) {
+            return sendText(sock, from, "No cached matches found yet. Keep history sync on and allow chats to load.");
+        }
+        return sendText(
+            sock,
+            from,
+            `Cached matches:\n${hits.map((h, i) => `${i + 1}. [${h.chatName}] ${h.mediaType} - ${h.preview}`).join("\n")}`
+        );
     }
 
     if (cmd === "allow" || cmd === "unallow" || cmd === "deny" || cmd === "unblock" || cmd === "whitelist" || cmd === "blocklist") {
@@ -913,8 +1028,12 @@ async function runScheduledJobs({ sock, sessionId }) {
     }
 }
 
-module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdmin, sender, from }) {
+module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdmin, sender, from, upsertType = "notify", isHistorical }) {
     if (!from) return;
+    const historical = typeof isHistorical === "boolean" ? isHistorical : upsertType !== "notify";
+    cacheMessageForRecall({ sessionId, chatId: from, msg });
+    if (historical) return;
+
     const body = msgText(msg);
     const senderJid = normalizeJid(sender);
 
@@ -945,7 +1064,14 @@ module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdm
     }
 
     await processAutoReply({ sock, from, sessionId, isGroup, body, fromMe: msg.key.fromMe });
-    const consumedRecall = await processRecallKeywords({ sock, sessionId, from, body, fromMe: msg.key.fromMe });
+    const consumedRecall = await processRecallKeywords({
+        sock,
+        sessionId,
+        from,
+        body,
+        fromMe: msg.key.fromMe,
+        currentMessageId: msg.key?.id
+    });
     if (consumedRecall) return;
 
     if (!body.startsWith(PREFIX)) return;

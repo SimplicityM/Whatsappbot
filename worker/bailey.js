@@ -105,8 +105,8 @@ async function createBaileysSession(sessionId, io) {
             printQRInTerminal: false,
             browser: ["TagThemAll Engine", "Chrome", "1.0.0"],
             markOnlineOnConnect: false,
-            syncFullHistory: false,
-            shouldSyncHistoryMessage: () => false,
+            syncFullHistory: true,
+            shouldSyncHistoryMessage: () => true,
             generateHighQualityLinkPreview: false,
             defaultQueryTimeoutMs: 60000
         });
@@ -183,8 +183,6 @@ async function createBaileysSession(sessionId, io) {
         });
 
         sock.ev.on("messages.upsert", async ({ messages, type }) => {
-            if (type !== "notify") return;
-
             const msg = messages?.[0];
             if (!msg?.message) return;
 
@@ -206,7 +204,9 @@ async function createBaileysSession(sessionId, io) {
                     isGroup,
                     isAdmin,
                     sender,
-                    from
+                    from,
+                    upsertType: type,
+                    isHistorical: type !== "notify"
                 });
             } catch (err) {
                 console.error("Bot engine error:", err);
