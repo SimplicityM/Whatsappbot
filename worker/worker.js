@@ -1,16 +1,15 @@
 /**
  * =====================================================
- *               WORKER.JS (BOT ENGINE)
+ *               WORKER.JS (BOT ENGINE - BAILEYS)
  * =====================================================
- * This worker runs independently from server.js.
- * It is responsible ONLY for:
+ * Responsible ONLY for:
  *  - Creating WhatsApp sessions
  *  - Restoring sessions
  *  - Resuming suspended sessions
  *  - Emitting QR / Ready / Failure events
- *  - Keeping Puppeteer running forever
  * =====================================================
  */
+
 process.removeAllListeners('SIGINT');
 process.removeAllListeners('SIGTERM');
 
@@ -23,116 +22,64 @@ const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
 
-const clients = new Map();
-
 const {
     createBaileysSession,
-    sendMessage,
+    resumeUserSession,
     sessions
 } = require("./baileys.js");
-   const fs = require('fs');
-            const path = require('path');
-            const SessionAuth = require('./models/SessionAuth');
-            
 
-// Add near the top of worker.js, after imports
+// ================= GLOBAL ERROR HANDLING =================
+
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't crash the process for file errors during session restore
-  if (reason?.code === 'ENOENT' && reason?.path?.includes('RemoteAuth')) {
-    console.error('⚠️ Session restore file error - continuing operation');
-  }
+    console.error('🚨 Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  try {
     console.error('🚨 Uncaught Exception:', error);
-
-    // ✅ Ignore missing RemoteAuth zip file errors
-    if (
-      error?.code === 'ENOENT' &&
-      typeof error?.path === 'string' &&
-      error.path.includes('RemoteAuth')
-    ) {
-      console.warn('⚠️ Missing RemoteAuth zip file - skipping (non-fatal)');
-      return;
-    }
-
-    // ✅ Ignore Puppeteer protocol timeout errors (very common on VPS)
-    if (
-      error?.message &&
-      error.message.includes('Runtime.callFunctionOn timed out')
-    ) {
-      console.warn('⚠️ Puppeteer protocol timeout - ignoring');
-      return;
-    }
-
-    // ✅ Ignore whatsapp-web.js Channel patch errors
-    if (
-      error?.message &&
-      error.message.includes("Cannot read properties of undefined (reading 'description')")
-    ) {
-      console.warn('⚠️ Channel patch error - ignoring');
-      return;
-    }
-
-    // ❌ DO NOT exit process in production
     console.error('❗ Non-fatal error caught, process will continue.');
-
-  } catch (handlerError) {
-    console.error('🔥 Error inside uncaughtException handler:', handlerError);
-  }
 });
 
-// Configuration
-const PORT = process.env.PORT || 3000;
-const MAX_SESSIONS = config.client.MAX_SESSIONS;
+// ================= CONFIG =================
 
-/* =====================================================
-   WORKER SOCKET.IO SERVER
-   ===================================================== */
+const PORT = process.env.PORT || 3000;
+const MAX_SESSIONS = config?.client?.MAX_SESSIONS || 100;
+
+// ================= HTTP + SOCKET.IO SERVER =================
+
 const server = http.createServer((req, res) => {
-    // Skip Socket.IO requests - let Socket.IO handle them
+
     if (req.url.startsWith('/socket.io/')) {
         res.writeHead(200);
         return res.end("OK");
-        }
+    }
 
-    
-    console.log(`📥 HTTP Request: ${req.method} ${req.url}`);
-    
-    // Health check endpoint
-    if (req.url === "/ping" || req.url === "/") {
+    if (req.url === "/" || req.url === "/ping") {
         res.writeHead(200, { "Content-Type": "text/plain" });
         return res.end("OK");
     }
-    
-    // Handle other requests
-    res.writeHead(404, { "Content-Type": "text/plain" });
+
+    res.writeHead(404);
     res.end("Not Found");
 });
 
 const io = socketIo(server, {
-    cors: {
-        origin: "*"
-    }
+    cors: { origin: "*" }
 });
 
-// Start server
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
 });
 
+// ================= MONGODB CONNECTION =================
+
 (async () => {
     try {
-        const mongoURI = process.env.MONGODB_URI;
-
-        if (!mongoURI) {
+        if (!process.env.MONGODB_URI) {
             console.error("❌ MONGODB_URI missing");
             process.exit(1);
         }
 
-        await mongoose.connect(mongoURI, {
+        await mongoose.connect(process.env.MONGODB_URI, {
             serverSelectionTimeoutMS: 10000
         });
 
@@ -145,197 +92,174 @@ server.listen(PORT, '0.0.0.0', () => {
     }
 })();
 
-/* =====================================================
-   WORKER JOB HANDLERS
-   ===================================================== */
-io.on("connection", (socket) => {
-    console.log("🔌 Worker connected to server:", socket.id);
+// ================= SOCKET HANDLERS =================
 
-    // Health check ping handler
+io.on("connection", (socket) => {
+
+    console.log("🔌 Worker connected:", socket.id);
+
+    // ================= HEALTH CHECK =================
+
     socket.on("worker:ping", (data, callback) => {
-        if (typeof callback === 'function') {
-            callback(null, { 
-                status: 'healthy', 
-                activeSessions: clients.size,
-                timestamp: Date.now() 
-            });
-        }
+        callback?.(null, {
+            status: "healthy",
+            activeSessions: sessions.size,
+            timestamp: Date.now()
+        });
     });
 
-    /** =========================================
-     *  CREATE NEW SESSION
-     *  From server: io.emit("worker:create_session", {...})
-     * ========================================= */
+    // ================= CREATE SESSION =================
 
     socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
-    console.log("🟢 Worker: create session request:", sessionId);
 
-    try {
-        // Create Baileys session
-        await createBaileysSession(sessionId, io);
-
-        // Update database status
-        await Session.findOneAndUpdate(
-            { sessionId },
-            { 
-                status: "waiting_qr",
-                updatedAt: new Date()
-            }
-        );
-
-        console.log(`✅ Worker: session ${sessionId} created`);
-
-        if (typeof callback === "function") {
-            callback(null, { success: true, sessionId });
-        }
-
-    } catch (err) {
-        console.error("❌ Worker create session error:", err);
-
-        if (typeof callback === "function") {
-            callback(err.message || "Failed to create session", null);
-        }
-    }
-    });
-
-    /** =========================================
-     *  RESUME SUSPENDED SESSION
-     *  From payment webhook
-     * ========================================= */
-    socket.on("worker:resume_session", async ({ userId, sessionId }) => {
-        console.log("🟡 Worker: resume request for", sessionId);
+        console.log("🟢 Create session:", sessionId);
 
         try {
-            await resumeUserSession(userId, sessionId, io);
 
-            console.log(`✅ Worker: resumed ${sessionId}`);
-        } catch (err) {
-            console.error("❌ Worker resume failed:", err);
-        }
-    });
-
-    /** =========================================
-     *  STOP A RUNNING SESSION
-     * ========================================= */
-    socket.on("worker:stop_session", async ({ sessionId }) => {
-    console.log("🔴 Worker: stop session:", sessionId);
-
-    try {
-        const sock = sessions.get(sessionId);
-
-        if (!sock) {
-            console.log("⚠ No active Baileys session for", sessionId);
-            return;
-        }
-
-        // Close WebSocket connection
-        sock.ws.close();
-
-        // Remove from memory
-        sessions.delete(sessionId);
-
-        // Update database
-        await Session.findOneAndUpdate(
-            { sessionId },
-            { 
-                status: "disconnected",
-                updatedAt: new Date()
+            if (sessions.size >= MAX_SESSIONS) {
+                return callback?.("Maximum session limit reached");
             }
-        );
 
-        console.log(`🛑 Worker stopped session: ${sessionId}`);
+            if (sessions.has(sessionId)) {
+                return callback?.(null, { success: true, message: "Already running" });
+            }
 
-    } catch (err) {
-        console.error("❌ Worker stop session error:", err);
-    }
+            await createBaileysSession(sessionId, io);
+
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { status: "waiting_qr", updatedAt: new Date() }
+            );
+
+            console.log(`✅ Session ${sessionId} created`);
+
+            callback?.(null, { success: true, sessionId });
+
+        } catch (err) {
+            console.error("❌ Create session error:", err);
+            callback?.(err.message || "Failed to create session");
+        }
     });
 
-    /** =========================================
-     *  DELETE SESSION COMPLETELY
-     * ========================================= */
-    socket.on("worker:delete_session", async ({ sessionId }) => {
-    console.log("🗑 Worker: delete session:", sessionId);
+    // ================= RESUME SESSION =================
 
-    try {
-        const sock = sessions.get(sessionId);
+    socket.on("worker:resume_session", async ({ userId, sessionId }) => {
 
-        if (sock) {
-            sock.ws.close();
+        console.log("🟡 Resume session:", sessionId);
+
+        try {
+            if (!sessions.has(sessionId)) {
+                await resumeUserSession(userId, sessionId, io);
+            }
+            console.log(`✅ Session resumed: ${sessionId}`);
+        } catch (err) {
+            console.error("❌ Resume failed:", err);
+        }
+    });
+
+    // ================= STOP SESSION =================
+
+    socket.on("worker:stop_session", async ({ sessionId }) => {
+
+        console.log("🔴 Stop session:", sessionId);
+
+        try {
+            const sock = sessions.get(sessionId);
+
+            if (!sock) {
+                console.log("⚠ No active session found");
+                return;
+            }
+
+            await sock.logout();
             sessions.delete(sessionId);
+
+            await Session.findOneAndUpdate(
+                { sessionId },
+                { status: "disconnected", updatedAt: new Date() }
+            );
+
+            console.log(`🛑 Session stopped: ${sessionId}`);
+
+        } catch (err) {
+            console.error("❌ Stop error:", err);
         }
-
-        await Session.deleteOne({ sessionId });
-
-        console.log(`🗑 Session ${sessionId} removed`);
-
-    } catch (err) {
-        console.error("❌ Worker delete error:", err);
-    }
     });
 
-    /** =========================================
-     *  SEND BROADCAST MESSAGE
-     * ========================================= */
-    socket.on('worker:send_broadcast', async ({ sessionId, message }, callback) => {
-    try {
-        console.log(`📢 WORKER: Sending broadcast to ${sessionId}`);
+    // ================= DELETE SESSION =================
 
-        const sock = sessions.get(sessionId);
+    socket.on("worker:delete_session", async ({ sessionId }) => {
 
-        if (!sock) {
-            return callback("Session not connected");
+        console.log("🗑 Delete session:", sessionId);
+
+        try {
+            const sock = sessions.get(sessionId);
+
+            if (sock) {
+                await sock.logout();
+                sessions.delete(sessionId);
+            }
+
+            await Session.deleteOne({ sessionId });
+
+            console.log(`🗑 Session deleted: ${sessionId}`);
+
+        } catch (err) {
+            console.error("❌ Delete error:", err);
         }
-
-        // send to yourself (example)
-        const jid = sock.user.id;
-
-        await sock.sendMessage(jid, { text: message });
-
-        console.log(`✅ Broadcast sent for ${sessionId}`);
-
-        callback(null, { success: true });
-
-    } catch (error) {
-        console.error("❌ Broadcast error:", error);
-        callback(error.message);
-    }
     });
 
-    /** =========================================
- *  SYNC CONTACTS MANUALLY
- * ========================================= */
-    socket.on('worker:sync_contacts', async ({ sessionId }, callback) => {
-    console.log(`📇 WORKER: Contact sync requested for ${sessionId}`);
+    // ================= BROADCAST =================
 
-    try {
-        const sock = sessions.get(sessionId);
+    socket.on("worker:send_broadcast", async ({ sessionId, message }, callback) => {
 
-        if (!sock) {
-            return callback("Session not connected");
+        try {
+            const sock = sessions.get(sessionId);
+
+            if (!sock) {
+                return callback?.("Session not connected");
+            }
+
+            const jid = sock.user?.id?.split(':')[0] + "@s.whatsapp.net";
+
+            await sock.sendMessage(jid, { text: message });
+
+            console.log(`📢 Broadcast sent from ${sessionId}`);
+
+            callback?.(null, { success: true });
+
+        } catch (err) {
+            console.error("❌ Broadcast error:", err);
+            callback?.(err.message);
         }
-
-        const contacts = Object.values(sock.store?.contacts || {});
-
-        console.log(`📦 Found ${contacts.length} contacts`);
-
-        // Example: filter only real users (not groups)
-        const filtered = contacts.filter(c => 
-            c.id && c.id.endsWith('@s.whatsapp.net')
-        );
-
-        console.log(`👤 ${filtered.length} user contacts after filtering`);
-
-        callback(null, {
-            success: true,
-            total: filtered.length,
-            timestamp: new Date()
-        });
-
-    } catch (error) {
-        console.error("❌ Contact sync error:", error);
-        callback(error.message);
-    }
     });
 
-})
+    // ================= CONTACT SYNC =================
 
+    socket.on("worker:sync_contacts", async ({ sessionId }, callback) => {
+
+        try {
+            const sock = sessions.get(sessionId);
+
+            if (!sock) {
+                return callback?.("Session not connected");
+            }
+
+            const contacts = Object.values(sock.store?.contacts || {});
+            const filtered = contacts.filter(c =>
+                c.id && c.id.endsWith("@s.whatsapp.net")
+            );
+
+            callback?.(null, {
+                success: true,
+                total: filtered.length,
+                timestamp: new Date()
+            });
+
+        } catch (err) {
+            console.error("❌ Contact sync error:", err);
+            callback?.(err.message);
+        }
+    });
+
+});
