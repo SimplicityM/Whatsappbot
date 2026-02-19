@@ -135,41 +135,27 @@ async function createBaileysSession(sessionId, io) {
 
         // ================= MESSAGE HANDLER =================
 
-      sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      const botEngine = require("./botEngine");
+
+sock.ev.on("messages.upsert", async ({ messages, type }) => {
 
     if (type !== "notify") return;
 
     const msg = messages?.[0];
     if (!msg?.message) return;
 
-    const remoteJid = msg.key.remoteJid;
-    const fromMe = msg.key.fromMe;
-    const messageId = msg.key.id;
+    try {
+        await botEngine({
+            sock,
+            msg,
+            sessionId
+        });
 
-    let messageText = "";
-
-    if (msg.message.conversation) {
-        messageText = msg.message.conversation;
-    } else if (msg.message.extendedTextMessage?.text) {
-        messageText = msg.message.extendedTextMessage.text;
+    } catch (err) {
+        console.error("❌ Bot engine error:", err.message);
     }
 
-    const payload = {
-        sessionId,
-        messageId,
-        from: remoteJid,
-        fromMe,
-        text: messageText,
-        timestamp: msg.messageTimestamp,
-        pushName: msg.pushName || null
-    };
-
-    // Real-time emit (dashboard)
-    io.emit("session:message", payload);
-
-    // Emit to backend for webhook processing
-    io.emit("worker:incoming_message", payload);
-    });
+});
 
         return sock;
 

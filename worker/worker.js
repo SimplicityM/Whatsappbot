@@ -1,113 +1,211 @@
 /**
  * =====================================================
- *               WORKER.JS (BOT ENGINE - BAILEYS)
- * =====================================================
- * Responsible ONLY for:
- *  - Creating WhatsApp sessions
- *  - Restoring sessions
- *  - Resuming suspended sessions
- *  - Emitting QR / Ready / Failure events
+ *        TAGTHEMALL WORKER (FULL ENTERPRISE VERSION)
  * =====================================================
  */
-
-process.removeAllListeners('SIGINT');
-process.removeAllListeners('SIGTERM');
 
 require("dotenv").config();
 const http = require("http");
 const socketIo = require("socket.io");
 const mongoose = require("mongoose");
+const Redis = require("ioredis");
+const { createLogger, format, transports } = require("winston");
+const client = require("prom-client");
 
 const Session = require("./models/Session");
 const User = require("./models/User");
-const config = require('./config');
-
-// ================= RATE LIMIT SYSTEM =================
-
-const messageQueues = new Map();
-const messageStats = new Map();
-
-const MIN_DELAY_MS = 1500;      // 1.5 sec between messages
-const MAX_PER_MINUTE = 20;      // safe burst cap
-const MAX_PER_HOUR = 200;       // hourly cap
+const config = require("./config");
 
 const {
     createBaileysSession,
     resumeUserSession,
     sessions
-    } = require("./baileys.js");
+} = require("./baileys.js");
 
-    // ================= GLOBAL ERROR HANDLING =================
-
-    process.on('unhandledRejection', (reason, promise) => {
-    console.error('🚨 Unhandled Rejection:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('🚨 Uncaught Exception:', error);
-    console.error('❗ Non-fatal error caught, process will continue.');
-});
-
-// ================= CONFIG =================
+/* =====================================================
+   CONFIG
+===================================================== */
 
 const PORT = process.env.PORT || 3000;
 const MAX_SESSIONS = config?.client?.MAX_SESSIONS || 100;
 
-// ================= HTTP + SOCKET.IO SERVER =================
+const MIN_DELAY_MS = 1500;
+const MAX_PER_MINUTE = 20;
+const MAX_PER_HOUR = 200;
 
-const server = http.createServer((req, res) => {
+/* =====================================================
+   LOGGER
+===================================================== */
 
-    if (req.url.startsWith('/socket.io/')) {
-        res.writeHead(200);
-        return res.end("OK");
+const logger = createLogger({
+    format: format.combine(
+        format.timestamp(),
+        format.errors({ stack: true }),
+        format.json()
+    ),
+    transports: [
+        new transports.Console(),
+        new transports.File({ filename: "logs/error.log", level: "error" }),
+        new transports.File({ filename: "logs/combined.log" })
+    ]
+});
+
+/* =====================================================
+   REDIS
+===================================================== */
+
+const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6379");
+
+redis.on("connect", () => logger.info("Redis connected"));
+redis.on("error", err => logger.error("Redis error", { err }));
+
+/* =====================================================
+   PROMETHEUS METRICS
+===================================================== */
+
+client.collectDefaultMetrics();
+
+const messagesSentCounter = new client.Counter({
+    name: "tagthemall_messages_sent_total",
+    help: "Total messages sent"
+});
+
+const activeSessionsGauge = new client.Gauge({
+    name: "tagthemall_active_sessions",
+    help: "Number of active sessions"
+});
+
+/* =====================================================
+   GRACEFUL SHUTDOWN
+===================================================== */
+
+async function gracefulShutdown() {
+    logger.info("Graceful shutdown started");
+
+    for (const [sessionId, sock] of sessions.entries()) {
+        try {
+            await sock.logout();
+        } catch (err) {
+            logger.error("Logout error", { sessionId, err });
+        }
+    }
+
+    await mongoose.connection.close();
+    await redis.quit();
+
+    process.exit(0);
+}
+
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);
+
+/* =====================================================
+   HTTP SERVER
+===================================================== */
+
+const server = http.createServer(async (req, res) => {
+
+    if (req.url === "/metrics") {
+        res.setHeader("Content-Type", client.register.contentType);
+        return res.end(await client.register.metrics());
+    }
+
+    if (req.url === "/health") {
+        return res.end(JSON.stringify({
+            status: "healthy",
+            sessions: sessions.size,
+            uptime: process.uptime(),
+            timestamp: Date.now()
+        }));
     }
 
     if (req.url === "/" || req.url === "/ping") {
-        res.writeHead(200, { "Content-Type": "text/plain" });
         return res.end("OK");
     }
 
     res.writeHead(404);
-    res.end("Not Found");
+    res.end();
 });
 
-const io = socketIo(server, {
-    cors: { origin: "*" }
+const io = socketIo(server, { cors: { origin: "*" } });
+
+server.listen(PORT, "0.0.0.0", () => {
+    logger.info(`Worker running on port ${PORT}`);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🔥 WhatsApp Worker running on port ${PORT}`);
-});
-
-// ================= MONGODB CONNECTION =================
+/* =====================================================
+   MONGODB
+===================================================== */
 
 (async () => {
-    try {
-        if (!process.env.MONGODB_URI) {
-            console.error("❌ MONGODB_URI missing");
-            process.exit(1);
-        }
-
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000
-        });
-
-        console.log("📦 Worker connected to MongoDB");
-        console.log("🧹 Baileys system ready");
-
-    } catch (error) {
-        console.error("❌ Mongo connection failed:", error);
+    if (!process.env.MONGODB_URI) {
+        logger.error("Missing MONGODB_URI");
         process.exit(1);
     }
+
+    await mongoose.connect(process.env.MONGODB_URI, {
+        serverSelectionTimeoutMS: 10000
+    });
+
+    logger.info("MongoDB connected");
 })();
 
-// ================= SOCKET HANDLERS =================
+/* =====================================================
+   REDIS DISTRIBUTED RATE LIMIT
+===================================================== */
+
+async function checkRateLimit(sessionId) {
+
+    const minuteKey = `rate:${sessionId}:minute`;
+    const hourKey = `rate:${sessionId}:hour`;
+
+    const minuteCount = await redis.incr(minuteKey);
+    if (minuteCount === 1) await redis.expire(minuteKey, 60);
+
+    const hourCount = await redis.incr(hourKey);
+    if (hourCount === 1) await redis.expire(hourKey, 3600);
+
+    if (minuteCount > MAX_PER_MINUTE)
+        return "Rate limit exceeded (minute)";
+
+    if (hourCount > MAX_PER_HOUR)
+        return "Rate limit exceeded (hour)";
+
+    return null;
+}
+
+/* =====================================================
+   MESSAGE QUEUE (SAFE CHAIN)
+===================================================== */
+
+const messageQueues = new Map();
+
+function enqueueMessage(sessionId, task) {
+    if (!messageQueues.has(sessionId))
+        messageQueues.set(sessionId, Promise.resolve());
+
+    const queue = messageQueues.get(sessionId);
+
+    messageQueues.set(
+        sessionId,
+        queue
+            .then(task)
+            .catch(err => {
+                logger.error("Queue error", { err });
+                return Promise.resolve();
+            })
+    );
+}
+
+/* =====================================================
+   SOCKET EVENTS
+===================================================== */
 
 io.on("connection", (socket) => {
 
-    console.log("🔌 Worker connected:", socket.id);
+    logger.info("Socket connected", { socketId: socket.id });
 
-    // ================= HEALTH CHECK =================
+    /* ===== HEALTH CHECK ===== */
 
     socket.on("worker:ping", (data, callback) => {
         callback?.(null, {
@@ -117,175 +215,119 @@ io.on("connection", (socket) => {
         });
     });
 
-    // ================= CREATE SESSION =================
+    /* ===== CREATE SESSION ===== */
 
     socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
-
-        console.log("🟢 Create session:", sessionId);
-
         try {
 
-            if (sessions.size >= MAX_SESSIONS) {
+            if (sessions.size >= MAX_SESSIONS)
                 return callback?.("Maximum session limit reached");
-            }
 
-            if (sessions.has(sessionId)) {
-                return callback?.(null, { success: true, message: "Already running" });
-            }
+            if (!sessions.has(sessionId))
+                await createBaileysSession(sessionId, io);
 
-            await createBaileysSession(sessionId, io);
+            activeSessionsGauge.set(sessions.size);
 
             await Session.findOneAndUpdate(
                 { sessionId },
                 { status: "waiting_qr", updatedAt: new Date() }
             );
 
-            console.log(`✅ Session ${sessionId} created`);
-
-            callback?.(null, { success: true, sessionId });
+            callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Create session error:", err);
-            callback?.(err.message || "Failed to create session");
+            logger.error("Create session error", { err });
+            callback?.(err.message);
         }
     });
 
-    // ================= RESUME SESSION =================
+    /* ===== RESUME SESSION ===== */
 
     socket.on("worker:resume_session", async ({ userId, sessionId }) => {
-
-        console.log("🟡 Resume session:", sessionId);
-
         try {
-            if (!sessions.has(sessionId)) {
+            if (!sessions.has(sessionId))
                 await resumeUserSession(userId, sessionId, io);
-            }
-
-            console.log(`✅ Session resumed: ${sessionId}`);
-
         } catch (err) {
-            console.error("❌ Resume failed:", err);
+            logger.error("Resume error", { err });
         }
     });
 
-    // ================= STOP SESSION =================
+    /* ===== STOP SESSION ===== */
 
     socket.on("worker:stop_session", async ({ sessionId }, callback) => {
-
-        console.log("🔴 Stop session:", sessionId);
-
         try {
-            const sock = sessions.get(sessionId);
 
-            if (!sock) {
-                return callback?.("Session not found");
-            }
+            const sock = sessions.get(sessionId);
+            if (!sock) return callback?.("Session not found");
 
             await sock.logout();
             sessions.delete(sessionId);
+            messageQueues.delete(sessionId);
 
             await Session.findOneAndUpdate(
                 { sessionId },
                 { status: "disconnected", updatedAt: new Date() }
             );
 
-            console.log(`🛑 Session stopped: ${sessionId}`);
+            activeSessionsGauge.set(sessions.size);
 
             callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Stop error:", err);
+            logger.error("Stop session error", { err });
             callback?.(err.message);
         }
     });
 
-    // ================= DELETE SESSION =================
+    /* ===== DELETE SESSION ===== */
 
     socket.on("worker:delete_session", async ({ sessionId }, callback) => {
-
-        console.log("🗑 Delete session:", sessionId);
-
         try {
-            const sock = sessions.get(sessionId);
 
-            if (sock) {
-                await sock.logout();
-                sessions.delete(sessionId);
-            }
+            const sock = sessions.get(sessionId);
+            if (sock) await sock.logout();
+
+            sessions.delete(sessionId);
+            messageQueues.delete(sessionId);
 
             await Session.deleteOne({ sessionId });
 
-            console.log(`🗑 Session deleted: ${sessionId}`);
-
             callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Delete error:", err);
+            logger.error("Delete session error", { err });
             callback?.(err.message);
         }
     });
 
+    /* ===== SEND MESSAGE ===== */
 
-// ================= SEND MESSAGE (RATE LIMITED) =================
-
-socket.on("worker:send_message", async (data, callback) => {
+    socket.on("worker:send_message", async (data, callback) => {
 
         try {
             const { sessionId, to, type = "text", message, mediaUrl, fileName } = data;
 
             const sock = sessions.get(sessionId);
+            if (!sock) return callback?.("Session not connected");
 
-            if (!sock) {
-                return callback?.("Session not connected");
-            }
+            const rateError = await checkRateLimit(sessionId);
+            if (rateError) return callback?.(rateError);
 
-            // ================= RATE LIMIT CHECK =================
+            const sessionRecord = await Session.findOne({ sessionId }).populate("userId");
+            if (!sessionRecord || !sessionRecord.userId)
+                return callback?.("User not found");
 
-            const now = Date.now();
+            const user = sessionRecord.userId;
 
-            if (!messageStats.has(sessionId)) {
-                messageStats.set(sessionId, {
-                    minuteCount: 0,
-                    hourCount: 0,
-                    minuteStart: now,
-                    hourStart: now
-                });
-            }
-
-            const stats = messageStats.get(sessionId);
-
-            // Reset minute window
-            if (now - stats.minuteStart > 60000) {
-                stats.minuteCount = 0;
-                stats.minuteStart = now;
-            }
-
-            // Reset hour window
-            if (now - stats.hourStart > 3600000) {
-                stats.hourCount = 0;
-                stats.hourStart = now;
-            }
-
-            if (stats.minuteCount >= MAX_PER_MINUTE) {
-                return callback?.("Rate limit exceeded (per minute)");
-            }
-
-            if (stats.hourCount >= MAX_PER_HOUR) {
-                return callback?.("Rate limit exceeded (per hour)");
-            }
-
-            stats.minuteCount++;
-            stats.hourCount++;
-
-            // ================= QUEUE SYSTEM =================
-
-            if (!messageQueues.has(sessionId)) {
-                messageQueues.set(sessionId, Promise.resolve());
+            if (!(await user.canSendMessage())) {
+                if (!user.isSubscriptionActive())
+                    return callback?.("Subscription expired");
+                return callback?.("Monthly quota exceeded");
             }
 
             const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
 
-            const sendTask = async () => {
+            enqueueMessage(sessionId, async () => {
 
                 let payload = {};
 
@@ -293,23 +335,18 @@ socket.on("worker:send_message", async (data, callback) => {
                     case "text":
                         payload = { text: message };
                         break;
-
                     case "image":
                         payload = { image: { url: mediaUrl }, caption: message || "" };
                         break;
-
                     case "video":
                         payload = { video: { url: mediaUrl }, caption: message || "" };
                         break;
-
                     case "audio":
-                        payload = { audio: { url: mediaUrl }, mimetype: "audio/mp4", ptt: false };
+                        payload = { audio: { url: mediaUrl }, mimetype: "audio/mp4" };
                         break;
-
                     case "voice":
                         payload = { audio: { url: mediaUrl }, mimetype: "audio/mp4", ptt: true };
                         break;
-
                     case "document":
                         payload = {
                             document: { url: mediaUrl },
@@ -317,77 +354,42 @@ socket.on("worker:send_message", async (data, callback) => {
                             mimetype: "application/pdf"
                         };
                         break;
-
                     default:
                         throw new Error("Unsupported message type");
                 }
 
                 await sock.sendMessage(jid, payload);
+                await user.incrementMessageUsage();
+                messagesSentCounter.inc();
+
+                logger.info("Message sent", { sessionId, type });
 
                 await new Promise(res => setTimeout(res, MIN_DELAY_MS));
-            };
-
-            // Queue sequentially
-            const queue = messageQueues.get(sessionId);
-            messageQueues.set(sessionId, queue.then(sendTask));
+            });
 
             callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Rate limited send error:", err);
+            logger.error("Send message error", { err });
             callback?.(err.message);
         }
     });
 
-    // ================= BROADCAST =================
+    /* ===== BROADCAST ===== */
 
     socket.on("worker:send_broadcast", async ({ sessionId, message }, callback) => {
-
         try {
             const sock = sessions.get(sessionId);
+            if (!sock) return callback?.("Session not connected");
 
-            if (!sock) {
-                return callback?.("Session not connected");
-            }
-
-            const jid = sock.user?.id?.split(':')[0] + "@s.whatsapp.net";
+            const jid = sock.user?.id?.split(":")[0] + "@s.whatsapp.net";
 
             await sock.sendMessage(jid, { text: message });
 
-            console.log(`📢 Broadcast sent from ${sessionId}`);
-
             callback?.(null, { success: true });
 
         } catch (err) {
-            console.error("❌ Broadcast error:", err);
-            callback?.(err.message);
-        }
-    });
-
-    // ================= CONTACT SYNC =================
-
-    socket.on("worker:sync_contacts", async ({ sessionId }, callback) => {
-
-        try {
-            const sock = sessions.get(sessionId);
-
-            if (!sock) {
-                return callback?.("Session not connected");
-            }
-
-            const contacts = Object.values(sock.store?.contacts || {});
-            const filtered = contacts.filter(c =>
-                c.id && c.id.endsWith("@s.whatsapp.net")
-            );
-
-            callback?.(null, {
-                success: true,
-                total: filtered.length,
-                timestamp: new Date()
-            });
-
-        } catch (err) {
-            console.error("❌ Contact sync error:", err);
+            logger.error("Broadcast error", { err });
             callback?.(err.message);
         }
     });
