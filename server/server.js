@@ -613,6 +613,19 @@ app.get('/payment', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'payment.html'));
 });
 
+// Documentation aliases
+app.get('/api-docs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'api-docs.html'));
+});
+
+app.get('/docs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'api-docs.html'));
+});
+
+app.get('/terms.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'terms of service.html'));
+});
+
 
 // User endpoints
 app.get('/api/users/profile', authenticate, async (req, res) => {
@@ -1231,6 +1244,34 @@ app.get('/api/public/recent-activity', async (req, res) => {
         res.json(activities);
     } catch (error) {
         res.status(500).json({ error: 'Failed to get activity' });
+    }
+});
+
+// Command stats for bot-commands page
+app.get('/api/command-stats', async (req, res) => {
+    try {
+        const usage = await Session.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalCommands: { $sum: '$usage.commandsExecuted' },
+                    totalMessages: { $sum: '$usage.messagesProcessed' },
+                    activeBots: {
+                        $sum: {
+                            $cond: [{ $eq: ['$status', 'connected'] }, 1, 0]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const stats = usage[0] || { totalCommands: 0, totalMessages: 0, activeBots: 0 };
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching command stats'
+        });
     }
 });
 
