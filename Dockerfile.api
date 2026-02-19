@@ -1,0 +1,28 @@
+# =====================================================
+#        TAGTHEMALL API DOCKERFILE
+# =====================================================
+
+FROM node:20-alpine
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+RUN apk add --no-cache dumb-init tzdata ca-certificates
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+COPY . .
+
+RUN mkdir -p ./media ./logs && \
+    chown -R appuser:appgroup /app
+
+ENV NODE_ENV=production
+
+USER appuser
+
+EXPOSE 5000
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server.js"]
