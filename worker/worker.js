@@ -22,6 +22,8 @@ const mongoose = require("mongoose");
 const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
+// In-memory session store for Baileys
+const clients = new Map();
 const {
     createBaileysSession,
     sendMessage,
