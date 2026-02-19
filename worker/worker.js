@@ -23,11 +23,10 @@ const Session = require("./models/Session");
 const User = require("./models/User");
 const config = require('./config');
 const {
-    createBotSession,
-    restoreAllSessions,
-    resumeUserSession,
-    clients
-} = require("./bot.js");
+    createBaileysSession,
+    sendMessage,
+    sessions
+} = require("./baileys.js");
    const fs = require('fs');
             const path = require('path');
             const SessionAuth = require('./models/SessionAuth');
@@ -186,30 +185,25 @@ server.listen(PORT, '0.0.0.0', () => {
 
         await cleanupIncompleteSessions();
 
-        // Restore sessions
-        console.log("♻ Restoring existing WhatsApp sessions...");
-        const startTime = Date.now();
+            // Restore sessions (Baileys version)
+    console.log("♻ Restoring existing WhatsApp sessions...");
+    const startTime = Date.now();
 
-        try {
-            const restorationStats = await restoreAllSessions(io);
-            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    try {
+        const sessions = await Session.find({ status: { $in: ["connected", "waiting_qr"] } });
 
-            console.log(`✅ Session restoration completed in ${duration}s`);
-
-            if (restorationStats?.progress) {
-                console.log(`📊 Final Stats: ${JSON.stringify(restorationStats.progress)}`);
-            }
-
-        } catch (restoreError) {
-            console.error("⚠️ Session restoration failed (non-fatal):", restoreError);
+        for (const session of sessions) {
+            console.log(`🔄 Reconnecting session: ${session.sessionId}`);
+            await createBotSession(session.userId, session.sessionId);
         }
 
-    } catch (error) {
-        console.error("❌ Mongo connection failed. Retrying in 10 seconds...");
-        setTimeout(() => process.exit(1), 10000);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`✅ Baileys session restoration completed in ${duration}s`);
+
+    } catch (restoreError) {
+        console.error("⚠️ Baileys restoration failed (non-fatal):", restoreError);
     }
 })();
-
 
 /* =====================================================
    WORKER JOB HANDLERS
@@ -234,31 +228,35 @@ io.on("connection", (socket) => {
      * ========================================= */
 
     socket.on("worker:create_session", async ({ userId, sessionId }, callback) => {
-        console.log("🟢 Worker: create session request:", sessionId);
+    console.log("🟢 Worker: create session request:", sessionId);
 
-        try {
-            await createBotSession(userId, sessionId, io);
+    try {
+        // Create Baileys session
+        await createBaileysSession(sessionId, io);
 
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { status: "waiting_qr", updatedAt: new Date() }
-            );
-
-            console.log(`✅ Worker: session ${sessionId} created`);
-            
-            // Send acknowledgment
-            if (typeof callback === 'function') {
-                callback(null, { success: true, sessionId });
+        // Update database status
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: "waiting_qr",
+                updatedAt: new Date()
             }
-        } catch (err) {
-            console.error("❌ Worker create session error:", err);
-            
-            // Send error acknowledgment
-            if (typeof callback === 'function') {
-                callback(err.message, null);
-            }
+        );
+
+        console.log(`✅ Worker: session ${sessionId} created`);
+
+        if (typeof callback === "function") {
+            callback(null, { success: true, sessionId });
         }
-    });
+
+    } catch (err) {
+        console.error("❌ Worker create session error:", err);
+
+        if (typeof callback === "function") {
+            callback(err.message || "Failed to create session", null);
+        }
+    }
+});
 
     /** =========================================
      *  RESUME SUSPENDED SESSION
@@ -280,28 +278,37 @@ io.on("connection", (socket) => {
      *  STOP A RUNNING SESSION
      * ========================================= */
     socket.on("worker:stop_session", async ({ sessionId }) => {
-        console.log("🔴 Worker: stop session:", sessionId);
+    console.log("🔴 Worker: stop session:", sessionId);
 
-        try {
-            const data = clients.get(sessionId);
-            if (!data || !data.client) {
-                console.log("⚠ No active client for", sessionId);
-                return;
-            }
+    try {
+        const sock = sessions.get(sessionId);
 
-            await data.client.destroy();
-            clients.delete(sessionId);
-
-            await Session.findOneAndUpdate(
-                { sessionId },
-                { status: "disconnected", updatedAt: new Date() }
-            );
-
-            console.log(`🛑 Worker stopped session: ${sessionId}`);
-        } catch (err) {
-            console.error("❌ Worker stop session error:", err);
+        if (!sock) {
+            console.log("⚠ No active Baileys session for", sessionId);
+            return;
         }
-    });
+
+        // Close WebSocket connection
+        sock.ws.close();
+
+        // Remove from memory
+        sessions.delete(sessionId);
+
+        // Update database
+        await Session.findOneAndUpdate(
+            { sessionId },
+            { 
+                status: "disconnected",
+                updatedAt: new Date()
+            }
+        );
+
+        console.log(`🛑 Worker stopped session: ${sessionId}`);
+
+    } catch (err) {
+        console.error("❌ Worker stop session error:", err);
+    }
+});
 
     /** =========================================
      *  DELETE SESSION COMPLETELY
