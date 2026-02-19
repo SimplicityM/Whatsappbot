@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+
+  mongo:
+    image: mongo:6
+    container_name: tagthemall-mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - tagthemall-network
+
+  redis:
+    image: redis:7
+    container_name: tagthemall-redis
+    restart: always
+    networks:
+      - tagthemall-network
+
+  worker1:
+    build: .
+    container_name: tagthemall-worker-1
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - tagthemall-network
+
+  worker2:
+    build: .
+    container_name: tagthemall-worker-2
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - tagthemall-network
+
+  worker3:
+    build: .
+    container_name: tagthemall-worker-3
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - tagthemall-network
+
+networks:
+  tagthemall-network:
+
+volumes:
+  mongo_data:
