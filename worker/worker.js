@@ -101,12 +101,14 @@ io.on("connection", (socket) => {
     // ================= HEALTH CHECK =================
 
     socket.on("worker:ping", (data, callback) => {
-        callback?.(null, {
-            status: "healthy",
+    if (typeof callback === 'function') {
+        callback(null, {
+            status: 'healthy',
             activeSessions: sessions.size,
             timestamp: Date.now()
         });
-    });
+    }
+});
 
     // ================= CREATE SESSION =================
 
