@@ -2373,23 +2373,7 @@ function deleteSession(id) {
 // ==================== PLACEHOLDER FUNCTIONS ====================
 
 function addUser() {
-    showNotification('Add user functionality coming soon!', 'info');
-    
-    // Simulate adding a user
-    setTimeout(() => {
-        const newUser = {
-            id: users.length + 1,
-            name: `User ${users.length + 1}`,
-            phone: `+123456789${users.length}`,
-            type: 'User',
-            status: 'active',
-            lastActive: 'Just now'
-        };
-        
-        users.push(newUser);
-        loadUsers();
-        showNotification(`User ${newUser.name} added successfully!`, 'success');
-    }, 1000);
+    showNotification('Add user is currently disabled until backend endpoint is finalized.', 'warning');
 }
 
 function editUser(userId) {
@@ -2398,8 +2382,8 @@ function editUser(userId) {
         showNotification('User not found', 'error');
         return;
     }
-    
-    showNotification(`Edit user ${user.name} functionality coming soon!`, 'info');
+
+    showNotification(`Edit user for ${user.name} is currently disabled until backend endpoint is finalized.`, 'warning');
 }
 
 function deleteUser(userId) {
@@ -2442,15 +2426,15 @@ function exportUsers() {
 }
 
 function addContact() {
-    showNotification('Add contact functionality coming soon!', 'info');
+    showNotification('Add contact is currently disabled until backend endpoint is finalized.', 'warning');
 }
 
 function importContacts() {
-    showNotification('Import contacts functionality coming soon!', 'info');
+    showNotification('Import contacts is currently disabled until CSV import endpoint is finalized.', 'warning');
 }
 
 function createReminder() {
-    showNotification('Create reminder functionality coming soon!', 'info');
+    showNotification('Create reminder is currently disabled until scheduler UI is finalized.', 'warning');
 }
 
 function saveSettings() {

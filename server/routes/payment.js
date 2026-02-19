@@ -136,107 +136,112 @@ router.post('/verify-flutterwave', authenticate, async (req, res) => {
             }
         );
 
-        const { data } = response.data;
+        const payload = response.data?.data;
+        if (!payload) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid verification payload.'
+            });
+        }
 
-     if (data.status === 'successful' && data.amount >= data.charged_amount) {
-    const { meta } = data;
-    const userId = meta.userId;
-    const subscription = meta.subscription;
-    const billingCycle = meta.billingCycle || 'monthly'; // 'monthly' or 'yearly'
+        if (payload.status !== 'successful') {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment verification failed.',
+                data: { status: payload.status }
+            });
+        }
 
-    // Check if transaction already processed
-    const Transaction = require('../models/Transaction');
-    const existingTransaction = await Transaction.findOne({ transactionId: transaction_id });
-    
-    if (existingTransaction) {
-        return res.json({
-            success: true,
-            message: 'Payment already verified.',
-            data: {
-                reference: tx_ref,
-                amount: data.amount,
-                subscription: existingTransaction.subscription,
-                duration: existingTransaction.duration,
-                alreadyProcessed: true
-            }
-        });
-    }
+        const meta = payload.meta || {};
+        const userId = meta.userId || req.user._id;
+        const subscription = meta.subscription;
+        const billingCycle = meta.billingCycle || 'monthly';
 
-    // Get plan details based on billing cycle
-    const planDetails = SUBSCRIPTION_PLANS[subscription]?.[billingCycle];
-    
-    if (!planDetails) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid subscription plan or billing cycle.'
-        });
-    }
+        const Transaction = require('../models/Transaction');
+        const existingTransaction = await Transaction.findOne({ transactionId: String(transaction_id) });
+        if (existingTransaction) {
+            return res.json({
+                success: true,
+                message: 'Payment already verified.',
+                data: {
+                    reference: tx_ref,
+                    amount: payload.amount,
+                    subscription: existingTransaction.subscription,
+                    duration: existingTransaction.duration,
+                    alreadyProcessed: true
+                }
+            });
+        }
 
-    // Update user subscription
-    const user = await User.findById(userId);
-    if (user) {
+        const planDetails = SUBSCRIPTION_PLANS[subscription]?.[billingCycle];
+        if (!planDetails) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid subscription plan or billing cycle.'
+            });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found.'
+            });
+        }
+
+        const durationInDays = Math.round(planDetails.duration * 30);
         user.subscription = subscription;
         user.paymentStatus = 'paid';
-        
-        // Calculate expiry based on duration (in months)
-        const durationInDays = Math.round(planDetails.duration * 30);
         user.subscriptionExpiry = new Date(Date.now() + durationInDays * 24 * 60 * 60 * 1000);
         user.status = 'approved';
         await user.save();
 
-        // Save transaction record
+        if (user.whatsappNumber) {
+            await BlacklistedNumber.findOneAndUpdate(
+                { whatsappNumber: user.whatsappNumber },
+                {
+                    canReactivate: true,
+                    reason: 'paid_subscription',
+                    notes: `Subscription renewed on ${new Date().toISOString()}`
+                }
+            );
+        }
+
         await Transaction.create({
-            userId: userId,
-            transactionId: transaction_id,
+            userId: user._id,
+            transactionId: String(transaction_id),
             txRef: tx_ref,
-            amount: data.amount,
-            currency: data.currency || 'USD',
-            status: data.status,
-            subscription: subscription,
-            billingCycle: billingCycle,
+            amount: payload.amount,
+            currency: payload.currency || 'USD',
+            status: payload.status,
+            subscription,
+            billingCycle,
             duration: planDetails.duration,
-            paymentMethod: data.payment_type || 'card',
-            customerEmail: data.customer?.email || user.email,
-            customerName: data.customer?.name || user.fullName,
-            flutterwaveRef: data.flw_ref,
-            createdAt: new Date(data.created_at || Date.now())
+            paymentMethod: payload.payment_type || 'card',
+            customerEmail: payload.customer?.email || user.email,
+            customerName: payload.customer?.name || user.fullName,
+            flutterwaveRef: payload.flw_ref,
+            createdAt: new Date(payload.created_at || Date.now())
         });
 
-        console.log(`✅ Payment verified: ${user.email} - ${subscription} (${billingCycle}) - ${durationInDays} days`);
-        
-                // Restore bot session if available
-                try {
-                    const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
-                    await restoreUserSessionAfterPayment(userId);
-                } catch (botError) {
-                    console.error('Error restoring bot session:', botError);
-                    // Don't fail the payment verification if bot restoration fails
-                }
-
-                res.json({
-                    success: true,
-                    message: 'Payment verified successfully.',
-                    data: {
-                        reference: tx_ref,
-                        amount: data.amount,
-                        subscription,
-                        duration,
-                        subscriptionExpiry: user.subscriptionExpiry
-                    }
-                });
-            } else {
-                res.status(404).json({
-                    success: false,
-                    message: 'User not found.'
-                });
-            }
-        } else {
-            res.status(400).json({
-                success: false,
-                message: 'Payment verification failed.',
-                data: { status: data.status }
-            });
+        try {
+            const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
+            await restoreUserSessionAfterPayment(user._id);
+        } catch (botError) {
+            console.error('Error restoring bot session:', botError);
         }
+
+        return res.json({
+            success: true,
+            message: 'Payment verified successfully.',
+            data: {
+                reference: tx_ref,
+                amount: payload.amount,
+                subscription,
+                duration: planDetails.duration,
+                subscriptionExpiry: user.subscriptionExpiry
+            }
+        });
 
     } catch (error) {
         console.error('Flutterwave verification error:', error.response?.data || error);
@@ -263,59 +268,40 @@ router.post('/flutterwave-webhook', async (req, res) => {
         const payload = req.body;
 
         // Handle successful payment
-        if (payload.event === 'charge.completed' && payload.data.status === 'successful') {
-            const { meta, amount, tx_ref, id } = payload.data;
+        if (payload.event === 'charge.completed' && payload.data?.status === 'successful') {
+            const data = payload.data;
+            const meta = data.meta || {};
             const userId = meta.userId;
             const subscription = meta.subscription;
-            const duration = parseInt(meta.duration);
+            const billingCycle = meta.billingCycle || 'monthly';
+            const planDetails = SUBSCRIPTION_PLANS[subscription]?.[billingCycle];
 
-            const user = await User.findById(userId);
-            if (user) {
-                user.subscription = subscription;
-                user.paymentStatus = 'paid';
-                user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
-                user.status = 'approved';
-                await user.save();
+            if (userId && planDetails) {
+                const user = await User.findById(userId);
+                if (user) {
+                    user.subscription = subscription;
+                    user.paymentStatus = 'paid';
+                    user.subscriptionExpiry = new Date(Date.now() + (planDetails.duration * 30 * 24 * 60 * 60 * 1000));
+                    user.status = 'approved';
+                    await user.save();
 
-                  // In payment.js, after successful payment (around line 233)
-        const user = await User.findById(userId);
-        if (user) {
-            user.subscription = subscription;
-            user.paymentStatus = 'paid';
-            user.subscriptionExpiry = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000);
-            user.status = 'approved';
-            await user.save();
-
-            // NEW: Remove from blacklist and free up the number
-            if (user.whatsappNumber) {
-                await BlacklistedNumber.findOneAndDelete({
-                    whatsappNumber: user.whatsappNumber
-                });
-                
-                // Remove whatsappNumber from any old expired accounts
-                await User.updateMany(
-                    { 
-                        whatsappNumber: user.whatsappNumber,
-                        _id: { $ne: user._id },
-                        paymentStatus: { $ne: 'paid' }
-                    },
-                    { 
-                        $unset: { whatsappNumber: "" } 
+                    if (user.whatsappNumber) {
+                        await BlacklistedNumber.findOneAndUpdate(
+                            { whatsappNumber: user.whatsappNumber },
+                            {
+                                canReactivate: true,
+                                reason: 'paid_subscription',
+                                notes: `Subscription renewed via webhook on ${new Date().toISOString()}`
+                            }
+                        );
                     }
-                );
-            }
-        }
 
-                console.log(`✅ Payment successful for user ${user.email}: ${tx_ref}`);
-
-                      
-
-                // Restore bot session
-                try {
-                    const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
-                    await restoreUserSessionAfterPayment(userId);
-                } catch (botError) {
-                    console.error('Error restoring bot session:', botError);
+                    try {
+                        const { restoreUserSessionAfterPayment } = require('../../worker/baileys.js');
+                        await restoreUserSessionAfterPayment(userId);
+                    } catch (botError) {
+                        console.error('Error restoring bot session:', botError);
+                    }
                 }
             }
         }
@@ -565,18 +551,6 @@ router.get('/transaction/:transactionId', authenticate, async (req, res) => {
         });
     }
 });
-
-
-// Remove from blacklist if they pay
-if (user.whatsappNumber) {
-    await BlacklistedNumber.findOneAndUpdate(
-        { whatsappNumber: user.whatsappNumber },
-        { 
-            canReactivate: true,
-            reason: 'paid_subscription',
-            notes: `Subscription renewed on ${new Date()}`
-        }
-    );
 
 module.exports = router;
 
