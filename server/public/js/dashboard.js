@@ -1753,61 +1753,91 @@ function updateSubscriptionDisplay() {
     const isTrial = subscription.paymentStatus === 'trial';
     
     // Get DOM elements (with null checks)
-    const currentPlanEl = document.getElementById('currentPlan');
-    const paymentStatusEl = document.getElementById('paymentStatus');
-    const expiryDateEl = document.getElementById('expiryDate');
-    const maxSessionsEl = document.getElementById('maxSessions');
+    const currentPlanEls = [
+        document.getElementById('currentPlan'),
+        document.getElementById('subCurrentPlan')
+    ].filter(Boolean);
+    const paymentStatusEls = [
+        document.getElementById('paymentStatus'),
+        document.getElementById('subPaymentStatus')
+    ].filter(Boolean);
+    const expiryDateEls = [
+        document.getElementById('expiryDate'),
+        document.getElementById('subExpiryDate')
+    ].filter(Boolean);
+    const maxSessionsEls = [
+        document.getElementById('maxSessions'),
+        document.getElementById('subMaxSessions')
+    ].filter(Boolean);
     const planDaysLeftEl = document.getElementById('planDaysLeft');
     const planStatusEl = document.getElementById('planStatus');
     const sessionLimitEl = document.getElementById('sessionLimit');
     
     // ✅ Update current plan - capitalize properly
-    if (currentPlanEl) {
+    if (currentPlanEls.length) {
         const planName = subscription.subscription || 'free';
         const displayName = planName.charAt(0).toUpperCase() + planName.slice(1);
-        currentPlanEl.textContent = displayName;
+        currentPlanEls.forEach(el => { el.textContent = displayName; });
         console.log('✅ Updated currentPlan to:', displayName);
     } else {
         console.warn('⚠️ currentPlan element not found');
     }
     
+    const isTrialExpired = isTrial && daysLeft <= 0;
+
     // ✅ Update payment status with trial info
-    if (paymentStatusEl) {
-        if (isTrial) {
-            paymentStatusEl.textContent = `Trial (${daysLeft} days left)`;
-            paymentStatusEl.style.color = daysLeft <= 2 ? '#f44336' : daysLeft <= 5 ? '#ff9800' : '#4CAF50';
+    if (paymentStatusEls.length) {
+        if (isTrialExpired) {
+            paymentStatusEls.forEach(el => {
+                el.textContent = 'Trial Expired';
+                el.style.color = '#f44336';
+            });
+        } else if (isTrial) {
+            paymentStatusEls.forEach(el => {
+                el.textContent = `Trial (${daysLeft} days left)`;
+                el.style.color = daysLeft <= 2 ? '#f44336' : daysLeft <= 5 ? '#ff9800' : '#4CAF50';
+            });
         } else if (subscription.paymentStatus === 'expired') {
-            paymentStatusEl.textContent = 'Expired';
-            paymentStatusEl.style.color = '#f44336';
+            paymentStatusEls.forEach(el => {
+                el.textContent = 'Expired';
+                el.style.color = '#f44336';
+            });
         } else {
-            paymentStatusEl.textContent = subscription.paymentStatus || 'Active';
-            paymentStatusEl.style.color = '#4CAF50';
+            paymentStatusEls.forEach(el => {
+                el.textContent = subscription.paymentStatus || 'Active';
+                el.style.color = '#4CAF50';
+            });
         }
-        console.log('✅ Updated paymentStatus to:', paymentStatusEl.textContent);
+        console.log('✅ Updated paymentStatus');
     }
     
     // ✅ Update expiry date
-    if (expiryDateEl) {
+    if (expiryDateEls.length) {
         if (daysLeft > 0) {
-            expiryDateEl.textContent = `${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
+            expiryDateEls.forEach(el => { el.textContent = `${daysLeft} day${daysLeft !== 1 ? 's' : ''}`; });
             if (daysLeft <= 2 && isTrial) {
-                expiryDateEl.style.color = '#f44336';
-                expiryDateEl.style.fontWeight = 'bold';
+                expiryDateEls.forEach(el => {
+                    el.style.color = '#f44336';
+                    el.style.fontWeight = 'bold';
+                });
             }
         } else if (subscription.paymentStatus === 'trial' || subscription.paymentStatus === 'expired') {
-            expiryDateEl.textContent = 'Expired';
-            expiryDateEl.style.color = '#f44336';
-            expiryDateEl.style.fontWeight = 'bold';
+            expiryDateEls.forEach(el => {
+                el.textContent = 'Expired';
+                el.style.color = '#f44336';
+                el.style.fontWeight = 'bold';
+            });
         } else {
-            expiryDateEl.textContent = 'Never';
+            expiryDateEls.forEach(el => { el.textContent = 'Never'; });
         }
-        console.log('✅ Updated expiryDate to:', expiryDateEl.textContent);
+        console.log('✅ Updated expiryDate');
     }
     
     // ✅ Update max sessions
-    if (maxSessionsEl) {
-        maxSessionsEl.textContent = subscription.limits?.maxSessions || 1;
-        console.log('✅ Updated maxSessions to:', maxSessionsEl.textContent);
+    if (maxSessionsEls.length) {
+        const maxSess = subscription.limits?.maxSessions || 1;
+        maxSessionsEls.forEach(el => { el.textContent = maxSess; });
+        console.log('✅ Updated maxSessions to:', maxSess);
     }
     
     // ✅ Update plan days left
@@ -1821,7 +1851,9 @@ function updateSubscriptionDisplay() {
     
     // ✅ Update plan status
     if (planStatusEl) {
-        if (isTrial) {
+        if (isTrialExpired) {
+            planStatusEl.textContent = 'Trial Expired';
+        } else if (isTrial) {
             planStatusEl.textContent = `Trial - ${daysLeft} days left`;
         } else if (subscription.paymentStatus === 'expired') {
             planStatusEl.textContent = 'Expired';
@@ -1845,9 +1877,9 @@ function updateSubscriptionDisplay() {
     }
     
     // Show upgrade banner if trial is expiring soon or expired
-    if (isTrial && daysLeft <= 2) {
+    if (isTrial && daysLeft > 0 && daysLeft <= 2) {
         showTrialExpiringBanner(daysLeft);
-    } else if (subscription.paymentStatus === 'expired') {
+    } else if (isTrialExpired || subscription.paymentStatus === 'expired') {
         showTrialExpiredBanner();
     }
 }
