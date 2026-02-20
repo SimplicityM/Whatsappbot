@@ -18,6 +18,9 @@ const GroupSettings = require("./models/GroupSettings");
 const Session = require("./models/Session");
 const User = require("./models/User");
 const BlacklistedNumber = require("./models/BlacklistedNumber");
+const GroupPermission = require("./models/GroupPermission");
+const WelcomeMeta = require("./models/WelcomeMeta");
+const GroupMembers = require("./models/GroupMembers");
 const botEngine = require("./botEngine");
 
 const sessions = new Map();
@@ -25,6 +28,7 @@ const sessionLocks = new Set();
 const groupMetadataCache = new Map();
 const sessionSchedulers = new Map();
 const sessionInitOptions = new Map();
+const memberSyncIntervals = new Map();
 
 const SESSION_START_DELAY = 1500;
 const GROUP_CACHE_TTL = 5 * 60 * 1000;
@@ -87,6 +91,57 @@ function stopScheduler(sessionId) {
     if (intervalId) {
         clearInterval(intervalId);
         sessionSchedulers.delete(sessionId);
+    }
+}
+
+async function setMembersForGroup(sessionId, groupId, memberJids = []) {
+    await GroupMembers.updateOne(
+        { sessionId, groupId },
+        { $set: { members: memberJids, updatedAt: new Date() } },
+        { upsert: true }
+    ).catch(() => {});
+}
+
+async function addMemberToGroup(sessionId, groupId, jid) {
+    await GroupMembers.updateOne(
+        { sessionId, groupId },
+        { $addToSet: { members: jid }, $set: { updatedAt: new Date() } },
+        { upsert: true }
+    ).catch(() => {});
+}
+
+async function removeMemberFromGroup(sessionId, groupId, jid) {
+    await GroupMembers.updateOne(
+        { sessionId, groupId },
+        { $pull: { members: jid }, $set: { updatedAt: new Date() } }
+    ).catch(() => {});
+}
+
+function startAutoMemberSync(sessionId, sock) {
+    if (memberSyncIntervals.has(sessionId)) return;
+
+    const refresh = async () => {
+        try {
+            const allGroups = await sock.groupFetchAllParticipating().catch(() => ({}));
+            for (const [groupId, g] of Object.entries(allGroups || {})) {
+                const members = (g.participants || [])
+                    .map(p => normalizeJid(p.id))
+                    .filter(Boolean);
+                await setMembersForGroup(sessionId, groupId, members);
+            }
+        } catch {}
+    };
+
+    setTimeout(refresh, 20 * 1000);
+    const intervalId = setInterval(refresh, 30 * 60 * 1000);
+    memberSyncIntervals.set(sessionId, intervalId);
+}
+
+function stopAutoMemberSync(sessionId) {
+    const intervalId = memberSyncIntervals.get(sessionId);
+    if (intervalId) {
+        clearInterval(intervalId);
+        memberSyncIntervals.delete(sessionId);
     }
 }
 
@@ -298,6 +353,7 @@ Quick Start:
                 io.emit("session:ready", payload);
                 io.emit("sessionReady", payload);
                 startScheduler(sessionId, sock);
+                startAutoMemberSync(sessionId, sock);
             }
 
             if (connection === "close") {
@@ -306,6 +362,7 @@ Quick Start:
 
                 sessions.delete(sessionId);
                 stopScheduler(sessionId);
+                stopAutoMemberSync(sessionId);
 
                 try {
                     sock.ev.removeAllListeners();
@@ -340,15 +397,70 @@ Quick Start:
         });
 
         sock.ev.on("group-participants.update", async update => {
-            const settings = await GroupSettings.findOne({ groupId: update.id });
-            if (!settings?.welcome) return;
+            const groupId = update?.id;
+            if (!groupId) return;
 
-            if (update.action === "add") {
-                await sock.sendMessage(update.id, { text: "Welcome to the group!" });
+            groupMetadataCache.delete(groupId);
+
+            const action = String(update.action || "").toLowerCase();
+            const participants = Array.isArray(update.participants) ? update.participants : [];
+            const selfJid = normalizeJid(sock.user?.id);
+            const settings = await GroupSettings.findOne({ groupId }).lean().catch(() => null);
+            const perm = await GroupPermission.findOne({ botUserId: sessionId, groupId }).lean().catch(() => null);
+            const blocklist = Array.isArray(perm?.blocked) ? perm.blocked.map(normalizeJid) : [];
+            const isJoinAction = action === "add" || action === "invite";
+            const isLeaveAction = action === "remove" || action === "leave";
+
+            let botIsAdmin = false;
+            if (isJoinAction && blocklist.length) {
+                const md = await sock.groupMetadata(groupId).catch(() => null);
+                botIsAdmin = !!(md?.participants || []).find(
+                    p => normalizeJid(p.id) === selfJid && !!p.admin
+                );
             }
 
-            if (update.action === "remove") {
-                await sock.sendMessage(update.id, { text: "A member left the group." });
+            for (const raw of participants) {
+                const pid = normalizeJid(raw);
+                if (!pid) continue;
+
+                if (isJoinAction) {
+                    await addMemberToGroup(sessionId, groupId, pid);
+                } else if (isLeaveAction) {
+                    await removeMemberFromGroup(sessionId, groupId, pid);
+                } else {
+                    await addMemberToGroup(sessionId, groupId, pid);
+                }
+
+                if (pid === selfJid) {
+                    const meta = await WelcomeMeta.findOne({ sessionId, groupId }).lean().catch(() => null);
+                    if (!meta?.welcomeSent) {
+                        await sock.sendMessage(groupId, {
+                            text: "Thank you for having me here. I introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html"
+                        }).catch(() => {});
+                        await WelcomeMeta.updateOne(
+                            { sessionId, groupId },
+                            { $set: { welcomeSent: true } },
+                            { upsert: true }
+                        ).catch(() => {});
+                    }
+                    continue;
+                }
+
+                if (isJoinAction && blocklist.includes(pid) && botIsAdmin) {
+                    await sock.sendMessage(groupId, {
+                        text: `⛔ ${pid.split("@")[0]} is on the blocklist and has been removed.`
+                    }).catch(() => {});
+                    await sock.groupParticipantsUpdate(groupId, [pid], "remove").catch(() => {});
+                    continue;
+                }
+
+                if (isJoinAction && settings?.welcome) {
+                    const num = pid.split("@")[0];
+                    await sock.sendMessage(groupId, {
+                        text: `Welcome @${num}! Thank you for having me here.\nI introduce to you all TagThemAll Bot.\nClick here to learn more: https://tagthemall.com.ng/about.html`,
+                        mentions: [pid]
+                    }).catch(() => {});
+                }
             }
         });
 

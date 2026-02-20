@@ -7,6 +7,9 @@ const AutoReply = require("./models/AutoReply");
 const TagUsage = require("./models/TagUsage");
 const GroupPermission = require("./models/GroupPermission");
 const Schedule = require("./models/Schedule");
+const Usage = require("./models/Usage");
+const Contact = require("./models/Contact");
+const Session = require("./models/Session");
 const User = require("./models/User");
 const { generateForwardMessageContent, generateWAMessageFromContent } = require("@whiskeysockets/baileys");
 
@@ -294,6 +297,7 @@ function parseTargets(tokens, sourceMembers = []) {
 
 function mapPlanCommand(c) {
     const map = {
+        menu: "help",
         autoreply: "auto_reply",
         schedule: "scheduler",
         listschedules: "scheduler",
@@ -304,9 +308,113 @@ function mapPlanCommand(c) {
         tagfew: "tag",
         dmall: "dmall",
         dmallmulti: "dmall",
-        dmselected: "dmall"
+        dmselected: "dmall",
+        broadcastdm: "broadcast",
+        block: "deny",
+        whitelistadd: "allow",
+        syncmembers: "list",
+        mygroups: "list"
     };
     return map[c] || c;
+}
+
+async function trackDailyUsage(userId, type = "message", command = null, sessionId = null) {
+    if (!userId) return;
+    const today = new Date().toISOString().split("T")[0];
+
+    if (type === "message") {
+        await Usage.findOneAndUpdate(
+            { userId, date: today },
+            {
+                $inc: { messagesCount: 1 },
+                $setOnInsert: {
+                    commandsUsed: [],
+                    sessionsActive: 0,
+                    groupsManaged: 0
+                }
+            },
+            { upsert: true }
+        ).catch(() => {});
+        return;
+    }
+
+    if (type === "command" && command) {
+        await Usage.findOneAndUpdate(
+            { userId, date: today },
+            {
+                $push: {
+                    commandsUsed: {
+                        command,
+                        timestamp: new Date(),
+                        sessionId
+                    }
+                },
+                $setOnInsert: {
+                    messagesCount: 0,
+                    sessionsActive: 0,
+                    groupsManaged: 0
+                }
+            },
+            { upsert: true }
+        ).catch(() => {});
+    }
+}
+
+async function trackSessionUsage(sessionId, field) {
+    if (!sessionId || !field) return;
+    await Session.updateOne(
+        { sessionId },
+        {
+            $inc: { [`usage.${field}`]: 1 },
+            $set: { updatedAt: new Date() }
+        }
+    ).catch(() => {});
+}
+
+async function maybeSaveContact({
+    sessionId,
+    userId,
+    from,
+    msg,
+    isGroup
+}) {
+    if (!sessionId || !userId || !from || isGroup) return;
+
+    const phone = String(from).split("@")[0] || "";
+    if (!phone) return;
+
+    const name = msg.pushName || phone;
+    const existing = await Contact.findOne({ sessionId, whatsappId: from })
+        .select("_id")
+        .lean()
+        .catch(() => null);
+
+    await Contact.findOneAndUpdate(
+        { sessionId, whatsappId: from },
+        {
+            $set: {
+                sessionId,
+                userId: String(userId),
+                whatsappId: from,
+                name,
+                phone,
+                type: "individual",
+                isGroup: false,
+                hasMessagedBot: true,
+                lastMessageAt: new Date()
+            },
+            $setOnInsert: {
+                addedAt: new Date()
+            }
+        },
+        { upsert: true, new: false }
+    ).catch(() => {});
+
+    if (!existing) {
+        await User.findByIdAndUpdate(userId, {
+            $inc: { "usage.contactsSaved": 1 }
+        }).catch(() => {});
+    }
 }
 
 async function canUseCommand(sessionId, commandName) {
@@ -348,35 +456,54 @@ async function canUseCommand(sessionId, commandName) {
     }
 }
 
-async function processAutoReply({ sock, from, sessionId, isGroup, body, fromMe }) {
-    if (!body || fromMe) return;
+async function processAutoReply({ sock, from, sessionId, isGroup, body, fromMe, mediaType = "text" }) {
+    if (fromMe) return;
 
     const doc = await AutoReply.findOne({ sessionId }).lean().catch(() => null);
     if (!doc || doc.globalEnabled === false) return;
     if (isGroup && doc.disabledGroups?.includes(from)) return;
     if (isGroup && doc.allowedGroups?.length && !doc.allowedGroups.includes(from)) return;
 
-    const text = body.toLowerCase();
+    const text = String(body || "").toLowerCase();
     const groupRule = (doc.groupRules || []).find(g => g.groupId === from && g.enabled !== false);
     const globalRules = doc.globalRules || doc.rules || [];
+    const globalMediaRules = doc.globalMediaRules || doc.mediaRules || [];
     let rules = globalRules;
+    let mediaRules = globalMediaRules;
 
-    if (groupRule?.overrideGlobal) rules = groupRule.rules || [];
-    else if (groupRule?.rules?.length) rules = [...globalRules, ...groupRule.rules];
+    if (groupRule?.overrideGlobal) {
+        rules = groupRule.rules || [];
+        mediaRules = groupRule.mediaRules || [];
+    } else {
+        if (groupRule?.rules?.length) rules = [...globalRules, ...groupRule.rules];
+        if (groupRule?.mediaRules?.length) mediaRules = [...globalMediaRules, ...groupRule.mediaRules];
+    }
 
-    for (const r of rules) {
-        if (r.active === false) continue;
-        const k = String(r.keyword || "").toLowerCase();
-        if (!k) continue;
-        const mt = r.matchType || "contains";
-        const ok =
-            (mt === "exact" && text === k) ||
-            (mt === "starts" && text.startsWith(k)) ||
-            (mt === "ends" && text.endsWith(k)) ||
-            (mt === "contains" && text.includes(k));
-        if (!ok) continue;
-        await sendText(sock, from, r.response);
-        return;
+    if (text) {
+        for (const r of rules) {
+            if (r.active === false) continue;
+            const k = String(r.keyword || "").toLowerCase();
+            if (!k) continue;
+            const mt = r.matchType || "contains";
+            const ok =
+                (mt === "exact" && text === k) ||
+                (mt === "starts" && text.startsWith(k)) ||
+                (mt === "ends" && text.endsWith(k)) ||
+                (mt === "contains" && text.includes(k));
+            if (!ok) continue;
+            await sendText(sock, from, r.response);
+            return;
+        }
+    }
+
+    if (mediaType && mediaType !== "text") {
+        for (const r of mediaRules || []) {
+            if (r.active === false) continue;
+            if (String(r.type || "").toLowerCase() !== mediaType) continue;
+            if (!r.response) continue;
+            await sendText(sock, from, r.response);
+            return;
+        }
     }
 }
 
@@ -446,13 +573,21 @@ async function handleCommand(ctx) {
 
     const full = body.slice(PREFIX.length).trim();
     const [rawCmd, ...args] = full.split(/\s+/);
-    const cmd = String(rawCmd || "").toLowerCase();
+    const rawCommand = String(rawCmd || "").toLowerCase();
+    const aliasMap = {
+        block: "deny",
+        whitelistadd: "allow"
+    };
+    const cmd = aliasMap[rawCommand] || rawCommand;
 
     const ownerOnly = new Set([
         "list", "listall", "use", "unset", "status", "members", "admins",
         "tag", "tagexcept", "tagfew", "dmall", "dmallmulti", "dmselected",
         "forwardone", "forwardmulti", "forwardall", "autoreply",
-        "keyword", "find", "schedule", "listschedules", "cancelschedule"
+        "keyword", "find", "schedule", "listschedules", "cancelschedule",
+        "syncmembers", "mygroups", "broadcast", "broadcastdm",
+        "allow", "unallow", "deny", "unblock", "whitelist", "blocklist",
+        "antilink", "antidelete", "welcome"
     ]);
 
     if (ownerOnly.has(cmd) && !(fromMe && isSelfChat)) return;
@@ -475,30 +610,131 @@ async function handleCommand(ctx) {
                 "!tag !tagexcept !tagfew",
                 "!dmall !dmallmulti !dmselected",
                 "!forwardone !forwardmulti !forwardall",
+                "!broadcast !broadcastdm",
+                "!syncmembers !mygroups",
                 "!autoreply ...",
                 "!keyword ... !find ...",
                 "!schedule !listschedules !cancelschedule",
-                "!antilink !antidelete !welcome"
+                "!antilink <groupIndex> on/off",
+                "!antidelete <groupIndex> on/off",
+                "!welcome <groupIndex> on/off"
             ].join("\n")
         );
     }
 
     if (cmd === "antilink" || cmd === "antidelete" || cmd === "welcome") {
-        if (!isGroup || !isAdmin) return sendText(sock, from, "Group admin only.");
-        const mode = String(args[0] || "").toLowerCase();
+        let targetGroupId = null;
+        let targetGroupName = null;
+        let mode = "";
+
+        // Self-chat mode: !<cmd> <groupIndex> on/off (or !use + !<cmd> on/off)
+        if (!isGroup) {
+            const first = String(args[0] || "").toLowerCase();
+            const maybeIdx = /^\d+$/.test(first) ? parseInt(first, 10) : null;
+            const group = await resolveGroup(sock, sessionId, maybeIdx, false);
+            if (!group) {
+                return sendText(sock, from, "Usage: !<cmd> <groupIndex> on/off (or set !use first)");
+            }
+            targetGroupId = group.groupId;
+            targetGroupName = group.name || group.groupId;
+            mode = String(maybeIdx ? args[1] : args[0] || "").toLowerCase();
+        } else {
+            // Group mode fallback
+            if (!isAdmin) return sendText(sock, from, "Group admin only.");
+            targetGroupId = from;
+            targetGroupName = from;
+            mode = String(args[0] || "").toLowerCase();
+        }
+
         if (!["on", "off"].includes(mode)) return sendText(sock, from, `Usage: !${cmd} on/off`);
-        const g = (await GroupSettings.findOne({ groupId: from })) || (await GroupSettings.create({ groupId: from }));
+        const g = (await GroupSettings.findOne({ groupId: targetGroupId })) || (await GroupSettings.create({ groupId: targetGroupId }));
         if (cmd === "antilink") g.antiLink = mode === "on";
         if (cmd === "antidelete") g.antiDelete = mode === "on";
         if (cmd === "welcome") g.welcome = mode === "on";
         await g.save();
-        return sendText(sock, from, `${cmd} ${mode.toUpperCase()}`);
+        return sendText(sock, from, `${cmd} ${mode.toUpperCase()} for ${targetGroupName}`);
     }
 
     if (cmd === "list" || cmd === "listall") {
         const groups = await getCachedGroups(sock, sessionId, cmd === "listall", args[0] === "refresh");
         if (!groups.length) return sendText(sock, from, "No groups found.");
         return sendText(sock, from, groups.map((g, i) => `${i + 1}. ${g.name}`).join("\n"));
+    }
+
+    if (cmd === "syncmembers") {
+        const idx = args[0] ? parseInt(args[0], 10) : null;
+        const g = await resolveGroup(sock, sessionId, idx, false);
+        if (!g) return sendText(sock, from, "No target group found.");
+        const list = await getGroupMembers(sock, sessionId, g.groupId, true);
+        return sendText(sock, from, `Synced ${list.length} members for ${g.name}.`);
+    }
+
+    if (cmd === "mygroups") {
+        const groups = await getCachedGroups(sock, sessionId, true, true);
+        const me = getSelfJid(sock);
+        const mine = [];
+
+        for (const g of groups) {
+            try {
+                const md = await sock.groupMetadata(g.groupId);
+                const myParticipant = (md.participants || []).find(p => normalizeJid(p.id) === me);
+                if (myParticipant?.admin === "superadmin") {
+                    mine.push(g);
+                }
+            } catch {}
+        }
+
+        if (!mine.length) return sendText(sock, from, "No groups detected as created by you.");
+        return sendText(sock, from, mine.map((g, i) => `${i + 1}. ${g.name}`).join("\n"));
+    }
+
+    if (cmd === "broadcast") {
+        const text = full.slice("broadcast".length).trim();
+        if (!text) return sendText(sock, from, "Usage: !broadcast <message>");
+
+        const groups = await getCachedGroups(sock, sessionId, false, false);
+        if (!groups.length) return sendText(sock, from, "No admin groups found.");
+
+        let sent = 0;
+        for (const g of groups) {
+            try {
+                await sendText(sock, g.groupId, text);
+                sent++;
+            } catch {}
+            await addDelay(250);
+        }
+        return sendText(sock, from, `Broadcast sent to ${sent}/${groups.length} admin groups.`);
+    }
+
+    if (cmd === "broadcastdm") {
+        const text = full.slice("broadcastdm".length).trim();
+        if (!text) return sendText(sock, from, "Usage: !broadcastdm <message>");
+
+        const groups = await getCachedGroups(sock, sessionId, true, false);
+        if (!groups.length) return sendText(sock, from, "No groups found.");
+
+        const me = getSelfJid(sock);
+        const targets = new Set();
+        for (const g of groups) {
+            const list = await getGroupMembers(sock, sessionId, g.groupId, false).catch(() => []);
+            for (const jid of list) {
+                const n = normalizeJid(jid);
+                if (!n || n === me || n.endsWith("@g.us")) continue;
+                targets.add(n);
+            }
+        }
+
+        if (!targets.size) return sendText(sock, from, "No contacts available.");
+
+        let sent = 0;
+        for (const jid of targets) {
+            try {
+                await sendText(sock, jid, text);
+                sent++;
+            } catch {}
+            await addDelay(300);
+        }
+        return sendText(sock, from, `Broadcast DM completed: ${sent}/${targets.size}`);
     }
 
     if (cmd === "use") {
@@ -1039,6 +1275,22 @@ module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdm
     const historical = typeof isHistorical === "boolean" ? isHistorical : upsertType !== "notify";
     cacheMessageForRecall({ sessionId, chatId: from, msg });
     if (historical && !isOwnerCommand) return;
+    const userId = extractUserId(sessionId);
+
+    if (userId) {
+        trackDailyUsage(userId, "message", null, sessionId).catch(() => {});
+        trackSessionUsage(sessionId, "messagesProcessed").catch(() => {});
+    }
+
+    if (!fromMe && userId) {
+        maybeSaveContact({
+            sessionId,
+            userId,
+            from,
+            msg,
+            isGroup
+        }).catch(() => {});
+    }
 
     const now = Date.now();
     const marks = (spam.get(senderJid) || []).filter(t => now - t < SPAM_WINDOW);
@@ -1066,7 +1318,15 @@ module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdm
         }
     }
 
-    await processAutoReply({ sock, from, sessionId, isGroup, body, fromMe });
+    await processAutoReply({
+        sock,
+        from,
+        sessionId,
+        isGroup,
+        body,
+        fromMe,
+        mediaType: detectMediaType(msg.message || {})
+    });
     const consumedRecall = await processRecallKeywords({
         sock,
         sessionId,
@@ -1089,6 +1349,12 @@ module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdm
             }
         });
     } catch {}
+
+    if (userId) {
+        const cmdName = String(body.slice(PREFIX.length).trim().split(/\s+/)[0] || "").toLowerCase();
+        trackDailyUsage(userId, "command", cmdName, sessionId).catch(() => {});
+        trackSessionUsage(sessionId, "commandsExecuted").catch(() => {});
+    }
 
     await handleCommand({ sock, msg, sessionId, from, sender: senderJid, isGroup, isAdmin, body });
 };

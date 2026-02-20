@@ -9,7 +9,8 @@
   "scripts": {
     "start": "echo \"Select server or worker\"",
     "start:server": "npm --workspace server start",
-    "start:worker": "npm --workspace worker start"
+    "start:worker": "npm --workspace worker start",
+    "check:commands": "node scripts/verify-command-wiring.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
