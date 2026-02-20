@@ -14,7 +14,19 @@ spec:
     spec:
       containers:
         - name: worker
-          image: tagthemall-worker
+          image: tagthemall-worker:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: tagthemall-secrets
+                  key: mongodb_uri
+            - name: REDIS_ENABLED
+              value: "false"

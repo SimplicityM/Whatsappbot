@@ -14,7 +14,24 @@ spec:
     spec:
       containers:
         - name: api
-          image: tagthemall-api
+          image: tagthemall-api:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 5000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "5000"
+            - name: WORKER_URL
+              value: http://tagthemall-worker:3000
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: tagthemall-secrets
+                  key: mongodb_uri
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: tagthemall-secrets
+                  key: jwt_secret
