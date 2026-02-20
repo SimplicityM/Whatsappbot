@@ -300,8 +300,12 @@ io.on("connection", (socket) => {
 
             const alreadyExists = sessions.has(sessionId);
 
-            if (!alreadyExists)
-                await createBaileysSession(sessionId, io, { phoneNumber, usePairingCode });
+            if (!alreadyExists) {
+                const sockCreated = await createBaileysSession(sessionId, io, { phoneNumber, usePairingCode });
+                if (!sockCreated && !sessions.has(sessionId)) {
+                    throw new Error("Failed to initialize WhatsApp session");
+                }
+            }
 
             // If session already exists, still request a fresh pairing code when asked.
             if (alreadyExists && usePairingCode && phoneNumber) {

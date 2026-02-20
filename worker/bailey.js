@@ -260,6 +260,7 @@ async function createBaileysSession(sessionId, io, options = null) {
     } catch (error) {
         console.error("Session creation failed:", sessionId, error);
         sessions.delete(sessionId);
+        throw error;
     } finally {
         sessionLocks.delete(sessionId);
     }
