@@ -191,7 +191,43 @@ async function createBaileysSession(sessionId, io, options = null) {
                     const selfJid = normalizeJid(sock.user?.id);
                     if (selfJid) {
                         await sock.sendMessage(selfJid, {
-                            text: `🤖 BOT CONNECTED\nSession: ${sessionId}\nType ${config?.client?.COMMAND_PREFIX || "!"}help for commands.`
+                            text: `🤖 *BOT CONNECTED*\nSession: ${sessionId}`
+                        });
+
+                        await new Promise(r => setTimeout(r, 400));
+
+                        await sock.sendMessage(selfJid, {
+                            text: `
+━━━━━━━━━━━━━━━━━━━━━━━
+✨ WELCOME TO TAGTHEMALL BOT ✨
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🤖 Your automation assistant is now active!
+
+📌 GROUP TOOLS
+• !list — Groups where you're admin
+• !members — View group members
+• !admins — View group admins
+
+👥 TAGGING
+• !tag — Tag all members
+• !tagexcept — Tag everyone except selected users
+
+📨 DIRECT MESSAGING
+• !dmall — DM all members
+• !dmselected — DM selected members only
+
+📋 AUTO-REPLY COMMANDS
+
+Quick Start:
+• !autoreply - Reply a certain message
+• !autoreply addgroup - Choose group command works on 
+• !autoreply status
+• !autoreply help
+
+💡 Type *!help* for full command list & *!autoreply* for full autoreply command list.
+*For Help Chat: +2347067012884*
+                            `
                         });
                     }
                 } catch {}
