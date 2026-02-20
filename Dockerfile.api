@@ -10,13 +10,13 @@ WORKDIR /app
 
 RUN apk add --no-cache dumb-init tzdata ca-certificates
 
-COPY package*.json ./
-RUN npm install --omit=dev
-
+# Copy entire project (needed for workspaces)
 COPY . .
 
-RUN mkdir -p ./media ./logs && \
-    chown -R appuser:appgroup /app
+# Install ALL workspace production deps
+RUN npm install --omit=dev
+
+RUN chown -R appuser:appgroup /app
 
 ENV NODE_ENV=production
 
@@ -25,4 +25,5 @@ USER appuser
 EXPOSE 5000
 
 ENTRYPOINT ["dumb-init", "--"]
+
 CMD ["node", "server/server.js"]

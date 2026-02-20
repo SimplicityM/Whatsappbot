@@ -41,4 +41,4 @@ EXPOSE 3000
 # Proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-CMD ["node", "worker.js"]
+CMD ["node", "worker/worker.js"]
