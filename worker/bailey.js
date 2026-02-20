@@ -225,6 +225,15 @@ async function createBaileysSession(sessionId, io, options = null) {
                 const payload = { sessionId, qr, userId };
                 io.emit("session:qr", payload);
                 io.emit("qrCode", payload);
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    {
+                        status: "waiting_qr",
+                        qrCode: qr,
+                        qrCodeExpiry: new Date(Date.now() + 5 * 60 * 1000),
+                        updatedAt: new Date()
+                    }
+                ).catch(() => {});
             }
 
             if (connection === "open") {

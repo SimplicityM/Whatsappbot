@@ -299,8 +299,40 @@ io.on("connection", (socket) => {
                 return callback?.("Maximum session limit reached");
 
             const alreadyExists = sessions.has(sessionId);
+            const existingSock = alreadyExists ? sessions.get(sessionId) : null;
 
-            if (!alreadyExists) {
+            // If session already exists and QR flow was requested:
+            // - If already connected, emit ready immediately (no QR required)
+            // - Otherwise recreate the socket so a fresh QR is emitted
+            if (alreadyExists && !usePairingCode) {
+                const isConnected = !!existingSock?.user?.id;
+                if (isConnected) {
+                    const phone = String(existingSock.user.id).split(":")[0] || null;
+                    const payload = { sessionId, userId, phone };
+                    io.emit("sessionReady", payload);
+                    io.emit("session:ready", payload);
+
+                    await Session.findOneAndUpdate(
+                        { sessionId },
+                        {
+                            status: "connected",
+                            connectedAt: new Date(),
+                            ...(phone ? { whatsappNumber: phone } : {}),
+                            updatedAt: new Date()
+                        }
+                    ).catch(() => {});
+
+                    return callback?.(null, { success: true, alreadyConnected: true });
+                }
+
+                try {
+                    existingSock?.ev?.removeAllListeners?.();
+                    existingSock?.ws?.close?.();
+                } catch (_) {}
+                sessions.delete(sessionId);
+            }
+
+            if (!sessions.has(sessionId)) {
                 const sockCreated = await createBaileysSession(sessionId, io, { phoneNumber, usePairingCode });
                 if (!sockCreated && !sessions.has(sessionId)) {
                     throw new Error("Failed to initialize WhatsApp session");
@@ -330,10 +362,11 @@ io.on("connection", (socket) => {
 
             activeSessionsGauge.set(sessions.size);
 
+            const statusToSet = usePairingCode ? "waiting_qr" : "waiting_qr";
             await Session.findOneAndUpdate(
                 { sessionId },
                 {
-                    status: "waiting_qr",
+                    status: statusToSet,
                     linkingMethod: usePairingCode ? "pairing_code" : "qr",
                     ...(phoneNumber ? { whatsappNumber: String(phoneNumber).replace(/[^0-9]/g, "") } : {}),
                     updatedAt: new Date()
