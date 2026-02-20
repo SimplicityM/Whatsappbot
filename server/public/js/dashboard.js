@@ -963,6 +963,9 @@ async function createNewSession(usePairingCode = false) {
     `;
     document.body.appendChild(loadingModal);
 
+    let sessionQRHandler = null;
+    let sessionPairingHandler = null;
+
     try {
         // Support both user ID formats
         const userId = currentUser.user?.id || currentUser._id || currentUser.id;
@@ -990,10 +993,11 @@ async function createNewSession(usePairingCode = false) {
         // Set up received flags
         let qrReceived = false;
         let pairingCodeReceived = false;
-        let currentSessionId = null;
+        // Session id is stable in backend routes: session-<userId>
+        let currentSessionId = `session-${userId}`;
         
         // Create unique event handler for QR code
-        const sessionQRHandler = (data) => {
+        sessionQRHandler = (data) => {
             console.log('🎯 SESSION QR EVENT:', data);
             
             if (currentSessionId && data.sessionId === currentSessionId && data.qr) {
@@ -1012,7 +1016,7 @@ async function createNewSession(usePairingCode = false) {
         };
         
         // Create unique event handler for pairing code
-        const sessionPairingHandler = (data) => {
+        sessionPairingHandler = (data) => {
             console.log('🎯 SESSION PAIRING CODE EVENT:', data);
             
             if (currentSessionId && data.sessionId === currentSessionId && data.code) {
@@ -1034,6 +1038,15 @@ async function createNewSession(usePairingCode = false) {
         socket.emit('join-user-room', userId);
         console.log('👤 Joined socket room: user-' + userId);
         
+        // Register listeners BEFORE API call to avoid missing early events
+        if (usePairingCode) {
+            socket.on('pairingCode', sessionPairingHandler);
+            console.log('📱 Listening for pairing code...');
+        } else {
+            socket.on('qrCode', sessionQRHandler);
+            console.log('📱 Listening for QR code...');
+        }
+
         // Determine which endpoint to use
         const endpoint = usePairingCode ? '/api/sessions/create-with-phone' : '/api/sessions/create';
         const requestBody = usePairingCode ? {
@@ -1065,15 +1078,6 @@ async function createNewSession(usePairingCode = false) {
             
             // Remove loading modal
             loadingModal.remove();
-            
-            // Add appropriate event handler based on method
-            if (usePairingCode) {
-                socket.on('pairingCode', sessionPairingHandler);
-                console.log('📱 Listening for pairing code...');
-            } else {
-                socket.on('qrCode', sessionQRHandler);
-                console.log('📱 Listening for QR code...');
-            }
             
             // Add the new session to the array immediately
             const newSession = {
@@ -1194,6 +1198,12 @@ async function createNewSession(usePairingCode = false) {
         }
     } catch (error) {
         console.error('❌ Session creation failed:', error.message);
+
+        // Cleanup listeners when API/create flow fails
+        try {
+            socket?.off('qrCode', sessionQRHandler);
+            socket?.off('pairingCode', sessionPairingHandler);
+        } catch (_) {}
         
         const existingModal = document.getElementById('sessionLoadingModal');
         if (existingModal) {
@@ -1557,19 +1567,49 @@ function displayPairingCode(code, sessionId, phoneNumber) {
     const qrCodeDisplay = document.getElementById('qrCodeDisplay');
     const pairingCodeValue = document.getElementById('pairingCodeValue');
     
-    if (!pairingCodeDisplay || !pairingCodeValue) {
+    if (!pairingCodeDisplay) {
         console.error('❌ Pairing code display elements not found');
         return;
     }
     
     // Ensure pairing display is visible
-    qrCodeDisplay.style.display = 'none';
+    if (qrCodeDisplay) qrCodeDisplay.style.display = 'none';
     pairingCodeDisplay.style.display = 'block';
     
     // Format code as XXXX-XXXX for better readability
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
-    
-    pairingCodeValue.innerHTML = `<span class="code-digits">${formattedCode}</span>`;
+
+    // If template placeholder exists, update it; otherwise render full pairing UI.
+    if (pairingCodeValue) {
+        pairingCodeValue.innerHTML = `<span class="code-digits">${formattedCode}</span>`;
+    } else {
+        pairingCodeDisplay.innerHTML = `
+            <div class="pairing-code-box">
+                <h4 style="margin-bottom: 15px;">
+                    <i class="fas fa-mobile-alt"></i> Your Pairing Code
+                </h4>
+                <div class="pairing-code" id="pairingCodeValue">
+                    <span class="code-digits">${formattedCode}</span>
+                </div>
+                <div class="pairing-instructions">
+                    <h5 style="margin-bottom: 10px; color: white;">
+                        <i class="fas fa-info-circle"></i> How to Link:
+                    </h5>
+                    <ol style="text-align: left; line-height: 2;">
+                        <li>Open <strong>WhatsApp</strong> on your phone</li>
+                        <li>Go to <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                        <li>Tap <strong>"Link a Device"</strong></li>
+                        <li>Tap <strong>"Link with phone number instead"</strong></li>
+                        <li>Enter the code shown above</li>
+                    </ol>
+                </div>
+                <p style="font-size: 12px; margin-top: 15px; color: #ddd;">
+                    <i class="fas fa-phone"></i> Phone: <strong>${phoneNumber || 'N/A'}</strong><br>
+                    <i class="fas fa-key"></i> Session: <strong>${sessionId}</strong>
+                </p>
+            </div>
+        `;
+    }
     
     showNotification(`Pairing code: ${formattedCode}. Enter it in WhatsApp now!`, 'success');
 }

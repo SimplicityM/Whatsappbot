@@ -295,8 +295,31 @@ io.on("connection", (socket) => {
             if (sessions.size >= MAX_SESSIONS)
                 return callback?.("Maximum session limit reached");
 
-            if (!sessions.has(sessionId))
+            const alreadyExists = sessions.has(sessionId);
+
+            if (!alreadyExists)
                 await createBaileysSession(sessionId, io, { phoneNumber, usePairingCode });
+
+            // If session already exists, still request a fresh pairing code when asked.
+            if (alreadyExists && usePairingCode && phoneNumber) {
+                const sock = sessions.get(sessionId);
+                const digits = String(phoneNumber).replace(/[^0-9]/g, "");
+                if (sock && digits && typeof sock.requestPairingCode === "function") {
+                    let code = null;
+                    for (let i = 0; i < 3 && !code; i++) {
+                        try {
+                            code = await sock.requestPairingCode(digits);
+                        } catch (_) {
+                            await new Promise(r => setTimeout(r, 1500));
+                        }
+                    }
+                    if (code) {
+                        const payload = { sessionId, code, phoneNumber: digits, userId };
+                        io.emit("pairingCode", payload);
+                        io.emit("session:pairing_code", payload);
+                    }
+                }
+            }
 
             activeSessionsGauge.set(sessions.size);
 
