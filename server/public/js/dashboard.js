@@ -82,7 +82,7 @@ async function createSessionWithRetry(maxRetries = 3) {
 // Use it in your create session button handler
 document.getElementById('createSessionBtn')?.addEventListener('click', async () => {
     try {
-        await createSessionWithRetry(3);
+        await createNewSession(false);
     } catch (error) {
         console.error('Session creation failed:', error);
     }
@@ -939,6 +939,36 @@ async function createNewSession(usePairingCode = false) {
         }
         
         phoneNumber = cleanPhone;
+    }
+
+    // Open QR/pairing modal immediately so user sees modal before events arrive.
+    showQRModal();
+    const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+    const pairingCodeDisplay = document.getElementById('pairingCodeDisplay');
+    if (usePairingCode) {
+        if (qrCodeDisplay) qrCodeDisplay.style.display = 'none';
+        if (pairingCodeDisplay) {
+            pairingCodeDisplay.style.display = 'block';
+            pairingCodeDisplay.innerHTML = `
+                <div style="text-align: center; padding: 30px;">
+                    <i class="fas fa-mobile-alt" style="font-size: 64px; color: #667eea; margin-bottom: 20px; animation: pulse 2s infinite;"></i>
+                    <h3 style="color: #2d3748; margin-bottom: 10px;">Preparing Pairing Code...</h3>
+                    <p style="color: #666;">Please wait while we create your linking code.</p>
+                </div>
+            `;
+        }
+    } else {
+        if (pairingCodeDisplay) pairingCodeDisplay.style.display = 'none';
+        if (qrCodeDisplay) {
+            qrCodeDisplay.style.display = 'block';
+            qrCodeDisplay.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <i class="fas fa-qrcode" style="font-size: 48px; color: #667eea; margin-bottom: 10px;"></i>
+                    <p>Preparing QR Code...</p>
+                    <div class="loading-spinner"></div>
+                </div>
+            `;
+        }
     }
 
     // ✅ Show loading modal IMMEDIATELY
