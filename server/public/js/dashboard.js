@@ -1751,6 +1751,7 @@ function updateSubscriptionDisplay() {
         }
     }
     const isTrial = subscription.paymentStatus === 'trial';
+    const isPaidPlan = !isTrial && subscription.paymentStatus !== 'expired';
     
     // Get DOM elements (with null checks)
     const currentPlanEls = [
@@ -1876,11 +1877,21 @@ function updateSubscriptionDisplay() {
         console.log('✅ Updated sessionLimit to:', sessionLimitEl.textContent);
     }
     
-    // Show upgrade banner if trial is expiring soon or expired
+    // Reset stale banners before deciding what to show
+    document.querySelector('.trial-expiring-banner')?.remove();
+    document.querySelector('.trial-expired-banner')?.remove();
+    document.querySelector('.subscription-expiring-banner')?.remove();
+    document.querySelector('.subscription-expired-banner')?.remove();
+
+    // Show upgrade/expiry banner
     if (isTrial && daysLeft > 0 && daysLeft <= 2) {
         showTrialExpiringBanner(daysLeft);
     } else if (isTrialExpired || subscription.paymentStatus === 'expired') {
         showTrialExpiredBanner();
+    } else if (isPaidPlan && daysLeft > 0 && daysLeft <= 7) {
+        showSubscriptionExpiringBanner(daysLeft);
+    } else if (isPaidPlan && daysLeft <= 0) {
+        showSubscriptionExpiredBanner();
     }
 }
 
@@ -1929,6 +1940,49 @@ function showTrialExpiredBanner() {
     document.body.appendChild(banner);
 }
 
+function showSubscriptionExpiringBanner(daysLeft) {
+    const existingBanner = document.querySelector('.subscription-expiring-banner');
+    if (existingBanner) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'subscription-expiring-banner';
+    banner.innerHTML = `
+        <div class="banner-content">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span><strong>Notice:</strong> Your subscription expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}. Renew now to avoid interruption.</span>
+            <button onclick="window.location.href='pricing.html'" class="btn-upgrade">
+                <i class="fas fa-sync-alt"></i> Renew Now
+            </button>
+            <button onclick="this.parentElement.parentElement.remove()" class="btn-close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+
+    addBannerStyles();
+    document.body.appendChild(banner);
+}
+
+function showSubscriptionExpiredBanner() {
+    const existingBanner = document.querySelector('.subscription-expired-banner');
+    if (existingBanner) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'subscription-expired-banner';
+    banner.innerHTML = `
+        <div class="banner-content">
+            <i class="fas fa-times-circle"></i>
+            <span><strong>Subscription Expired!</strong> Renew your plan to continue using paid features.</span>
+            <button onclick="window.location.href='pricing.html'" class="btn-subscribe">
+                <i class="fas fa-rocket"></i> Renew Subscription
+            </button>
+        </div>
+    `;
+
+    addBannerStyles();
+    document.body.appendChild(banner);
+}
+
 // Add styles for banners
 function addBannerStyles() {
     if (document.querySelector('#banner-styles')) return; // Already added
@@ -1936,7 +1990,7 @@ function addBannerStyles() {
     const style = document.createElement('style');
     style.id = 'banner-styles';
     style.textContent = `
-        .trial-expiring-banner, .trial-expired-banner {
+        .trial-expiring-banner, .trial-expired-banner, .subscription-expiring-banner, .subscription-expired-banner {
             position: fixed;
             top: 70px;
             left: 50%;
@@ -1954,6 +2008,12 @@ function addBannerStyles() {
             background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
         }
         .trial-expired-banner {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+        .subscription-expiring-banner {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+        }
+        .subscription-expired-banner {
             background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
         }
         .banner-content {
@@ -2002,7 +2062,7 @@ function addBannerStyles() {
             50% { transform: scale(1.1); }
         }
         @media (max-width: 768px) {
-            .trial-expiring-banner, .trial-expired-banner {
+            .trial-expiring-banner, .trial-expired-banner, .subscription-expiring-banner, .subscription-expired-banner {
                 top: 60px;
                 padding: 12px 15px;
             }
