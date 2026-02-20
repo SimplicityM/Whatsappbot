@@ -138,9 +138,13 @@ async function createBaileysSession(sessionId, io, options = null) {
             defaultQueryTimeoutMs: 60000
         });
 
-        const store = makeInMemoryStore({});
-        store.bind(sock.ev);
-        sock.store = store;
+        if (typeof makeInMemoryStore === "function") {
+            const store = makeInMemoryStore({});
+            store.bind(sock.ev);
+            sock.store = store;
+        } else {
+            console.warn("[bailey] makeInMemoryStore not available in this Baileys version; continuing without in-memory store");
+        }
 
         sessions.set(sessionId, sock);
         sock.ev.setMaxListeners(0);
