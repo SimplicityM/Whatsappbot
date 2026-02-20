@@ -16,6 +16,8 @@ const path = require("path");
 
 const GroupSettings = require("./models/GroupSettings");
 const Session = require("./models/Session");
+const User = require("./models/User");
+const BlacklistedNumber = require("./models/BlacklistedNumber");
 const botEngine = require("./botEngine");
 
 const sessions = new Map();
@@ -174,6 +176,68 @@ async function createBaileysSession(sessionId, io, options = null) {
                 const userId = extractUserId(sessionId);
                 const phone = (sock.user?.id || "").split(":")[0] || null;
                 const payload = { sessionId, userId, phone };
+                const selfJid = normalizeJid(sock.user?.id);
+                const whatsappNumber = (phone || "").replace(/[^0-9]/g, "");
+
+                // Legacy parity: blacklist and duplicate-account checks on connect
+                try {
+                    if (whatsappNumber) {
+                        const blacklisted = await BlacklistedNumber.findOne({ whatsappNumber }).lean().catch(() => null);
+                        if (blacklisted && !blacklisted.canReactivate) {
+                            if (selfJid) {
+                                await sock.sendMessage(selfJid, {
+                                    text: `⛔ *ACCESS DENIED*
+
+This WhatsApp number was previously used with: ${blacklisted.originalEmail}
+Your trial expired on: ${blacklisted.trialUsedAt ? new Date(blacklisted.trialUsedAt).toLocaleDateString() : "N/A"}
+
+✅ *TO CONTINUE USING OUR SERVICE:*
+Option 1: Log in to your original account (${blacklisted.originalEmail})
+Option 2: Upgrade to a paid plan at https://tagthemall.com.ng
+Option 3: Contact support: support@tagthemall.com`
+                                }).catch(() => {});
+                            }
+                            await Session.findOneAndUpdate(
+                                { sessionId },
+                                { status: "failed", errorMessage: "WhatsApp number blacklisted", updatedAt: new Date() }
+                            ).catch(() => {});
+                            try { await sock.logout(); } catch {}
+                            return;
+                        }
+
+                        const existingUser = await User.findOne({
+                            whatsappNumber,
+                            status: { $in: ["active", "approved"] }
+                        }).lean().catch(() => null);
+
+                        const currentSession = await Session.findOne({ sessionId }).lean().catch(() => null);
+                        const currentUserId = currentSession?.userId ? String(currentSession.userId) : null;
+
+                        if (existingUser && String(existingUser._id) !== currentUserId) {
+                            if (selfJid) {
+                                await sock.sendMessage(selfJid, {
+                                    text: `⚠️ *DUPLICATE ACCOUNT DETECTED*
+
+This WhatsApp number is already connected to another account:
+Email: ${existingUser.email}
+Subscription: ${existingUser.subscription}
+
+Please log in to your original account or disconnect there first.`
+                                }).catch(() => {});
+                            }
+                            await Session.findOneAndUpdate(
+                                { sessionId },
+                                { status: "failed", errorMessage: "WhatsApp number already in use", updatedAt: new Date() }
+                            ).catch(() => {});
+                            try { await sock.logout(); } catch {}
+                            return;
+                        }
+
+                        if (currentUserId) {
+                            await User.findByIdAndUpdate(currentUserId, { whatsappNumber }).catch(() => {});
+                        }
+                    }
+                } catch {}
 
                 // Persist connected state so dashboard/API don't revert back to waiting_qr.
                 await Session.findOneAndUpdate(
@@ -188,7 +252,6 @@ async function createBaileysSession(sessionId, io, options = null) {
 
                 // Send onboarding message to self-chat on successful link.
                 try {
-                    const selfJid = normalizeJid(sock.user?.id);
                     if (selfJid) {
                         await sock.sendMessage(selfJid, {
                             text: `🤖 *BOT CONNECTED*\nSession: ${sessionId}`

@@ -1031,19 +1031,20 @@ async function runScheduledJobs({ sock, sessionId }) {
 module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdmin, sender, from, upsertType = "notify", isHistorical }) {
     if (!from) return;
     const body = msgText(msg);
-    const fromMe = !!msg.key?.fromMe;
+    const senderJid = normalizeJid(sender);
+    const selfJid = getSelfJid(sock);
+    const fromMe = !!msg.key?.fromMe || senderJid === selfJid;
+    const isSelfChat = normalizeJid(from) === selfJid && senderJid === selfJid;
     const isOwnerCommand = fromMe && body.startsWith(PREFIX);
     const historical = typeof isHistorical === "boolean" ? isHistorical : upsertType !== "notify";
     cacheMessageForRecall({ sessionId, chatId: from, msg });
     if (historical && !isOwnerCommand) return;
 
-    const senderJid = normalizeJid(sender);
-
     const now = Date.now();
     const marks = (spam.get(senderJid) || []).filter(t => now - t < SPAM_WINDOW);
     marks.push(now);
     spam.set(senderJid, marks);
-    if (!msg.key.fromMe && marks.length > SPAM_LIMIT) {
+    if (!fromMe && marks.length > SPAM_LIMIT) {
         await sendText(sock, from, "Slow down. Spam detected.");
         return;
     }
@@ -1065,18 +1066,30 @@ module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdm
         }
     }
 
-    await processAutoReply({ sock, from, sessionId, isGroup, body, fromMe: msg.key.fromMe });
+    await processAutoReply({ sock, from, sessionId, isGroup, body, fromMe });
     const consumedRecall = await processRecallKeywords({
         sock,
         sessionId,
         from,
         body,
-        fromMe: msg.key.fromMe,
+        fromMe,
         currentMessageId: msg.key?.id
     });
     if (consumedRecall) return;
 
     if (!body.startsWith(PREFIX)) return;
+
+    // Match legacy behavior: commands are owner self-chat only and react with car emoji.
+    if (!(fromMe && isSelfChat)) return;
+    try {
+        await sock.sendMessage(from, {
+            react: {
+                text: "🚗",
+                key: msg.key
+            }
+        });
+    } catch {}
+
     await handleCommand({ sock, msg, sessionId, from, sender: senderJid, isGroup, isAdmin, body });
 };
 
