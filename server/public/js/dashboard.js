@@ -79,15 +79,6 @@ async function createSessionWithRetry(maxRetries = 3) {
     }
 }
 
-// Use it in your create session button handler
-document.getElementById('createSessionBtn')?.addEventListener('click', async () => {
-    try {
-        await createNewSession(false);
-    } catch (error) {
-        console.error('Session creation failed:', error);
-    }
-});
-
 // Update your initializeDashboard function
 function initializeDashboard() {
     showLoading(true);
@@ -223,6 +214,20 @@ function setupEventListeners() {
             switchTab(this.getAttribute('data-tab'));
         });
     });
+
+    // Ensure New Session button always uses the latest modal-first flow
+    const createSessionBtn = document.getElementById('createSessionBtn');
+    if (createSessionBtn) {
+        createSessionBtn.onclick = null;
+        createSessionBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                await createNewSession(false);
+            } catch (error) {
+                console.error('Session creation failed:', error);
+            }
+        });
+    }
 
     // Session filters - with null checks
     const sessionFilter = document.getElementById('sessionFilter');
@@ -971,27 +976,8 @@ async function createNewSession(usePairingCode = false) {
         }
     }
 
-    // ✅ Show loading modal IMMEDIATELY
-    const loadingModal = document.createElement('div');
-    loadingModal.className = 'modal active';
-    loadingModal.id = 'sessionLoadingModal';
-    loadingModal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Creating Session</h2>
-            </div>
-            <div class="modal-body" style="text-align: center; padding: 40px;">
-                <div class="spinner"></div>
-                <p style="margin-top: 20px;">Initializing WhatsApp session...</p>
-                <p style="color: #666; font-size: 14px;">
-                    ${usePairingCode 
-                        ? 'Generating your pairing code...' 
-                        : 'This may take a few moments'}
-                </p>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(loadingModal);
+    // Keep UX in the QR modal itself; avoid a second overlay modal.
+    const loadingModal = null;
 
     let sessionQRHandler = null;
     let sessionPairingHandler = null;
@@ -1008,7 +994,7 @@ async function createNewSession(usePairingCode = false) {
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             if (!socket || !socket.connected) {
-                loadingModal.remove();
+                if (loadingModal && loadingModal.remove) loadingModal.remove();
                 showNotification('Connection error. Please refresh the page.', 'error');
                 return;
             }
@@ -1107,7 +1093,7 @@ async function createNewSession(usePairingCode = false) {
             console.log('✅ Session created via API:', currentSessionId);
             
             // Remove loading modal
-            loadingModal.remove();
+            if (loadingModal && loadingModal.remove) loadingModal.remove();
             
             // Add the new session to the array immediately
             const newSession = {
@@ -1491,7 +1477,7 @@ async function displayQRCode(qrData, sessionId) {
 }
 
 // Switch between QR code and pairing code methods
-function switchLinkingMethod(method) {
+function legacySwitchLinkingMethod(method) {
     console.log('🔄 Switching linking method to:', method);
     
     const qrDisplay = document.getElementById('qrCodeDisplay');
@@ -1590,7 +1576,7 @@ async function promptPhoneNumberAndCreateSession() {
 }
 
 // Display pairing code (called when socket receives pairing code)
-function displayPairingCode(code, sessionId, phoneNumber) {
+function legacyDisplayPairingCode(code, sessionId, phoneNumber) {
     console.log('📱 Displaying pairing code:', code);
     
     const pairingCodeDisplay = document.getElementById('pairingCodeDisplay');
@@ -1740,14 +1726,30 @@ function updateSubscriptionDisplay() {
     // ✅ Use userSubscription if available, otherwise fall back to currentUser data
     const subscription = userSubscription || {
         subscription: currentUser?.user?.subscription || 'free',
-        paymentStatus: currentUser?.user?.paymentStatus || 'trial',
-        daysRemaining: 0,
+        paymentStatus: currentUser?.user?.paymentStatus || 'active',
+        daysRemaining: currentUser?.user?.daysRemaining,
+        subscriptionExpiry: currentUser?.user?.subscriptionExpiry || null,
+        trialEndsAt: currentUser?.user?.trialEndsAt || null,
         limits: { maxSessions: 1 }
     };
 
     console.log('📊 Updating subscription display:', subscription);
 
-    const daysLeft = subscription.daysRemaining || 0;
+    // Prefer backend daysRemaining; if absent, derive from known expiry fields.
+    let daysLeft = Number.isFinite(Number(subscription.daysRemaining))
+        ? Number(subscription.daysRemaining)
+        : null;
+    if (daysLeft === null) {
+        const expiryRaw = subscription.subscriptionExpiry || subscription.trialEndsAt || null;
+        if (expiryRaw) {
+            const expiry = new Date(expiryRaw);
+            const now = new Date();
+            const diff = expiry.getTime() - now.getTime();
+            daysLeft = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+        } else {
+            daysLeft = 0;
+        }
+    }
     const isTrial = subscription.paymentStatus === 'trial';
     
     // Get DOM elements (with null checks)
@@ -1830,6 +1832,8 @@ function updateSubscriptionDisplay() {
         
         if (daysLeft <= 2 && isTrial) {
             planStatusEl.classList.add('urgent');
+        } else {
+            planStatusEl.classList.remove('urgent');
         }
         console.log('✅ Updated planStatus to:', planStatusEl.textContent);
     }
@@ -1983,7 +1987,7 @@ function addBannerStyles() {
 
 
 // Add this new function
-function showTrialExpiringBanner(daysLeft) {
+function legacyShowTrialExpiringBanner(daysLeft) {
     const existingBanner = document.querySelector('.trial-expiring-banner');
     if (existingBanner) return; // Don't show multiple banners
     
