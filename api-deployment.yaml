@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: api
-          image: tagthemall-api:latest
-          imagePullPolicy: Never
+          image: simple431/tagthemall-api:v5
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
           env:
@@ -35,3 +35,8 @@ spec:
                 secretKeyRef:
                   name: tagthemall-secrets
                   key: jwt_secret
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tagthemall-secrets
+                  key: resend_api_key

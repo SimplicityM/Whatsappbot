@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: worker
-          image: tagthemall-worker:latest
-          imagePullPolicy: Never
+          image: simple431/tagthemall-worker:v5
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           env:
