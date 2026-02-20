@@ -703,37 +703,34 @@ app.delete('/api/sessions/:sessionId', authenticate, async (req, res) => {
             });
         }
         
-        if (activeClients.has(sessionId)) {
-    const sessionData = activeClients.get(sessionId);
-    try {
-        // First disconnect gracefully
-        if (sessionData.client.pupPage) {
-            await sessionData.client.pupPage.close();
+        // Prefer worker-managed delete (Baileys) so in-memory/auth state is truly cleared.
+        const workerSocket = req.app.get("workerSocket");
+        if (workerSocket && workerSocket.connected) {
+            await new Promise((resolve) => {
+                const timeout = setTimeout(resolve, 12000);
+                workerSocket.emit("worker:delete_session", { sessionId }, () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+            });
+        } else {
+            // fallback cleanup path for legacy clients only
+            if (activeClients.has(sessionId)) {
+                const sessionData = activeClients.get(sessionId);
+                try {
+                    if (sessionData.client?.pupPage) {
+                        await sessionData.client.pupPage.close();
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await sessionData.client?.destroy?.();
+                } catch (error) {
+                    console.error(`Error during legacy session cleanup ${sessionId}:`, error);
+                } finally {
+                    activeClients.delete(sessionId);
+                }
+            }
+            await Session.deleteOne({ sessionId });
         }
-        
-        // Add delay before destroying
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Destroy with force flag
-        await sessionData.client.destroy();
-        
-        // Additional cleanup delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-    } catch (error) {
-        console.error(`Error during graceful session cleanup ${sessionId}:`, error);
-        // Force cleanup even if error occurs
-        try {
-            await sessionData.client.destroy();
-        } catch (forceError) {
-            console.error(`Force cleanup also failed for ${sessionId}:`, forceError);
-        }
-    } finally {
-        activeClients.delete(sessionId);
-    }
-}
-        
-        await Session.deleteOne({ sessionId });
         
         res.json({
             success: true,

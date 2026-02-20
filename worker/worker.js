@@ -9,6 +9,8 @@ const http = require("http");
 const socketIo = require("socket.io");
 const mongoose = require("mongoose");
 const Redis = require("ioredis");
+const fs = require("fs");
+const path = require("path");
 const { createLogger, format, transports } = require("winston");
 const client = require("prom-client");
 
@@ -28,6 +30,7 @@ const {
 
 const PORT = process.env.PORT || 3000;
 const MAX_SESSIONS = config?.client?.MAX_SESSIONS || 100;
+const SESSIONS_DIR = path.join(__dirname, "sessions");
 
 const MIN_DELAY_MS = 1500;
 const MAX_PER_MINUTE = 20;
@@ -389,6 +392,10 @@ io.on("connection", (socket) => {
 
             sessions.delete(sessionId);
             messageQueues.delete(sessionId);
+            const sessionPath = path.join(SESSIONS_DIR, sessionId);
+            if (fs.existsSync(sessionPath)) {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
 
             await Session.deleteOne({ sessionId });
 
