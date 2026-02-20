@@ -1112,7 +1112,7 @@ async function createNewSession(usePairingCode = false) {
             renderUserSessions();
             
             const methodText = usePairingCode ? 'pairing code' : 'QR code';
-            showNotification(`Session created! Generating ${methodText}...`, 'success');
+            showNotification(`Session created! Generating ${methodText}...`, 'success', 25000);
             showQRModal();
             
             // Show loading state in modal
@@ -1562,7 +1562,7 @@ async function promptPhoneNumberAndCreateSession() {
         const data = await response.json();
 
         if (response.ok && data.success) {
-            showNotification('Waiting for pairing code...', 'info');
+            showNotification('Waiting for pairing code...', 'info', 25000);
             // The pairing code will be displayed via socket event
         } else {
             showNotification(data.message || 'Failed to create session', 'error');
@@ -2744,7 +2744,7 @@ function viewReceipt(reference) {
 }
 
 // Utility functions
-function showNotification(message, type = 'info') {
+function showNotification(message, type = 'info', durationMs = 10000) {
     // Create notification element
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
@@ -2768,12 +2768,14 @@ function showNotification(message, type = 'info') {
 
     container.appendChild(notification);
 
-    // Auto remove after 10 seconds
-    setTimeout(() => {
-        if (notification.parentElement) {
-            notification.remove();
-        }
-    }, 10000);
+    // Auto remove after configured duration (0 = persistent until user closes)
+    if (durationMs > 0) {
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, durationMs);
+    }
 
     console.log(`[${type.toUpperCase()}] ${message}`);
 }
