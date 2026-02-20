@@ -2,7 +2,7 @@
 #        TAGTHEMALL PRODUCTION DOCKERFILE
 # =====================================================
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
