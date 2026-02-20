@@ -147,7 +147,9 @@ async function createBaileysSession(sessionId, io, options = null) {
         }
 
         sessions.set(sessionId, sock);
-        sock.ev.setMaxListeners(0);
+        if (sock?.ev && typeof sock.ev.setMaxListeners === "function") {
+            sock.ev.setMaxListeners(0);
+        }
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async update => {
