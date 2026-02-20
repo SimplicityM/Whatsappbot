@@ -56,7 +56,7 @@ async function getGroupAdmins(sock, groupId) {
     const metadata = await sock.groupMetadata(groupId);
     const admins = (metadata.participants || [])
         .filter(p => p.admin !== null)
-        .map(p => p.id);
+        .map(p => normalizeJid(p.id));
 
     groupMetadataCache.set(groupId, {
         admins,
@@ -500,14 +500,14 @@ Quick Start:
             if (!msg?.message) return;
 
             try {
-                const from = msg.key.remoteJid;
-                const sender = msg.key.participant || from;
+                const from = normalizeJid(msg.key.remoteJidAlt || msg.key.remoteJid);
+                const sender = normalizeJid(msg.key.participantAlt || msg.key.participant || from);
                 const isGroup = !!from && from.endsWith("@g.us");
 
                 let isAdmin = false;
                 if (isGroup) {
                     const admins = await getGroupAdmins(sock, from);
-                    isAdmin = admins.includes(sender);
+                    isAdmin = admins.includes(normalizeJid(sender));
                 }
 
                 await botEngine({
