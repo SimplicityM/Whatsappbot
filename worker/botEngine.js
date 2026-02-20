@@ -1030,11 +1030,13 @@ async function runScheduledJobs({ sock, sessionId }) {
 
 module.exports = async function botEngine({ sock, msg, sessionId, isGroup, isAdmin, sender, from, upsertType = "notify", isHistorical }) {
     if (!from) return;
+    const body = msgText(msg);
+    const fromMe = !!msg.key?.fromMe;
+    const isOwnerCommand = fromMe && body.startsWith(PREFIX);
     const historical = typeof isHistorical === "boolean" ? isHistorical : upsertType !== "notify";
     cacheMessageForRecall({ sessionId, chatId: from, msg });
-    if (historical) return;
+    if (historical && !isOwnerCommand) return;
 
-    const body = msgText(msg);
     const senderJid = normalizeJid(sender);
 
     const now = Date.now();

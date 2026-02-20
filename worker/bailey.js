@@ -15,6 +15,7 @@ const fs = require("fs");
 const path = require("path");
 
 const GroupSettings = require("./models/GroupSettings");
+const Session = require("./models/Session");
 const botEngine = require("./botEngine");
 
 const sessions = new Map();
@@ -92,6 +93,13 @@ function extractUserId(sessionId) {
     return m ? m[1] : null;
 }
 
+function normalizeJid(j) {
+    if (!j) return "";
+    const [left, right] = String(j).split("@");
+    if (!left || !right) return String(j);
+    return `${left.split(":")[0]}@${right}`;
+}
+
 async function requestPairingCodeWithRetry(sock, sessionId, io, phoneNumber) {
     const digits = String(phoneNumber || "").replace(/[^0-9]/g, "");
     if (!digits || typeof sock.requestPairingCode !== "function") return;
@@ -166,6 +174,28 @@ async function createBaileysSession(sessionId, io, options = null) {
                 const userId = extractUserId(sessionId);
                 const phone = (sock.user?.id || "").split(":")[0] || null;
                 const payload = { sessionId, userId, phone };
+
+                // Persist connected state so dashboard/API don't revert back to waiting_qr.
+                await Session.findOneAndUpdate(
+                    { sessionId },
+                    {
+                        status: "connected",
+                        connectedAt: new Date(),
+                        updatedAt: new Date(),
+                        ...(phone ? { whatsappNumber: phone } : {})
+                    }
+                ).catch(() => {});
+
+                // Send onboarding message to self-chat on successful link.
+                try {
+                    const selfJid = normalizeJid(sock.user?.id);
+                    if (selfJid) {
+                        await sock.sendMessage(selfJid, {
+                            text: `🤖 BOT CONNECTED\nSession: ${sessionId}\nType ${config?.client?.COMMAND_PREFIX || "!"}help for commands.`
+                        });
+                    }
+                } catch {}
+
                 io.emit("session:ready", payload);
                 io.emit("sessionReady", payload);
                 startScheduler(sessionId, sock);
