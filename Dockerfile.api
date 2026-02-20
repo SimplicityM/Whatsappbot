@@ -25,4 +25,4 @@ USER appuser
 EXPOSE 5000
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "server.js"]
+CMD ["node", "server/server.js"]
