@@ -189,6 +189,7 @@ async function createBaileysSession(sessionId, io, options = null) {
         const sessionPath = path.join(SESSIONS_DIR, sessionId);
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
         const { version } = await fetchLatestBaileysVersion();
+        let everOpened = false;
 
         const sock = makeWASocket({
             version,
@@ -237,6 +238,7 @@ async function createBaileysSession(sessionId, io, options = null) {
             }
 
             if (connection === "open") {
+                everOpened = true;
                 const userId = extractUserId(sessionId);
                 const phone = (sock.user?.id || "").split(":")[0] || null;
                 const payload = { sessionId, userId, phone };
@@ -368,6 +370,10 @@ Quick Start:
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                const disconnectMsg = String(lastDisconnect?.error?.message || "");
+                const looksLikeStartupAuthCorruption =
+                    !everOpened &&
+                    (statusCode === 515 || /stream errored out/i.test(disconnectMsg));
 
                 sessions.delete(sessionId);
                 stopScheduler(sessionId);
@@ -377,6 +383,22 @@ Quick Start:
                     sock.ev.removeAllListeners();
                     sock.ws?.close?.();
                 } catch {}
+
+                if (looksLikeStartupAuthCorruption) {
+                    try {
+                        fs.rmSync(sessionPath, { recursive: true, force: true });
+                    } catch {}
+
+                    await Session.findOneAndUpdate(
+                        { sessionId },
+                        {
+                            status: "waiting_qr",
+                            qrCode: null,
+                            qrCodeExpiry: null,
+                            updatedAt: new Date()
+                        }
+                    ).catch(() => {});
+                }
 
                 if (shouldReconnect) {
                     setTimeout(() => {
