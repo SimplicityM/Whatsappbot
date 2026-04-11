@@ -783,6 +783,30 @@ function updateSessionCount(count) {
 // Add this function to handle real-time session updates
 function handleSessionStatusUpdate(data) {
     console.log('📱 Session status update:', data);
+
+ updateSessionInList(data);
+
+    const modal = document.getElementById('sessionDetailsModal');
+
+if (modal && modal.classList.contains('active')) {
+
+    const badge = document.getElementById('detailsStatusBadge');
+    const uptimeEl = document.getElementById('detailsUptime');
+
+    if (badge && data.status) {
+        badge.textContent = getSessionStatusText(data.status);
+        badge.className = 'status-badge ' + getSessionStatusClass(data.status);
+    }
+
+    if (data.status === 'connected' && data.connectedAt) {
+        startUptimeCounter(new Date(data.connectedAt));
+    }
+
+    if (data.status !== 'connected') {
+        stopUptimeCounter();
+        if (uptimeEl) uptimeEl.textContent = '';
+    }
+}
     
     // Update the session in the userSessions array
     const sessionIndex = userSessions.findIndex(s => s.sessionId === data.sessionId);
@@ -811,6 +835,7 @@ function handleSessionStatusUpdate(data) {
     // Re-render sessions to show updated status and count
     renderUserSessions();
     updateSessionStats();
+    
 }
 
 
@@ -881,7 +906,31 @@ function getConnectionTime(session) {
     }
 }
 
+let uptimeInterval = null;
 
+function startUptimeCounter(startTime) {
+    const uptimeEl = document.getElementById('detailsUptime');
+    if (!uptimeEl) return;
+
+    stopUptimeCounter();
+
+    uptimeInterval = setInterval(() => {
+        const diff = Date.now() - startTime.getTime();
+        const seconds = Math.floor(diff / 1000) % 60;
+        const minutes = Math.floor(diff / (1000 * 60)) % 60;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+
+        uptimeEl.textContent =
+            `Uptime: ${hours}h ${minutes}m ${seconds}s`;
+    }, 1000);
+}
+
+function stopUptimeCounter() {
+    if (uptimeInterval) {
+        clearInterval(uptimeInterval);
+        uptimeInterval = null;
+    }
+}
 
 
 // FIXED: Complete session filtering implementation
@@ -2644,9 +2693,63 @@ function upgradeSubscription() {
     showUpgradeModal();
 }
 
-async function viewSession(sessionId) {
-    // Could open a detailed session view modal
-    showNotification(`Loading session details for: ${sessionId}`, 'info');
+function viewSession(sessionId) {
+    const session = userSessions.find(s => s.sessionId === sessionId);
+
+    if (!session) {
+        showNotification('Session not found', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('sessionDetailsModal');
+    const content = document.getElementById('sessionDetailsContent');
+
+    const connectedTime = session.connectedAt
+        ? new Date(session.connectedAt).toLocaleString()
+        : 'Not connected';
+
+    content.innerHTML = `
+        <div class="details-section">
+            <p><strong>Session ID:</strong> ${session.sessionId}</p>
+            <p><strong>Phone:</strong> ${session.phone || 'Not linked'}</p>
+            <p><strong>Status:</strong> 
+            <span id="detailsStatusBadge" class="status-badge ${getSessionStatusClass(session.status)}">
+            ${getSessionStatusText(session.status)}
+  </span>
+</p>
+
+<p id="detailsUptime"></p>
+            <p><strong>Connected Since:</strong> ${connectedTime}</p>
+            <p><strong>Messages Sent:</strong> ${session.messageCount || 0}</p>
+        </div>
+    `;
+if (['waiting_qr', 'disconnected', 'error'].includes(session.status)) {
+    content.innerHTML += `
+        <button class="btn-primary" onclick="
+            closeSessionDetailsModal();
+            restartSession('${session.sessionId}');
+        ">
+            Rescan QR
+        </button>
+    `;
+}
+    // Attach action buttons
+    document.getElementById('detailsRestartBtn').onclick = () => {
+        closeSessionDetailsModal();
+        restartSession(session.sessionId);
+    };
+
+    document.getElementById('detailsDeleteBtn').onclick = () => {
+        closeSessionDetailsModal();
+        deleteSession(session.sessionId);
+    };
+
+    modal.classList.add('active');
+}
+
+function closeSessionDetailsModal() {
+    stopUptimeCounter();
+    document.getElementById('sessionDetailsModal').classList.remove('active');
 }
 
 async function restartSession(sessionId) {
@@ -2654,7 +2757,7 @@ async function restartSession(sessionId) {
 
     try {
         showLoading(true);
-        
+
         const response = await fetch(`${CONFIG.API_BASE}/api/sessions/${sessionId}/restart`, {
             method: 'POST',
             headers: {
@@ -2662,18 +2765,36 @@ async function restartSession(sessionId) {
                 'Content-Type': 'application/json'
             }
         });
-        
+
         const data = await response.json();
-        
-        if (data.success) {
-            showNotification('Session restart initiated', 'success');
-            loadUserSessions();
-        } else {
-            showNotification(data.message || 'Failed to restart session', 'error');
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to restart session');
         }
+
+        showNotification('Session restarting. Generating new QR...', 'success');
+
+        // 🔥 OPEN QR MODAL
+        showQRModal();
+
+        // Optional: show loading state inside modal
+        const qrCodeDisplay = document.getElementById('qrCodeDisplay');
+        if (qrCodeDisplay) {
+            qrCodeDisplay.innerHTML = `
+                <div style="text-align:center;padding:20px;">
+                    <i class="fas fa-qrcode" style="font-size:48px;color:#667eea;"></i>
+                    <p>Generating new QR code...</p>
+                    <div class="loading-spinner"></div>
+                </div>
+            `;
+        }
+
+        // Update sessions list
+        loadUserSessions();
+
     } catch (error) {
         console.error('Error restarting session:', error);
-        showNotification('Error restarting session', 'error');
+        showNotification(error.message || 'Error restarting session', 'error');
     } finally {
         showLoading(false);
     }

@@ -15,6 +15,11 @@ const Usage = require("./models/Usage");
 const SavedGroupList = require("./models/SavedGroupList");
 const subscriptionPlans = require('../config/subscriptionPlans');
 
+const authenticate = require("./middleware/auth");
+const messageRoutes = require("./routes/messages");
+
+app.use("/v1/messages", authenticate, messageRoutes);
+
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
 app.use((req, res, next) => {
@@ -678,15 +683,50 @@ app.post('/api/sessions/:sessionId/restart', authenticate, async (req, res) => {
                 message: 'Session not found'
             });
         }
-        
-        res.json({
-            success: true,
-            message: 'Session restart initiated'
+
+        const workerSocket = req.app.get('workerSocket');
+
+        if (!workerSocket || !workerSocket.connected) {
+            return res.status(503).json({
+                success: false,
+                message: 'Worker not available'
+            });
+        }
+
+        // 1️⃣ Delete existing session in worker
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error("Worker delete timeout"));
+            }, 15000);
+
+            workerSocket.emit(
+                "worker:delete_session",
+                { sessionId },
+                (err) => {
+                    clearTimeout(timeout);
+                    if (err) return reject(new Error(err));
+                    resolve();
+                }
+            );
         });
+
+        // 2️⃣ Recreate session (fresh QR)
+        await createWhatsAppSession(
+            req.user.id,
+            sessionId,
+            workerSocket
+        );
+
+        return res.json({
+            success: true,
+            message: 'Session restarted. Scan new QR code.'
+        });
+
     } catch (error) {
-        res.status(500).json({
+        console.error('Restart error:', error);
+        return res.status(500).json({
             success: false,
-            message: 'Error restarting session'
+            message: error.message || 'Error restarting session'
         });
     }
 });

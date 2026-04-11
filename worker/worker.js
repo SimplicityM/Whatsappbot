@@ -304,11 +304,15 @@ io.on("connection", (socket) => {
             // If session already exists and QR flow was requested:
             // - If already connected, emit ready immediately (no QR required)
             // - Otherwise recreate the socket so a fresh QR is emitted
-            if (alreadyExists && !usePairingCode) {
-                const isConnected = !!existingSock?.user?.id;
-                if (isConnected) {
-                    const phone = String(existingSock.user.id).split(":")[0] || null;
+            if (alreadyExists) {
+    const sock = sessions.get(sessionId);
+
+    // If session is fully connected
+                if (sock?.user?.id) {
+                    const phone = String(sock.user.id).split(":")[0] || null;
                     const payload = { sessionId, userId, phone };
+
+                    // Emit ready state again (safe)
                     io.emit("sessionReady", payload);
                     io.emit("session:ready", payload);
 
@@ -322,14 +326,19 @@ io.on("connection", (socket) => {
                         }
                     ).catch(() => {});
 
-                    return callback?.(null, { success: true, alreadyConnected: true });
+                    return callback?.(null, {
+                        success: true,
+                        alreadyConnected: true
+                    });
                 }
 
-                try {
-                    existingSock?.ev?.removeAllListeners?.();
-                    existingSock?.ws?.close?.();
-                } catch (_) {}
-                sessions.delete(sessionId);
+                // If session exists but not connected yet (QR already generated)
+                // DO NOT recreate the socket
+                return callback?.(null, {
+                    success: true,
+                    alreadyInitializing: true,
+                    message: "Session already initializing. Awaiting QR scan."
+                });
             }
 
             if (!sessions.has(sessionId)) {

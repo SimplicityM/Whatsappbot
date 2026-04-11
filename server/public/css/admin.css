@@ -3242,3 +3242,25 @@ body.dark-theme .action-btn:hover {
     margin-bottom: 15px;
     color: #333;
 }
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.status-badge.connected {
+    background: #48bb78;
+    color: white;
+}
+
+.status-badge.waiting {
+    background: #f6ad55;
+    color: white;
+}
+
+.status-badge.disconnected,
+.status-badge.error {
+    background: #f56565;
+    color: white;
+}
