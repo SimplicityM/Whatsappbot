@@ -15,10 +15,10 @@ const Usage = require("./models/Usage");
 const SavedGroupList = require("./models/SavedGroupList");
 const subscriptionPlans = require('../config/subscriptionPlans');
 
-const authenticate = require("./middleware/auth");
+const apiKeyAuthenticate = require("../middleware/apiKeyAuth");
 const messageRoutes = require("./routes/messages");
 
-app.use("/v1/messages", authenticate, messageRoutes);
+app.use("/v1/messages", apiKeyAuthenticate, messageRoutes);
 
 
 // ALWAYS return CORS headers — even for 404 routes or before DB loads
@@ -246,6 +246,8 @@ app.get('/health', (req, res) => {
 });
 
 const { authenticate, authenticateAdmin } = require('../middleware/auth');
+const developerRoutes = require('./routes/developer');
+app.use('/api/developer', authenticate, developerRoutes);
 
 
 // DB connection

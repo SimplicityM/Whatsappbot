@@ -1,29 +1,4 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require("bcrypt");
-const prisma = require("../packages/database/client");
-
-async function authenticate(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header) return res.status(401).json({ error: "No API key" });
-
-  const rawKey = header.replace("Bearer ", "");
-  const prefix = rawKey.split(".")[0].replace("wa_live_", "");
-
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { prefix }
-  });
-
-  if (!apiKey) return res.status(401).json({ error: "Invalid key" });
-
-  const valid = await bcrypt.compare(rawKey, apiKey.keyHash);
-  if (!valid) return res.status(401).json({ error: "Invalid key" });
-
-  req.accountId = apiKey.accountId;
-
-  next();
-}
-
-module.exports = authenticate;
 
 // Don't load User model at the top - get it dynamically
 const getUserModel = () => {

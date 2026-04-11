@@ -1,6 +1,6 @@
-const redis = require("../queue/redis");
+const redis = require("../redis");
 const dayjs = require("dayjs");
-const prisma = require("../database/client");
+const prisma = require("../../database/client");
 
 async function checkDailyLimit(accountId) {
   const account = await prisma.account.findUnique({

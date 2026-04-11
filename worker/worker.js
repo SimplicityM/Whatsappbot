@@ -23,6 +23,7 @@ const {
     resumeUserSession,
     sessions
 } = require("./baileys.js");
+const { isSendWorkerRunning } = require("./sendWorker");
 
 /* =====================================================
    CONFIG
@@ -151,6 +152,8 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({
             status: "healthy",
             sessions: sessions.size,
+            redisReady,
+            queueWorkerRunning: isSendWorkerRunning(),
             uptime: process.uptime(),
             timestamp: Date.now()
         }));

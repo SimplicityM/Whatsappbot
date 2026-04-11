@@ -10,7 +10,8 @@
     "start": "echo \"Select server or worker\"",
     "start:server": "npm --workspace server start",
     "start:worker": "npm --workspace worker start",
-    "check:commands": "node scripts/verify-command-wiring.js"
+    "check:commands": "node scripts/verify-command-wiring.js",
+    "check:developer-api": "node scripts/verify-developer-api-flow.js"
   },
   "dependencies": {
     "@prisma/client": "^7.4.1",

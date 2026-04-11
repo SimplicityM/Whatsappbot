@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum MessageStatus {
@@ -20,6 +19,20 @@ model Account {
   createdAt    DateTime @default(now())
   sessions     Session[]
   messages     Message[]
+  apiKeys      ApiKey[]
+}
+
+model ApiKey {
+  id        String    @id @default(uuid())
+  prefix    String    @unique
+  keyHash   String
+  accountId String
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
 }
 
 model Session {
